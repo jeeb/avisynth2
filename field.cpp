@@ -43,6 +43,7 @@ AVSFunction Field_filters[] = {
   { "Interleave", "c+", Interleave::Create },
   { "SwapFields", "c", Create_SwapFields },
   { "Bob", "c[b]f[c]f[height]i", Create_Bob },
+  { "SelectRangeEvery", "c[every]i[length]i[offset]i", SelectRangeEvery::Create},
   { 0 }
 };
 
@@ -70,10 +71,12 @@ PVideoFrame SeparateFields::GetFrame(int n, IScriptEnvironment* env)
 {
   PVideoFrame frame = child->GetFrame(n>>1, env);
   if (vi.IsPlanar()) {
-    return frame->Subframe((GetParity(n) ^ vi.IsYUV()) * frame->GetPitch(),
-      frame->GetPitch()*2, frame->GetRowSize(), frame->GetHeight()>>1, 
-//      0,0, frame->GetPitch(PLANAR_U)*2);
-      (GetParity(n) ^ vi.IsYUV()) * frame->GetPitch(PLANAR_U),(GetParity(n) ^ vi.IsYUV()) * frame->GetPitch(PLANAR_V), frame->GetPitch(PLANAR_U)*2);  // FIXME: Problematic???
+    bool topfield = child->GetParity(n);
+    int UVoffset = topfield ? frame->GetPitch(PLANAR_U) : 0;
+    int Yoffset = topfield ? frame->GetPitch(PLANAR_Y) : 0;
+    return frame->Subframe(Yoffset, frame->GetPitch()*2, frame->GetRowSize(), frame->GetHeight()>>1, UVoffset, UVoffset, frame->GetPitch(PLANAR_U)*2);
+//  VideoFrame* Subframe(int rel_offset, int new_pitch, int new_row_size, int new_height, int rel_offsetU, int rel_offsetV, int pitchUV) const;
+
   }
   return frame->Subframe((GetParity(n) ^ vi.IsYUY2()) * frame->GetPitch(),
     frame->GetPitch()*2, frame->GetRowSize(), frame->GetHeight()>>1);
@@ -355,4 +358,29 @@ PClip new_SeparateFields(PClip _child, IScriptEnvironment* env)
 PClip new_AssumeFrameBased(PClip _child) 
 {
   return new AssumeFrameBased(_child);
+}
+
+SelectRangeEvery::SelectRangeEvery(PClip _child, int _every, int _length, int _offset, IScriptEnvironment* env)
+		: GenericVideoFilter(_child)
+	{
+		AVSValue trimargs[3] = { _child, _offset, 0};
+		PClip c = env->Invoke("Trim",AVSValue(trimargs,3)).AsClip();
+		child = c;
+		vi = c->GetVideoInfo();
+
+		every = min(max(_every,0),vi.num_frames);
+		length = min(max(_length,0),every);
+
+		int n = vi.num_frames;
+		vi.num_frames = (n/every)*length+(n%every<length?n%every:length);
+	}
+	
+	PVideoFrame __stdcall SelectRangeEvery::GetFrame(int n, IScriptEnvironment* env) {
+		return child->GetFrame((n/length)*every+(n%length), env); }
+
+	bool __stdcall SelectRangeEvery::GetParity(int n)	{
+		return child->GetParity((n/length)*every+(n%length)); }
+
+AVSValue __cdecl SelectRangeEvery::Create(AVSValue args, void* user_data, IScriptEnvironment* env) {
+    return new SelectRangeEvery(args[0].AsClip(), args[1].AsInt(1500), args[2].AsInt(50), args[3].AsInt(0), env);
 }

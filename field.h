@@ -202,6 +202,15 @@ private:
   PClip child2;
 };
 
+class SelectRangeEvery : public GenericVideoFilter {
+	int every, length;
+public:
+	SelectRangeEvery(PClip _child, int _every, int _length, int _offset, IScriptEnvironment* env);
+	PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
+	bool __stdcall GetParity(int n);
+  static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
+
+};
 
 
 /**** Factory methods ****/
