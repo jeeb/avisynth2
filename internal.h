@@ -17,7 +17,7 @@
 // http://www.gnu.org/copyleft/gpl.html .
 
 #define AVS_VERSION 2.08
-#define AVS_VERSTR "AviSynth 2.08 (avisynth.org) 11 Jan. 2003"
+#define AVS_VERSTR "AviSynth 2.08 (avisynth.org) 20 Feb. 2003"
 
 #ifndef __Internal_H__
 #define __Internal_H__

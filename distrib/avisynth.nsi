@@ -3,8 +3,8 @@
 
 ; NOTE: this .NSI script is designed for NSIS v1.8+
 BrandingText "Avisynth 2 installer."
-Name "AviSynth 2.07"
-OutFile "AviSynth207.exe"
+Name "AviSynth 2.08"
+OutFile "AviSynth208.exe"
 Icon AviSynth.ico
 EnabledBitmap "on.bmp"
 DisabledBitmap "off.bmp"
@@ -15,7 +15,7 @@ SetDatablockOptimize on ; (can be off)
 CRCCheck on ; (can be off)
 AutoCloseWindow false ; (can be true for the window go away automatically at end)
 ShowInstDetails show ; (can be show to have them shown, or nevershow to disable)
-; SetDateSave off ; (can be on to have files restored to their orginal date)
+SetDateSave on ; (can be on to have files restored to their orginal date)
 
 LicenseText "You must agree to this license before installing."
 LicenseData "gpl.txt"
@@ -26,12 +26,12 @@ DirShow show ; (make this hide to not let the user change it)
 DirText "Select the directory to install documentation in:"
 ComponentText "AviSynth Installation."
 
-Function .onInit
-SectionSetFlags 3 0
-FunctionEnd
+;Function .onInit
+;FunctionEnd
 
 ;0
 Section "AviSynth Base (required)" ; (default section)
+SetShellVarContext All
 ClearErrors
 SetOutPath "$SYSDIR"
 File "..\release\avisynth.dll"
@@ -63,6 +63,10 @@ WriteRegStr HKEY_CLASSES_ROOT "CLSID\{E6D6B700-124D-11D4-86F3-DB80AFD98778}" "" 
 WriteRegStr HKEY_CLASSES_ROOT "CLSID\{E6D6B700-124D-11D4-86F3-DB80AFD98778}\InProcServer32" "" "avisynth.dll"
 WriteRegStr HKEY_CLASSES_ROOT "CLSID\{E6D6B700-124D-11D4-86F3-DB80AFD98778}\InProcServer32" "ThreadingModel" "Apartment"
 
+WriteRegStr HKCR ".avs" "" "avsfile"
+WriteRegStr HKCR "avsfile" "" "AviSynth Script"
+WriteRegStr HKCR "avsfile\DefaultIcon" "" $SYSDIR\AviSynth.dll,0
+
 IfErrors reg_not_ok
 
 
@@ -92,6 +96,7 @@ SectionDivider
 
 ;2
 Section "Documentation (recommended)"
+SetShellVarContext All
   CreateDirectory "$INSTDIR\docs"
   SetOutPath "$INSTDIR\docs"
 	File "..\docs\*.html"
@@ -108,6 +113,7 @@ SectionEnd
 
 ;3
 Section "German Documentation"
+SetShellVarContext All
   CreateDirectory "$INSTDIR\docs_ger"
   SetOutPath "$INSTDIR\docs_ger"
 	File "..\docs_ger\*.html"
@@ -121,6 +127,67 @@ Section "German Documentation"
   CreateShortCut "$SMPROGRAMS\AviSynth 2\Avisynth Online.lnk" "http://avisynth.org"
 SectionEnd
 
+SectionDivider
+
+Section "Associate AVS files with Notepad"
+SetShellVarContext All
+  SectionIn 1 2
+  WriteRegStr HKCR "avsfile\shell\open\command" "" 'notepad.exe "%1"'
+SectionEnd
+
+Section "Associate AVS files with Media Player 6.4"
+;  SectionIn 1 2
+  SetShellVarContext All
+  IfFileExists "$PROGRAMFILES\Windows Media Player\mplayer2.exe" mplayer_found
+  MessageBox MB_OK "The location of mplayer2.exe could not be found - you need to set the association manually!" IDOK mplayer_end
+  goto mplayer_end
+mplayer_found:	
+  WriteRegStr HKCR "avsfile\shell\open\command" "" '$PROGRAMFILES\Windows Media Player\mplayer2.exe "%1"'
+mplayer_end:
+SectionEnd
+
+!define SECTION_ON 0x80000000
+!define SECTION_OFF 0x7FFFFFFF
+!define ass_notepad 5
+!define ass_mediaplayer 6
+
+Function .onInit
+  MessageBox MB_YESNO|MB_ICONQUESTION   "This will install AviSynth 2.0.8 beta. Do you wish to continue ?" IDYES NoAbort
+		Abort
+	NoAbort:
+  SectionGetFlags ${ass_notepad} $6
+  SectionGetFlags ${ass_mediaplayer} $7
+  IntOp $6 $6 | ${SECTION_ON}
+  IntOp $7 $7 & ${SECTION_OFF}
+  SectionSetFlags ${ass_notepad} $6
+  SectionSetFlags ${ass_mediaplayer} $7
+  SectionSetFlags 3 0
+FunctionEnd
+
+
+Function .onSelChange
+  SectionGetFlags ${ass_notepad} $1
+  SectionGetFlags ${ass_mediaplayer} $2
+  ; Set last unchecked as checked, if both are active
+  IntOp $3 $1 & ${SECTION_ON}
+  IntOp $4 $2 & ${SECTION_ON}
+  IntOp $5 $3 & $4
+  IntCmp $5 0 endosl_end   ; Both are not checked - jump!
+  IntOp $6 $6 ^ ${SECTION_ON}  ; Invert on flag
+  IntOp $7 $7 ^ ${SECTION_ON}
+  IntOp $1 $1 & ${SECTION_OFF}  ; Clear selection
+  IntOp $2 $2 & ${SECTION_OFF}
+  IntOp $1 $1 | $6  
+  IntOp $2 $2 | $7
+  SectionSetFlags ${ass_notepad} $1
+  SectionSetFlags ${ass_mediaplayer} $2
+  
+endosl_end:
+  SectionGetFlags ${ass_notepad} $6
+  SectionGetFlags ${ass_mediaplayer} $7
+  IntOp $6 $6 & ${SECTION_ON}
+  IntOp $7 $7 & ${SECTION_ON}
+FunctionEnd
 
 
 ; begin uninstall settings/section
