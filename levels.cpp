@@ -326,7 +326,7 @@ PVideoFrame __stdcall Tweak::GetFrame(int n, IScriptEnvironment* env)
 {
 	double Hue;
 	int Sin, Cos;
-	int y1, y2, u, v;
+	int y1, y2, u, v, ux;
 	int Sat = (int) (sat * 512);
 	int Cont = (int) (cont * 512);
 	int Bright = (int) bright;
@@ -387,9 +387,9 @@ PVideoFrame __stdcall Tweak::GetFrame(int n, IScriptEnvironment* env)
 				/* hue and saturation */
 				u = srcp[x+1] - 128;
 				v = srcp[x+3] - 128;
-				u = (u * Cos + v * Sin) >> 12;
+				ux = (u * Cos + v * Sin) >> 12;
 				v = (v * Cos - u * Sin) >> 12;
-				u = ((u * Sat) >> 9) + 128;
+				u = ((ux * Sat) >> 9) + 128;
 				v = ((v * Sat) >> 9) + 128;
 				u = min(max(u,0),255);
         v = min(max(v,0),255);
@@ -399,7 +399,7 @@ PVideoFrame __stdcall Tweak::GetFrame(int n, IScriptEnvironment* env)
 			srcp += src_pitch;
 		}
   } else if (vi.IsYV12()) {
-    int y;  // VC6 scoping sucks
+    int y;  // VC6 scoping sucks - Yes!
     for (y=0; y<height; ++y) {
       for (int x=0; x<row_size; ++x) {
         /* brightness and contrast */
@@ -407,7 +407,7 @@ PVideoFrame __stdcall Tweak::GetFrame(int n, IScriptEnvironment* env)
 				y1 = (Cont * y1) >> 9;				
 				y1 += (int) Bright;
 				y1 += 16;				
-				y1 = min(max(y1,0),255);
+				y1 = min(max(y1,15),235);
 				srcp[x] = (int) y1;
       }
       srcp += src_pitch;
@@ -422,12 +422,12 @@ PVideoFrame __stdcall Tweak::GetFrame(int n, IScriptEnvironment* env)
         /* hue and saturation */
 				u = srcpu[x] - 128;
 				v = srcpv[x] - 128;
-				u = (u * Cos + v * Sin) >> 12;
+				ux = (u * Cos + v * Sin) >> 12;
 				v = (v * Cos - u * Sin) >> 12;
-				u = ((u * Sat) >> 9) + 128;
+				u = ((ux * Sat) >> 9) + 128;
 				v = ((v * Sat) >> 9) + 128;
-				srcpu[x] = min(max(u,0),255);
-        srcpv[x] = min(max(v,0),255);				
+				srcpu[x] = min(max(u,16),240);
+        srcpv[x] = min(max(v,16),240);				
       }
       srcpu += src_pitch;
       srcpv += src_pitch;
