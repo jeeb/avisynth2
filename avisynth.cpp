@@ -941,7 +941,7 @@ void BitBlt(BYTE* dstp, int dst_pitch, const BYTE* srcp, int src_pitch, int row_
   }
 }
 
-//Todo: Align reads to mod8 boundaries. Perhaps only prefect at new cacheline, now prefetches at every 16'th byte.
+//Todo: Align reads to mod8 boundaries. Perhaps only prefecth at new cacheline, now prefetches at every 16'th byte.
 
 void asm_BitBlt(BYTE* dstp, int dst_pitch, const BYTE* srcp, int src_pitch, int row_size, int height) {
   int bytesleft=0;
@@ -1041,6 +1041,10 @@ void asm_BitBltNC(BYTE* dstp, int dst_pitch, const BYTE* srcp, int src_pitch, in
 }
 
 void ScriptEnvironment::BitBlt(BYTE* dstp, int dst_pitch, const BYTE* srcp, int src_pitch, int row_size, int height) {
+  if (height<0)
+    ThrowError("Filter Error: Attempting to blit an image with negative height.");
+  if (row_size<0)
+    ThrowError("Filter Error: Attempting to blit an image with negative row size.");
   ::BitBlt(dstp, dst_pitch, srcp, src_pitch, row_size, height);
 }
 
