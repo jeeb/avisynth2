@@ -19,8 +19,6 @@
 
 #include "convert.h"
 #include "convert_xvid.h"
-#include "transform.h"
-#include "field.h"
 
 
 

@@ -20,6 +20,8 @@
 #define __Convert_H__
 
 #include "internal.h"
+#include "field.h"
+#include "transform.h"
 
 
 /********************************************************************

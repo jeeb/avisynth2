@@ -20,7 +20,6 @@
 #define __Focus_H__
 
 #include "internal.h"
-#include "transform.h"
 
 
 _PixelClip PixelClip;
