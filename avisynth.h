@@ -252,6 +252,135 @@ enum {  //SUBTYPES
 };
 
 
+//base class for the smart pointers classes
+template <class T> class smart_ptr_base {
+
+  void Release() { if (ptr) ptr->Release(); }
+  void AddRef() { if (ptr) ptr->AddRef(); }
+
+protected:
+  T * ptr;
+
+  smart_ptr_base() : ptr(NULL) { }
+  smart_ptr_base(T * _ptr) : ptr(_ptr) { }
+  smart_ptr_base(const smart_ptr_base<T>& other) : ptr(other.ptr) { AddRef(); }  
+
+  void Set(T* newPtr) { Release(); ptr = newPtr; }  
+
+  void Copy(const smart_ptr_base<T>& other)
+  { 
+    if (ptr != other.ptr) {
+      Release(); 
+      ptr = other.ptr;
+      AddRef();
+    }  
+  }
+
+  void Clone(const smart_ptr_base<T>& other) { Set(other.ptr->clone()); }
+
+  void StealOrClone(smart_ptr_base<T>& other)
+  {    
+    if (other.ptr && other.ptr->isShared())  //if shared
+      Clone(other); //we make a copy for ourselves (and let the old one live)
+    else {
+      Release();
+      ptr = other.ptr;          //we steal ptr
+      other.ptr = NULL;
+    }
+  } 
+
+public:
+
+  void release() { Set(NULL); }  //smart ptr voids itself
+  
+  operator bool() const { return ptr != NULL; }
+
+  ~smart_ptr_base<T>() { Release(); }
+
+};
+
+
+//smart const T * 
+template <class T> class smart_ptr_to_cst : public smart_ptr_base<T> {
+
+public:
+  smart_ptr_to_cst() { }
+  smart_ptr_to_cst(T* _ptr) : smart_ptr_base<T>(_ptr) { }
+  smart_ptr_to_cst(const smart_ptr_to_cst<T>& other) : smart_ptr_base<T>(other) { }
+
+  void swap(smart_ptr_to_cst<T>& other) { std::swap<T*>(ptr, other.ptr); }
+
+  const smart_ptr_to_cst<T>& operator =(T* newPtr) { Set(newPtr); return *this; }
+  const smart_ptr_to_cst<T>& operator =(const smart_ptr_to_cst<T>& other) { Copy(other); return *this; }
+  
+  const T * const operator ->() const { return ptr; }
+  const T& operator *() const { return *ptr; }
+};
+
+
+//smart T * 
+//method of conversion from and to 'smart const T *' are provided
+//they copy the pointed object if its shared with others, otherwise steal it
+template <class T> class smart_ptr : public smart_ptr_base<T> {
+
+public:
+  smart_ptr() { }
+  smart_ptr(T* _ptr) : smart_ptr_base<T>(_ptr) { }
+  smart_ptr(const smart_ptr<T>& other) : smart_ptr_base<T>(other) { }  
+  smart_ptr(smart_ptr_to_cst<T>& other) { StealOrClone(other); }
+  smart_ptr(const smart_ptr_to_cst<T>& other) { Clone(other); }
+
+  void swap(smart_ptr<T>& other) { std::swap<T*>(ptr, other.ptr); }
+  
+  const smart_ptr<T>& operator =(T* newPtr) { Set(newPtr); return *this; }
+  const smart_ptr<T>& operator =(const smart_ptr<T>& other) { Copy(other); return *this; }
+  const smart_ptr<T>& operator =(smart_ptr_to_cst<T>& other) { StealOrClone(other); return *this; }
+
+  operator smart_ptr_to_cst<T>() { smart_ptr_cst result; result.StealOrClone(*this); return result; }
+  operator smart_ptr_to_cst<T>() const { smart_ptr_cst result; result.Clone(*this); return result; }
+
+  T * const operator ->() const { return ptr; }
+  T& operator *() const { return *ptr; }
+
+};
+
+
+class IClip;
+class VideoFrame;
+class VideoFrameBuffer;
+
+//base class for all the refcounted object (IClip, VideoFrame, VideoFrameBuffer)
+//refcount access are limited here (so multithread changes are limited here too)
+//so far only IClip is based upon this
+class RefCounted {
+
+  int refcount;
+
+  //for mutlithread, these methods should be made atomic
+  void AddRef() { ++refcount; }
+  void Release() { if (--refcount == 0) recycle(); }
+
+  bool isFree() { return refcount == 0; }
+  bool isShared() { return refcount > 1; }  
+
+  //template <class T> friend class smart_ptr_base<T>; //why doesn't it work !!! stupid VC6
+  friend class smart_ptr_base<IClip>;  
+  friend class smart_ptr_base<VideoFrame>;
+  friend class smart_ptr_base<VideoFrameBuffer>; 
+
+protected:
+  //refcount starts at 1 to prevent confustion between new instances and unreferrenced ones 
+  //will help achieve thread-safety in instance recycling
+  RefCounted() : refcount(1) { } 
+
+  //method to put oneself in a recyclable state, default implementation = suicide (IClip)
+  //subclass who recycle instance must redefine it
+  virtual void recycle() { delete this; } 
+  
+  virtual ~RefCounted() { }    //virtual destructor, IClip will need that, 
+                               //others won't mind since they are not destroyed often
+};
+
 
 // VideoFrameBuffer holds information about a memory block which is used
 // for video data.  For efficiency, instances of this class are not deleted
@@ -283,8 +412,7 @@ public:
 };
 
 
-class IClip;
-class PClip;
+
 class PVideoFrame;
 class IScriptEnvironment;
 class AVSValue;
@@ -362,19 +490,21 @@ public:
   ~VideoFrame() { --vfb->refcount; }
 };
 
+
+
+
+
+
+
 enum {
   CACHE_NOTHING=0,
   CACHE_RANGE=1 };
 
 // Base class for all filters.
-class IClip {
-  friend class PClip;
-  friend class AVSValue;
-  int refcnt;
-  void AddRef() { ++refcnt; }
-  void Release() { if (!--refcnt) delete this; }
+class IClip : public RefCounted {
+
 public:
-  IClip() : refcnt(0) {}
+  IClip() {}
 
   virtual int __stdcall GetVersion() { return AVISYNTH_INTERFACE_VERSION; }
   
@@ -383,44 +513,10 @@ public:
   virtual void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) = 0;  // start and count are in samples
   virtual void __stdcall SetCacheHints(int cachehints,int frame_range) = 0 ;  // We do not pass cache requests upwards, only to the next filter.
   virtual const VideoInfo& __stdcall GetVideoInfo() = 0;
-  virtual __stdcall ~IClip() {}
+
 };
 
-
-// smart pointer to IClip
-class PClip {
-
-  IClip* p;
-
-  IClip* GetPointerWithAddRef() const { if (p) p->AddRef(); return p; }
-  friend class AVSValue;
-  friend class VideoFrame;
-
-  void Init(IClip* x) {
-    if (x) x->AddRef();
-    p=x;
-  }
-  void Set(IClip* x) {
-    if (x) x->AddRef();
-    if (p) p->Release();
-    p=x;
-  }
-
-public:
-  PClip() { p = 0; }
-  PClip(const PClip& x) { Init(x.p); }
-  PClip(IClip* x) { Init(x); }
-  void operator=(IClip* x) { Set(x); }
-  void operator=(const PClip& x) { Set(x.p); }
-
-  IClip* operator->() const { return p; }
-
-  // useful in conditional expressions
-  operator void*() const { return p; }
-  bool operator!() const { return !p; }
-
-  ~PClip() { if (p) p->Release(); }
-};
+typedef smart_ptr<IClip> PClip;  // smart pointer to IClip
 
 
 // smart pointer to VideoFrame
@@ -437,6 +533,7 @@ class PVideoFrame {
     if (p) p->Release();
     p=x;
   }
+
 
 public:
   PVideoFrame() { p = 0; }
@@ -455,12 +552,22 @@ public:
 };
 
 
+enum AVSType {
+  VOID_T,
+  CLIP_T,
+  BOOL_T,
+  INT_T,
+  //LONG_T,
+  FLOAT_T,
+  STRING_T
+};
+
 class AVSValue {
 public:
 
   AVSValue() { type = 'v'; }
-  AVSValue(IClip* c) { type = 'c'; clip = c; if (c) c->AddRef(); }
-  AVSValue(const PClip& c) { type = 'c'; clip = c.GetPointerWithAddRef(); }
+  AVSValue(IClip* c) { type = 'c'; clip = c; }
+  AVSValue(const PClip& c) { type = 'c'; clip = c; }
   AVSValue(bool b) { type = 'b'; boolean = b; }
   AVSValue(int i) { type = 'i'; integer = i; }
 //  AVSValue(__int64 l) { type = 'l'; longlong = l; }
@@ -468,10 +575,10 @@ public:
   AVSValue(double f) { type = 'f'; floating_pt = float(f); }
   AVSValue(const char* s) { type = 's'; string = s; }
   AVSValue(const AVSValue* a, int size) { type = 'a'; array = a; array_size = size; }
-  AVSValue(const AVSValue& v) { Assign(&v, true); }
+  AVSValue(const AVSValue& other) { Assign(other); }
 
-  ~AVSValue() { if (IsClip() && clip) clip->Release(); }
-  AVSValue& operator=(const AVSValue& v) { Assign(&v, false); return *this; }
+  ~AVSValue() { }
+  const AVSValue& operator=(const AVSValue& other) { Assign(other); return *this; }
 
   // Note that we transparently allow 'int' to be treated as 'float'.
   // There are no int<->bool conversions, though.
@@ -506,9 +613,8 @@ public:
 private:
 
   short type;  // 'a'rray, 'c'lip, 'b'ool, 'i'nt, 'f'loat, 's'tring, 'v'oid, or 'l'ong
-  short array_size;
+  short array_size;  
   union {
-    IClip* clip;
     bool boolean;
     int integer;
     float floating_pt;
@@ -516,15 +622,13 @@ private:
     const AVSValue* array;
 //    __int64 longlong;
   };
+  PClip clip;
 
-  void Assign(const AVSValue* src, bool init) {
-    if (src->IsClip() && src->clip)
-      src->clip->AddRef();
-    if (!init && IsClip() && clip)
-      clip->Release();
+  void Assign(const AVSValue& src) {
     // make sure this copies the whole struct!
-    ((__int32*)this)[0] = ((__int32*)src)[0];
-    ((__int32*)this)[1] = ((__int32*)src)[1];
+    ((__int32*)this)[0] = ((__int32*)&src)[0];
+    ((__int32*)this)[1] = ((__int32*)&src)[1];
+	clip = src.clip;
   }
 };
 
