@@ -348,8 +348,8 @@ public:
 private:
   const int track1_factor, track2_factor;
 	int tempbuffer_size;
-  signed short *tempbuffer;
-	PClip clip;
+  signed char *tempbuffer;
+	PClip tclip,clip;
 
   static __inline short Saturate(int n) {
     if (n <= -32768) return -32768;

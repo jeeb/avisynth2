@@ -66,7 +66,7 @@ struct VideoInfo {
          CS_IYUV = 1<<4 | CS_YUV | CS_PLANAR  // as above
          };
   int pixel_type;                // changed to int as of 2.5
-//  bool field_based;
+
 
   int audio_samples_per_second;   // 0 means no audio
   int sample_type;                // as of 2.5

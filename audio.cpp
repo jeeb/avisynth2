@@ -205,7 +205,7 @@ AVSValue __cdecl ConvertAudio::Create_float(AVSValue args, void*, IScriptEnviron
 
 ConvertToMono::ConvertToMono(PClip _clip) 
   : GenericVideoFilter(ConvertAudio::Create(_clip,
-  SAMPLE_INT16|SAMPLE_FLOAT, SAMPLE_INT16))
+  SAMPLE_INT16|SAMPLE_FLOAT, SAMPLE_FLOAT))
 {
 	
   vi.nchannels = 1;
@@ -315,8 +315,8 @@ AVSValue __cdecl EnsureVBRMP3Sync::Create(AVSValue args, void*, IScriptEnvironme
  *******************************************/
 
 MergeChannels::MergeChannels(PClip _child, PClip _clip, IScriptEnvironment* env) 
-  : GenericVideoFilter(ConvertAudio::Create(_child,SAMPLE_INT16|SAMPLE_FLOAT|SAMPLE_INT32|SAMPLE_INT24|SAMPLE_INT8,SAMPLE_FLOAT)),
-	clip2(ConvertAudio::Create(_clip,SAMPLE_INT16|SAMPLE_FLOAT|SAMPLE_INT32|SAMPLE_INT24|SAMPLE_INT8,SAMPLE_FLOAT))
+  : GenericVideoFilter(_child),
+	clip2(_clip)
 {
 
   vi2 = clip2->GetVideoInfo();
@@ -661,15 +661,15 @@ AVSValue __cdecl Normalize::Create(AVSValue args, void*, IScriptEnvironment* env
 /*****************************
  ***** Mix audio  tracks ******
  ******************************/
-// FIXME: SUPPORT floats!!
 
 MixAudio::MixAudio(PClip _child, PClip _clip, double _track1_factor, double _track2_factor, IScriptEnvironment* env)
   : GenericVideoFilter(ConvertAudio::Create(_child,SAMPLE_INT16|SAMPLE_FLOAT,SAMPLE_FLOAT)),
-    clip(ConvertAudio::Create(_clip,SAMPLE_INT16|SAMPLE_FLOAT,SAMPLE_FLOAT)),
+    tclip(_clip),
 		track1_factor(int(_track1_factor*65536+.5)),
     track2_factor(int(_track2_factor*65536+.5)) {
 
 		const VideoInfo& vi2 = clip->GetVideoInfo();
+    clip = ConvertAudio::Create(tclip,vi.SampleType(),vi.SampleType());  // Clip 2 should now be same type as clip 1.
 
 		if (vi.audio_samples_per_second!=vi2.audio_samples_per_second) 
 			env->ThrowError("MixAudio: Clips must have same sample rate! Use ResampleAudio()!");  // Could be removed for fun :)
@@ -684,25 +684,38 @@ MixAudio::MixAudio(PClip _child, PClip _clip, double _track1_factor, double _tra
 void __stdcall MixAudio::GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env)
 {
   if (tempbuffer_size) {
-    if (tempbuffer_size<(count*2)) {
+    if (tempbuffer_size<count) {
       delete[] tempbuffer;
-      tempbuffer=new signed short[count*2];
+      tempbuffer=new signed char[count*vi.BytesPerAudioSample()];
       tempbuffer_size=count;
     }
   } else {
-    tempbuffer=new signed short[count*2];
+    tempbuffer=new signed char[count*vi.BytesPerAudioSample()];
     tempbuffer_size=count;
   }
 
   child->GetAudio(buf, start, count, env);
   clip->GetAudio(tempbuffer, start, count, env);
-  short* samples = (short*)buf;
-  short* clip_samples = (short*)tempbuffer;
   int channels=vi.AudioChannels();
-  for (int i=0; i<count; ++i) {
-    for (int j=0;j<channels;j++) {
-      samples[i*channels+j] = Saturate( int(Int32x32To64(samples[i*channels+j],track1_factor) >> 16) +
-				int(Int32x32To64(clip_samples[i*channels+j],track2_factor) >> 16) );
+
+  if (vi.SampleType()&SAMPLE_INT16) {
+    short* samples = (short*)buf;
+    short* clip_samples = (short*)tempbuffer;
+    for (int i=0; i<count; ++i) {
+      for (int j=0;j<channels;j++) {
+        samples[i*channels+j] = Saturate( int(Int32x32To64(samples[i*channels+j],track1_factor) >> 16) +
+          int(Int32x32To64(clip_samples[i*channels+j],track2_factor) >> 16) );
+      }
+    }
+  } else if (vi.SampleType()&SAMPLE_FLOAT) {
+    SFLOAT* samples = (SFLOAT*)buf;
+    SFLOAT* clip_samples = (SFLOAT*)tempbuffer;
+    float t1factor=(float)track1_factor/65536.0f;
+    float t2factor=(float)track2_factor/65536.0f;
+    for (int i=0; i<count; ++i) {
+      for (int j=0;j<channels;j++) {
+        samples[i*channels+j]=(samples[i*channels+j]*t1factor) + (clip_samples[i*channels+j]*t2factor);
+      }
     }
   }
 }
