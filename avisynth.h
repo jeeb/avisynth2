@@ -351,12 +351,21 @@ public:
   bool IsWritable() const { return (refcount == 1 && vfb->refcount == 1); }
 
   BYTE* GetWritePtr() const {
+    if (vfb->GetRefcount()>1) {
+      _ASSERT(FALSE);
+//      throw AvisynthError("Error!");
+    }
     return IsWritable() ? (vfb->GetWritePtr() + offset) : 0;
   }
 
   BYTE* GetWritePtr(int plane) const {
-    if (plane==PLANAR_Y)
+    if (plane==PLANAR_Y) {
+      if (vfb->GetRefcount()>1) {
+        _ASSERT(FALSE);
+//        throw AvisynthError("Error!");
+      }
       return IsWritable() ? vfb->GetWritePtr() + GetOffset(plane) : 0;
+    }
     return vfb->data + GetOffset(plane);
   }
 

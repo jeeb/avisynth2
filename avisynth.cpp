@@ -768,9 +768,9 @@ PVideoFrame __stdcall ScriptEnvironment::NewVideoFrame(const VideoInfo& vi, int 
 bool ScriptEnvironment::MakeWritable(PVideoFrame* pvf) {
   const PVideoFrame& vf = *pvf;
   // If the frame is already writable, do nothing.
-//  if (vf->IsWritable()) {
-//    return false;
-//  }
+  if (vf->IsWritable()) {
+    return false;
+  }
 
   // Otherwise, allocate a new frame (using NewVideoFrame) and
   // copy the data into it.  Then modify the passed PVideoFrame
@@ -941,7 +941,6 @@ bool ScriptEnvironment::FunctionExists(const char* name) {
   return function_table.Exists(name);
 }
 
-
 void BitBlt(BYTE* dstp, int dst_pitch, const BYTE* srcp, int src_pitch, int row_size, int height) {
   if (GetCPUFlags() & CPUF_MMX) {
     asm_BitBlt(dstp,dst_pitch,srcp,src_pitch,row_size,height);
@@ -957,15 +956,20 @@ void BitBlt(BYTE* dstp, int dst_pitch, const BYTE* srcp, int src_pitch, int row_
     }
   }
 }
-/*
-void asm_BitBlt(BYTE* dstp, int dst_pitch, const BYTE* srcp, int src_pitch, int row_size, int height) {
 
+  /*****************************
+  * Assembler bitblit by Steady
+   *****************************/
+
+#if 0
+
+void asm_BitBlt(BYTE* dstp, int dst_pitch, const BYTE* srcp, int src_pitch, int row_size, int height) {
 	if(row_size==0 || height==0) return; //abort on goofs
 	//move backwards for easier looping and to disable hardware prefetch
 	const BYTE* srcStart=srcp+src_pitch*(height-1);
 	BYTE* dstStart=dstp+dst_pitch*(height-1);
 
-	if(row_size < 32) {//to small to optimize
+	if(row_size < 16) {//to small to optimize
 		_asm {
 			mov 	esi,srcStart	//move rows from bottom up
 			mov 	edi,dstStart
@@ -993,41 +997,62 @@ memoptS_byteloop:
 		//unaligned version makes no assumptions on alignment
 		//other than pitch is QW aligned
 		int preBytes;// 0-7 bytes before first QW
-		int prevLineSrc,prevLineDst;
+
 		_asm {
 //****** initialize
-			cld		//just in case
 			mov		esi,srcStart	//bottom row
+			mov		AL,[esi]
 			mov		edi,dstStart
 			mov		edx,row_size
 			mov		ecx,edi
 			neg		ecx
 			and		ecx,7		//bytes before first QWord in dest
 			mov		preBytes,ecx
-			mov		eax,src_pitch
-			mov		ebx,dst_pitch
-			add		eax,edx
-			add		ebx,edx
-			mov		prevLineSrc,eax		//=pitch + row_size
-			mov		prevLineDst,ebx
 			mov		ebx,height
-//***** loop starts here
+
+//********** loop starts here ***********
+
 			align 16
 memoptU_rowloop:
-//***** prefetch
-//			mov		AL,[esi]
-			mov		ecx,edx	//row_size
-			dec		ecx			//offset to last byte in row
+			mov		ecx,edx			//row_size
+			dec		ecx					//offset to last byte in row
+			add		ecx,esi			//ecx= ptr last byte in row
+			and		ecx,~63			//align to first byte in cache line
 memoptU_prefetchloop:
-			mov		AL,[esi+ecx]	//read one address per cache line
+			mov		AX,[ecx]		//tried AL,AX,EAX, AX a tiny bit faster
 			sub		ecx,64
-			jnc		memoptU_prefetchloop
+			cmp		ecx,esi
+			jae		memoptU_prefetchloop
 
-//***** write
-			mov		ecx,preBytes
-			rep movsb			//ecx=0 after
+//************ write *************
+
+			movq		mm6,[esi]			//move the first unaligned bytes
+			movntq	[edi],mm6			//if preBytes!=0, overlaps with QW aligned below
+//************************
+			mov		eax,edi
+			mov		ecx,preBytes		//preBytes=offset from edi(dstp) to next QW (0-7)
+			neg		eax
+			and		eax,63				//eax=bytes from edi to start of next 64 byte cache line
+			align	16
+memoptU_prewrite8loop:   //write out odd QW's so 64bit write is cache line aligned
+			cmp		ecx,eax				//start of cache line ?
+			jz		memoptU_pre8done	//if not, write single QW
+			movq		mm7,[esi+ecx]
+			movntq	[edi+ecx],mm7
+			add		ecx,8
+			jmp		memoptU_prewrite8loop
+
 			align	16
 memoptU_write64loop:
+			movntq	[edi+ecx-64],mm0
+			movntq	[edi+ecx-56],mm1
+			movntq	[edi+ecx-48],mm2
+			movntq	[edi+ecx-40],mm3
+			movntq	[edi+ecx-32],mm4
+			movntq	[edi+ecx-24],mm5
+			movntq	[edi+ecx-16],mm6
+			movntq	[edi+ecx- 8],mm7
+memoptU_pre8done:
 			add		ecx,64
 			cmp		ecx,edx		//while(offset <= row_size) do {...
 			ja		memoptU_done64
@@ -1039,17 +1064,11 @@ memoptU_write64loop:
 			movq		mm5,[esi+ecx-24]
 			movq		mm6,[esi+ecx-16]
 			movq		mm7,[esi+ecx- 8]
-			movntq	[edi+ecx-64],mm0
-			movntq	[edi+ecx-56],mm1
-			movntq	[edi+ecx-48],mm2
-			movntq	[edi+ecx-40],mm3
-			movntq	[edi+ecx-32],mm4
-			movntq	[edi+ecx-24],mm5
-			movntq	[edi+ecx-16],mm6
-			movntq	[edi+ecx- 8],mm7
 			jmp		memoptU_write64loop
 memoptU_done64:
+
 			sub			ecx,64		//went to far
+			align	16
 memoptU_write8loop:
 			add			ecx,8		//next QW
 			cmp			ecx,edx	//any QW's left in row ?
@@ -1058,11 +1077,11 @@ memoptU_write8loop:
 			movntq	[edi+ecx-8],mm0
 			jmp		memoptU_write8loop
 memoptU_done8:
-			and			ecx,7		//any leftover bytes ?
-			rep movsb				//if so, move them also
 
-			sub		esi,prevLineSrc	//point to start of previous row
-			sub		edi,prevLineDst
+			movq		mm1,[esi+edx-8]
+			movntq	[edi+edx-8],mm1
+			sub		esi,src_pitch
+			sub		edi,dst_pitch
 			dec		ebx							//row counter (=height at start)
 			jne		memoptU_rowloop
 
@@ -1080,52 +1099,68 @@ memoptU_done8:
 			mov		edi,dstStart
 			mov		ebx,height
 			mov		edx,row_size
-
-	//first read from memory to cache
 			align	16
 memoptA_rowloop:
-			mov		ecx,edx		//row index
-			sub		ecx,8		//point to last QW
-memoptA_readloop:		//burst memory to cache, 1 address per cache line
-			mov		AL,[esi+ecx]
-			sub		ecx,64						//should be 32 for Pentium3 ?
-			jnc		memoptA_readloop  //while more cache lines left
+			mov		ecx,edx	//row_size
+			dec		ecx			//offset to last byte in row
 
-	//now write from cache to memory (movq actually reads from cache)
-	//write 64 bytes at a time while we can
-			mov		ecx,edx		//bytes in each row
-			align	16				//avoid 2 jumps in same 16 byte code window
-memoptA_write64loop:
+//********forward routine
+			add		ecx,esi
+			and		ecx,~63		//align prefetch to first byte in cache line(~3-4% faster)
+			align	16
+memoptA_prefetchloop:
+			mov		AX,[ecx]
 			sub		ecx,64
-			jc		memoptA_done64  //less than 64 bytes left
-			movq		mm0,[esi+ecx+56]
-			movq		mm1,[esi+ecx+48]
-			movq		mm2,[esi+ecx+40]
-			movq		mm3,[esi+ecx+32]
-			movq		mm4,[esi+ecx+24]
-			movq		mm5,[esi+ecx+16]
-			movq		mm6,[esi+ecx+8]
+			cmp		ecx,esi
+			jae		memoptA_prefetchloop
+
+			mov		eax,edi
+			xor		ecx,ecx
+			neg		eax
+			and		eax,63		//eax=bytes from edi to start of cache line
+			align	16
+memoptA_prewrite8loop:   //write out odd QW's so 64bit write is cache line aligned
+			cmp		ecx,eax				//start of cache line ?
+			jz		memoptA_pre8done	//if not, write single QW
 			movq		mm7,[esi+ecx]
-//note: execution will stall on one of the movntq's (whichever one
-//fills up the WC buffer)
-			movntq	[edi+ecx+56],mm0
-			movntq	[edi+ecx+48],mm1
-			movntq	[edi+ecx+40],mm2
-			movntq	[edi+ecx+32],mm3
-			movntq	[edi+ecx+24],mm4
-			movntq	[edi+ecx+16],mm5
-			movntq	[edi+ecx+ 8],mm6
-			movntq	[edi+ecx]   ,mm7
+			movntq	[edi+ecx],mm7
+			add		ecx,8
+			jmp		memoptA_prewrite8loop
+
+			align	16
+memoptA_write64loop:
+			movntq	[edi+ecx-64],mm0
+			movntq	[edi+ecx-56],mm1
+			movntq	[edi+ecx-48],mm2
+			movntq	[edi+ecx-40],mm3
+			movntq	[edi+ecx-32],mm4
+			movntq	[edi+ecx-24],mm5
+			movntq	[edi+ecx-16],mm6
+			movntq	[edi+ecx- 8],mm7
+memoptA_pre8done:
+			add		ecx,64
+			cmp		ecx,edx
+			ja		memoptA_done64  //less than 64 bytes left
+			movq		mm0,[esi+ecx-64]
+			movq		mm1,[esi+ecx-56]
+			movq		mm2,[esi+ecx-48]
+			movq		mm3,[esi+ecx-40]
+			movq		mm4,[esi+ecx-32]
+			movq		mm5,[esi+ecx-24]
+			movq		mm6,[esi+ecx-16]
+			movq		mm7,[esi+ecx- 8]
 			jmp		memoptA_write64loop
 
 memoptA_done64:
-			add		ecx,64
-	//		align	8
+			sub		ecx,64
+
+			align	16
 memoptA_write8loop:		//less than 8 QW's left
-			sub		ecx,8
-			jc		memoptA_done8	//no QW's left
-			movq		mm7,[esi+ecx]
-			movntq	[edi+ecx],mm7
+			add		ecx,8
+			cmp		ecx,edx
+			ja		memoptA_done8	//no QW's left
+			movq		mm7,[esi+ecx-8]
+			movntq	[edi+ecx-8],mm7
 			jmp		memoptA_write8loop
 
 memoptA_done8:
@@ -1139,8 +1174,10 @@ memoptA_done8:
 		};
 		return;
 	}//end aligned version
+
 }//end BitBlt_memopt()
-*/
+
+#else
 
 void asm_BitBlt(BYTE* dstp, int dst_pitch, const BYTE* srcp, int src_pitch, int row_size, int height) {
   int bytesleft=0;
@@ -1235,6 +1272,7 @@ do_next_line_mmx:
   }
   __asm {emms};
 }
+#endif
 
 void asm_BitBltNC(BYTE* dstp, int dst_pitch, const BYTE* srcp, int src_pitch, int row_size, int height) {
 }

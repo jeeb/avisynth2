@@ -136,8 +136,12 @@ PVideoFrame __stdcall Cache::GetFrame(int n, IScriptEnvironment* env)
         if (!(h_status[i] & CACHE_ST_USED)) { // Frame has not yet been used.
           notfound = false;
         }
-      }  // Store it
-
+      }  
+    } else {   // Frame was found - copy
+      VideoFrame* copy = new VideoFrame(result->vfb, result->offset, result->pitch, result->row_size, result->height, result->offsetU, result->offsetV, result->pitchUV);
+      _RPT1(0, "Cache2: using cached copy of frame %d\n", n);
+      return copy;
+    }// Store it
       h_vfb[i] = result->vfb;
       h_frame_nums[i] = n;
       h_video_frames[i]->offset = result->offset;
@@ -148,7 +152,7 @@ PVideoFrame __stdcall Cache::GetFrame(int n, IScriptEnvironment* env)
       h_video_frames[i]->row_size = result->row_size;
       h_video_frames[i]->height = result->height;
       h_status[i] = CACHE_ST_USED;
-    }
+
     return result;
   }
   // look for a cached copy of the frame
