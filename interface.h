@@ -17,130 +17,126 @@
 // http://www.gnu.org/copyleft/gpl.html .
 
 
+//I am not too happy with this name, so it is bound to change
 #ifndef __INTERFACE_H__
 #define __INTERFACE_H__
 
-#include <windows.h>
+#include <vector>
 #include <string>
-#include <utility>
 using namespace std;
 
 #include "avisynth.h"
 
 
-struct Argument {
+class PrototypeArgument {
+
+  inline static AVSType TypeCheck(AVSType type) {
+    if (type == VOID_T)
+      throw InternalError("void is not a valid argument type");
+    return type;
+  }
+
+protected:
+  //constructor for a special illegal value of the Argument subclass
+  PrototypeArgument() : type(VOID_T), name("illegal") { }
 
   AVSType type;
   string name;
 
-  bool optional;
-  AVSValue defaut;
+public:
+  PrototypeArgument(AVSType _type, const string& _name)
+    : type(TypeCheck(_type)), name(_name) { }  //name check is not done at this level
 
-  Argument(AVSType _type, const string& _name) : type(_type), name(_name), optional(false) { }
-  Argument(AVSType _type, const string& _name, const AVSValue _defaut)
-    : type(_type), name(_name), optional(true), defaut(_default) { _ASSERTE(type == default.GetType()); }
+  AVSType GetType() const { return type; }
+  const string& GetName() const { return name; }
 
+  //identity of name is sufficient for collision
+  bool operator ==(const string& _name) const { return name == _name; }
 };
 
-typedef vector<Argument> ArgumentList;
+
+
+class Prototype {
+
+  typedef vector<PrototypeArgument> ArgVector;
+
+  ArgVector args;
+
+public:
+  Prototype() { }
+
+  void AddArg(AVSType type);
+  void AddNamedArg(AVSType type, const string& name);
+
+  int size() const { return args.size(); }
+
+  const PrototypeArgument& operator [ ](int i) const { return args[i]; }
+};
+
+
+class Argument : public PrototypeArgument {
+
+  inline static const string& NameCheck(const string& name) {
+    if ( name.empty() )
+      throw InternalError("the empty string is not a valid argument name");
+    //test if it's acceptable as an identifier...
+    return name;
+  }
+
+  inline static const AVSValue& DefaultCheck(const AVSValue& defaut) {
+    if (! defaut.Defined() )
+      throw InternalError("an undefined AVSValue is not a valid argument default");
+    return defaut;
+  }
+
+  //constructor for a special illegal value assured to never match anything
+  Argument() : PrototypeArgument(), optional(true) { }
+
+  bool optional;
+  AVSValue defaultValue;
+
+public:
+  Argument(AVSType type, const string& name)
+    : PrototypeArgument(type, NameCheck(name)), optional(false) { }
+  Argument(const string& _name, const AVSValue _default)
+    : PrototypeArgument(_default.GetType(), NameCheck(name)), defaultValue(DefaultCheck(_default)), optional(true) { }
+
+  bool IsOptional() const { return optional; }
+  const AVSValue& GetDefault() const { return defaultValue; }
+
+
+  bool Match(const PrototypeArgument& arg, bool exact) const;
+
+
+  //that's the special illegal value, used as a not found value by GetArgByName in ArgumentList
+  static const Argument illegal; // = Argument();  
+};
+
+
+class ArgumentList {
+
+  vector<Argument> argList;
+
+  //used to check that you don't duplicate arg names
+  void UnicityCheck(const string& name);
+
+public:
+  ArgumentList() { }
+
+  void AddArgument(AVSType type, const string& name);    
+  void AddOptionalArgument(const string& name, const AVSValue& defaut);
+
+
+  bool Match(const Prototype& prototype, bool exact) const;
+
+  int size() const { return argList.size(); }
+  const Argument& operator [ ](int i) const { return argList[i]; }
+
+  const Argument& GetArgByName(const string& name) const;
+};
+
 typedef pair<string, AVSValue> NamedArg;
 typedef vector<NamedArg> NamedArgVector;
-
-
-class AVSFunction {
-
-  const AVSType returnType;
-  const string name;
-  const ArgumentList argList;
-
-public:
-  AVSFunction(AVSType retType, const string& _name, const ArgumentList& _argList)
-    : returnType(retType), name(_name), argList(_argList) { }
-
-  AVSType GetReturnType() const { return returnType; }
-  const string& GetName() const { return name; }
-  const ArgumentList& GetArgumentList() const { return argList; }
-
-  //does all type checking, reorder, replace by default
-  //and throw errors if args doesn't fit in
-  AVSValue operator() (const NamedArgVector& args) const;
-
-protected:
-  //called by the above, quaranteed to have args according to specified prototype
-  virtual AVSValue Process(const ArgVector& args) const = 0;
-
-};
-
-
-class Plugin;
-
-class AVSFilter : public AVSFunction {
-
-public:
-  AVSFilter(const string& _name, const ArgumentList& _argList) : AVSFunction(CLIP_T, _name, _argList) { }
-
-  virtual const Plugin * GetHostPlugin() const; //return the avsiynth core plugin (not really a plugin, but...
-
-};
-
-
-class AVSPluginFilter : public AVSFilter {
-
-  Plugin * host;
-
-  typedef PClip (* ProcessFunction)(const ArgVector& args);
-
-  ProcessFunction pf;
-
-  //method should be called by host plugin on all its filters when load is done
-  void SetProcessFunction(ProcessFunction _pf) { pf = _pf; }
-
-public:
-  AVSPluginFilter(Plugin * _host, const string& _name, const ArgumentList& _argList);
-
-  virtual const Plugin * GetHostPlugin() const { return host; }
-
-protected:
-  virtual AVSValue Process(const ArgVector& args) const; //load host if not and call pf
-
-
-};
-
-
-
-class Plugin {
-
-public:
-  virtual const string& GetName() const = 0;
-  virtual const string& GetAuthor() const = 0;
-  virtual const string& GetDescription() const = 0;
-
-  virtual bool IsLoaded() const = 0;
-
-  virtual void Load() = 0;
-  virtual void UnLoad() = 0;
-};
-
-
-class NativePlugin : public Plugin {
-
-  string pluginName;
-  string pluginAuthor;
-  string pluginDescription;
-
-  HMODULE plugin;
-
-public:
-  NativePlugin(const string& filename); 
-
-  virtual const string& GetName() const { return pluginName; }
-  virtual const string& GetAuthor() const { return pluginAuthor; }
-  virtual const string& GetDescription() const { return pluginDescription; }
-
-};
-
-
-
 
 
 
