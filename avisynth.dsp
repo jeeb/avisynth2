@@ -557,5 +557,9 @@ SOURCE=.\tokenizer.cpp
 SOURCE=.\tokenizer.h
 # End Source File
 # End Group
+# Begin Source File
+
+SOURCE=.\distrib\AviSynth.ico
+# End Source File
 # End Target
 # End Project

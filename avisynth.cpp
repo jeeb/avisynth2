@@ -943,7 +943,7 @@ bool ScriptEnvironment::FunctionExists(const char* name) {
 
 
 void BitBlt(BYTE* dstp, int dst_pitch, const BYTE* srcp, int src_pitch, int row_size, int height) {
-  if (GetCPUFlags() & CPUF_INTEGER_SSE) {
+  if (GetCPUFlags() & CPUF_MMX) {
     asm_BitBlt(dstp,dst_pitch,srcp,src_pitch,row_size,height);
     return;
   }
@@ -957,7 +957,7 @@ void BitBlt(BYTE* dstp, int dst_pitch, const BYTE* srcp, int src_pitch, int row_
     }
   }
 }
-
+/*
 void asm_BitBlt(BYTE* dstp, int dst_pitch, const BYTE* srcp, int src_pitch, int row_size, int height) {
 
 	if(row_size==0 || height==0) return; //abort on goofs
@@ -1140,12 +1140,13 @@ memoptA_done8:
 		return;
 	}//end aligned version
 }//end BitBlt_memopt()
-/*
+*/
+
 void asm_BitBlt(BYTE* dstp, int dst_pitch, const BYTE* srcp, int src_pitch, int row_size, int height) {
   int bytesleft=0;
   if (row_size&15) {
-    int a=(row_size+15)&~15;
-    if ((a<=src_pitch) && (a<dst_pitch)) {
+    int a=(row_size+15)&(~15);
+    if ((a<=src_pitch) && (a<=dst_pitch)) {
       row_size=a;
     } else {
       bytesleft=(row_size&15);
@@ -1234,7 +1235,7 @@ do_next_line_mmx:
   }
   __asm {emms};
 }
-*/
+
 void asm_BitBltNC(BYTE* dstp, int dst_pitch, const BYTE* srcp, int src_pitch, int row_size, int height) {
 }
 

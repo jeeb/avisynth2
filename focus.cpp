@@ -917,7 +917,7 @@ PVideoFrame TemporalSoften::GetFrame(int n, IScriptEnvironment* env)
 
 void TemporalSoften::mmx_accumulate_line(const BYTE* c_plane, const BYTE** planeP, int planes, int rowsize, __int64* t) {
   __declspec(align(8)) static const __int64 indexer = 0x0101010101010101i64;
-  __declspec(align(8)) static const __int64 t2 = *t;
+  const __int64 t2 = *t;
   int* _accum_line=accum_line;
   int* _div_line=div_line;
 
@@ -994,7 +994,7 @@ outloop:
 
 void TemporalSoften::isse_accumulate_line(const BYTE* c_plane, const BYTE** planeP, int planes, int rowsize, __int64* t) {
   __declspec(align(8)) static const __int64 indexer = 0x0101010101010101i64;
-  __declspec(align(8)) static const __int64 t2 = *t;
+  const __int64 t2 = *t;
   int* _accum_line=accum_line;
   int* _div_line=div_line;
 
@@ -1070,7 +1070,7 @@ outloop:
 
 void TemporalSoften::isse_accumulate_line_mode2(const BYTE* c_plane, const BYTE** planeP, int planes, int rowsize, __int64* t, int div) {
   __declspec(align(8)) static __int64 full = 0xffffffffffffffffi64;
-  __declspec(align(8)) static __int64 t2 = *t;
+  const __int64 t2 = *t;
   __int64 div64 = (__int64)(div) | ((__int64)(div)<<16) | ((__int64)(div)<<32) | ((__int64)(div)<<48);
   div>>=1;
   __int64 add64 = (__int64)(div) | ((__int64)(div)<<32);
@@ -1184,7 +1184,7 @@ outloop:
 void TemporalSoften::mmx_accumulate_line_mode2(const BYTE* c_plane, const BYTE** planeP, int planes, int rowsize, __int64* t, int div) {
   __declspec(align(8)) static __int64 full = 0xffffffffffffffffi64;
   __declspec(align(8)) static __int64 low_ffff = 0x000000000000ffffi64;
-  __declspec(align(8)) static __int64 t2 = *t;
+  const __int64 t2 = *t;
   __int64 div64 = (__int64)(div) | ((__int64)(div)<<16) | ((__int64)(div)<<32) | ((__int64)(div)<<48);
   div>>=1;
   __int64 add64 = (__int64)(div) | ((__int64)(div)<<32);

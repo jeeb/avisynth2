@@ -183,6 +183,7 @@ PVideoFrame __stdcall StackHorizontal::GetFrame(int n, IScriptEnvironment* env)
   PVideoFrame src1 = child1->GetFrame(n, env);
   PVideoFrame src2 = child2->GetFrame(n, env);
   PVideoFrame dst = env->NewVideoFrame(vi);
+
   const BYTE* src1p = src1->GetReadPtr();
   const BYTE* src1pU = src1->GetReadPtr(PLANAR_U);
   const BYTE* src1pV = src1->GetReadPtr(PLANAR_V);
@@ -190,19 +191,24 @@ PVideoFrame __stdcall StackHorizontal::GetFrame(int n, IScriptEnvironment* env)
   const BYTE* src2p = src2->GetReadPtr();
   const BYTE* src2pU = src2->GetReadPtr(PLANAR_U);
   const BYTE* src2pV = src2->GetReadPtr(PLANAR_V);
+
   BYTE* dstp = dst->GetWritePtr();
   BYTE* dstpU = dst->GetWritePtr(PLANAR_U);
   BYTE* dstpV = dst->GetWritePtr(PLANAR_V);
+
   const int src1_pitch = src1->GetPitch();
   const int src2_pitch = src2->GetPitch();
   const int src1_pitchUV = src1->GetPitch(PLANAR_U);
   const int src2_pitchUV = src2->GetPitch(PLANAR_U);
+
   const int dst_pitch = dst->GetPitch();
   const int dst_pitchUV = dst->GetPitch(PLANAR_U);
+
   const int src1_row_size = src1->GetRowSize();
   const int src2_row_size = src2->GetRowSize();
   const int src1_row_sizeUV = src1->GetRowSize(PLANAR_U);
   const int src2_row_sizeUV = src2->GetRowSize(PLANAR_V);
+
   BYTE* dstp2 = dstp + src1_row_size;
   BYTE* dstp2U = dstpU + src1_row_sizeUV;
   BYTE* dstp2V = dstpV + src1_row_sizeUV;
