@@ -54,9 +54,9 @@ struct VideoInfo {
          CS_YUV=1<<1,
          CS_INTERLEAVED=1<<2,
          CS_PLANAR=1<<3 };
-  BYTE pixel_type;                // changed as of 2.5
+  int pixel_type;                // changed to int as of 2.5
   bool field_based;
-  int bits_per_pixel;
+  int bits_per_pixel;           // changed from bytes to bits as of 2.5
 
   int audio_samples_per_second;   // 0 means no audio
   int sample_type;                // as of 2.5
@@ -70,8 +70,8 @@ struct VideoInfo {
   bool IsRGB24() const { return pixel_type&CS_BGR && (bits_per_pixel==24); }
   bool IsRGB32() const { return (pixel_type&CS_BGR) && (bits_per_pixel==32); }
   bool IsYUV() const { return !!(pixel_type&CS_YUV); }
-  bool IsYUY2() const { return pixel_type == (CS_YUV&CS_INTERLEAVED); }  
-  bool IsYV12() const { return pixel_type == (CS_YUV&CS_PLANAR); }
+  bool IsYUY2() const { return pixel_type == (CS_YUV|CS_INTERLEAVED); }  
+  bool IsYV12() const { return pixel_type == (CS_YUV|CS_PLANAR); }
   int BytesFromPixels(int pixels) const { return pixels * (bits_per_pixel>>3); }   // Will not work on planar images
   int RowSize() const { return BytesFromPixels(width); }
   int BitsPerPixel() const { return bits_per_pixel; }
@@ -193,6 +193,12 @@ public:
   ~VideoFrame() { --vfb->refcount; }
 };
 
+enum {
+  CACHE_NOTHING=0,
+  CACHE_ALL=1,
+  CACHE_AHEAD=2,
+  CACHE_BACK=3,
+  CACHE_AHEAD_BACK=4 };
 
 // Base class for all filters.
 class IClip {
@@ -205,10 +211,11 @@ public:
   IClip() : refcnt(0) {}
 
   virtual int __stdcall GetVersion() { return AVISYNTH_INTERFACE_VERSION; }
-
+  
   virtual PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env) = 0;
   virtual bool __stdcall GetParity(int n) = 0;  // return field parity if field_based, else parity of first field in frame
   virtual void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) = 0;  // start and count are in samples
+  virtual void __stdcall SetCacheHints(int cachehints,int framesahead, int framesback) = 0 ;  // We do not pass cache requests upwards, only to the next filter.
   virtual const VideoInfo& __stdcall GetVideoInfo() = 0;
   virtual __stdcall ~IClip() {}
 };
@@ -367,6 +374,7 @@ public:
   void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) { child->GetAudio(buf, start, count, env); }
   const VideoInfo& __stdcall GetVideoInfo() { return vi; }
   bool __stdcall GetParity(int n) { return child->GetParity(n); }
+  void __stdcall SetCacheHints(int cachehints,int framesahead, int framesback) { } ;  // We do not pass cache requests upwards, only to the next filter.
 };
 
 

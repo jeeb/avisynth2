@@ -238,7 +238,7 @@ TemporalSoften::TemporalSoften( PClip _child, unsigned radius, unsigned luma_thr
                         (((__int64) scaletab[(i >> 8) & 15]) << 32 ) |
                         (((__int64) scaletab[(i >>12) & 15]) << 48 );
   }
-
+  child->SetCacheHints(CACHE_AHEAD_BACK,kernel,kernel);
 }
 
 

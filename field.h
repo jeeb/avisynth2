@@ -156,6 +156,8 @@ public:
     { delete[] child_array; }
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
 
+  void __stdcall SetCacheHints(int cachehints,int framesahead, int framesback) { };
+
 private:
   const int num_children;
   const PClip* child_array;

@@ -42,6 +42,7 @@ public:
     { return child1->GetParity(n); }
 
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
+  void __stdcall SetCacheHints(int cachehints,int framesahead, int framesback) { };
 
 private:
   const PClip child1, child2;
@@ -100,6 +101,7 @@ public:
     { return vi; }
   inline virtual bool __stdcall GetParity(int n) 
     { return child1->GetParity(n); }
+  void __stdcall SetCacheHints(int cachehints,int framesahead, int framesback) { };
 
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
 
@@ -130,6 +132,7 @@ public:
     { return vi; }
   inline virtual bool __stdcall GetParity(int n) 
     { return child1->GetParity(n); }
+  void __stdcall SetCacheHints(int cachehints,int framesahead, int framesback) { };
 
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
 

@@ -64,6 +64,7 @@ public:
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
   void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) ;
   bool __stdcall GetParity(int n);
+  void __stdcall SetCacheHints(int cachehints,int framesahead, int framesback) { };
 
   static AVSValue __cdecl Create(AVSValue args, void* user_data, IScriptEnvironment* env) {
     const int mode = int(user_data);
@@ -173,6 +174,9 @@ void AVISource::LocateVideoCodec(IScriptEnvironment* env) {
   if (pbiSrc->biCompression == '2YUY') {
     vi.pixel_type = VideoInfo::CS_YUV|VideoInfo::CS_INTERLEAVED;
     vi.bits_per_pixel = pbiSrc->biBitCount;
+  } else if (pbiSrc->biCompression == 'YV12') {
+    vi.pixel_type = VideoInfo::CS_YUV|VideoInfo::CS_PLANAR;
+    vi.bits_per_pixel = pbiSrc->biBitCount;
   } else if (pbiSrc->biCompression == BI_RGB && pbiSrc->biBitCount == 32) {
     vi.pixel_type = VideoInfo::CS_BGR|VideoInfo::CS_INTERLEAVED;
     vi.bits_per_pixel = pbiSrc->biBitCount;
@@ -214,9 +218,9 @@ AVISource::AVISource(const char filename[], bool fAudio, const char pixel_type[]
   audioStreamSource = 0;
   pvideo=0;
   pfile=0;
-
+  
   AVIFileInit();
-
+  
   if (mode == 0) {
     // if it looks like an AVI file, open in OpenDML mode; otherwise AVIFile mode
     HANDLE h = CreateFile(filename, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
@@ -230,7 +234,7 @@ AVISource::AVISource(const char filename[], bool fAudio, const char pixel_type[]
       mode = 1;
     CloseHandle(h);
   }
-
+  
   if (mode == 1 || mode == 3) {    // AVIFile mode
     PAVIFILE paf;
     if (FAILED(AVIFileOpen(&paf, filename, OF_READ, 0)))
@@ -239,55 +243,75 @@ AVISource::AVISource(const char filename[], bool fAudio, const char pixel_type[]
   } else {              // OpenDML mode
     pfile = CreateAVIReadHandler(filename);
   }
-
+  
   if (mode != 3) { // check for video stream
     hic = 0;
     pvideo = pfile->GetStream(streamtypeVIDEO, 0);
     if (pvideo) {
       LocateVideoCodec(env);
       if (hic) {
+        bool fYV12  = lstrcmpi(pixel_type, "YV12" ) == 0 || pixel_type[0] == 0;
         bool fYUY2  = lstrcmpi(pixel_type, "YUY2" ) == 0 || pixel_type[0] == 0;
         bool fRGB32 = lstrcmpi(pixel_type, "RGB32") == 0 || pixel_type[0] == 0;
         bool fRGB24 = lstrcmpi(pixel_type, "RGB24") == 0 || pixel_type[0] == 0;       
-        if (!(fYUY2 || fRGB32 || fRGB24))
-          env->ThrowError("AVISource: requested format should be YUY2, RGB32 or RGB24");
-
+        if (!(fYV12 || fYUY2 || fRGB32 || fRGB24))
+          env->ThrowError("AVISource: requested format should be YV12, YUY2, RGB32 or RGB24");
+        
         // try to decompress to YUY2, RGB32, and RGB24 in turn
         memset(&biDst, 0, sizeof(BITMAPINFOHEADER));
         biDst.biSize = sizeof(BITMAPINFOHEADER);
         biDst.biWidth = vi.width;
         biDst.biHeight = vi.height;
-        biDst.biCompression = '2YUY';
-        biDst.biBitCount = 16;
-        biDst.biPlanes = 1;
-        biDst.biSizeImage = ((vi.width*2+3)&~3) * vi.height;
-        if (fYUY2 && ICERR_OK == ICDecompressQuery(hic, pbiSrc, &biDst)) {
-          vi.pixel_type = VideoInfo::CS_YUV|VideoInfo::CS_INTERLEAVED;
+        biDst.biCompression = 'YV12';
+        biDst.biBitCount = 12;
+        biDst.biPlanes = 1;  // Should planes = 3? 
+//        biDst.biSizeImage = ((vi.width+3)&~3) * vi.height + ((vi.width/2+3)&~3) * (vi.height/2) + ((vi.width/2+3)&~3) * (vi.height/2);
+        int xwidth=(vi.width+3)&~-3;
+        biDst.biSizeImage = xwidth * vi.height;
+        xwidth = ((vi.width/2)+3)&~-3;
+        biDst.biSizeImage += xwidth * (vi.height/2);
+        biDst.biSizeImage += xwidth * (vi.height/2);
+
+        if (fYV12 && ICERR_OK == ICDecompressQuery(hic, pbiSrc, &biDst)) {  // FIXME: It never chooses YV12
+          vi.pixel_type = VideoInfo::CS_YUV|VideoInfo::CS_PLANAR;
           vi.bits_per_pixel=biDst.biBitCount;
+          _RPT0(0,"AVISource: Opening as YV12.\n");
         } else {
-          biDst.biCompression = BI_RGB;
-          biDst.biBitCount = 32;
-          biDst.biSizeImage = vi.width*vi.height*4;
-          if (fRGB32 && ICERR_OK == ICDecompressQuery(hic, pbiSrc, &biDst)) {
-            vi.pixel_type = VideoInfo::CS_BGR|VideoInfo::CS_INTERLEAVED;
+          biDst.biSizeImage = ((vi.width*2+3)&~3) * vi.height;
+          biDst.biPlanes = 1;
+          biDst.biCompression = '2YUY';
+          biDst.biBitCount = 16;
+          if (fYUY2 && ICERR_OK == ICDecompressQuery(hic, pbiSrc, &biDst)) {
+            vi.pixel_type = VideoInfo::CS_YUV|VideoInfo::CS_INTERLEAVED;
             vi.bits_per_pixel=biDst.biBitCount;
+            _RPT0(0,"AVISource: Opening as YUY2.\n");
           } else {
-            biDst.biBitCount = 24;
-            biDst.biSizeImage = ((vi.width*3+3)&~3) * vi.height;
-            if (fRGB24 && ICERR_OK == ICDecompressQuery(hic, pbiSrc, &biDst)) {
+            biDst.biCompression = BI_RGB;
+            biDst.biBitCount = 32;
+            biDst.biSizeImage = vi.width*vi.height*4;
+            if (fRGB32 && ICERR_OK == ICDecompressQuery(hic, pbiSrc, &biDst)) {
               vi.pixel_type = VideoInfo::CS_BGR|VideoInfo::CS_INTERLEAVED;
               vi.bits_per_pixel=biDst.biBitCount;
+              _RPT0(0,"AVISource: Opening as RGB32.\n");
             } else {
-              if (fYUY2 && (fRGB32 || fRGB24))
-                env->ThrowError("AVISource: the video decompressor couldn't produce YUY2 or RGB output");
-              else if (fYUY2)
-                env->ThrowError("AVISource: the video decompressor couldn't produce YUY2 output");
-              else if (fRGB32)
-                env->ThrowError("AVISource: the video decompressor couldn't produce RGB32 output");
-              else if (fRGB24)
-                env->ThrowError("AVISource: the video decompressor couldn't produce RGB24 output");
-              else
-                env->ThrowError("AVISource: internal error");
+              biDst.biBitCount = 24;
+              biDst.biSizeImage = ((vi.width*3+3)&~3) * vi.height;
+              if (fRGB24 && ICERR_OK == ICDecompressQuery(hic, pbiSrc, &biDst)) {
+                vi.pixel_type = VideoInfo::CS_BGR|VideoInfo::CS_INTERLEAVED;
+                vi.bits_per_pixel=biDst.biBitCount;
+                _RPT0(0,"AVISource: Opening as RGB24.\n");
+              } else {
+                if (fYUY2 && (fRGB32 || fRGB24))
+                  env->ThrowError("AVISource: the video decompressor couldn't produce YUY2 or RGB output");
+                else if (fYUY2)
+                  env->ThrowError("AVISource: the video decompressor couldn't produce YUY2 output");
+                else if (fRGB32)
+                  env->ThrowError("AVISource: the video decompressor couldn't produce RGB32 output");
+                else if (fRGB24)
+                  env->ThrowError("AVISource: the video decompressor couldn't produce RGB24 output");
+                else
+                  env->ThrowError("AVISource: internal error");
+              }
             }
           }
         }
@@ -307,7 +331,6 @@ AVISource::AVISource(const char filename[], bool fAudio, const char pixel_type[]
     WAVEFORMATEX* pwfx; 
     pwfx = audioStreamSource->GetFormat();
     vi.audio_samples_per_second = pwfx->nSamplesPerSec;
-//    vi.stereo = (pwfx->nChannels == 2);
     vi.nchannels = pwfx->nChannels;
     if (pwfx->wBitsPerSample == 16) {
       vi.sample_type = SAMPLE_INT16;
@@ -444,6 +467,7 @@ public:
   }
   const VideoInfo& __stdcall GetVideoInfo() { return vi; }
   bool __stdcall GetParity(int n) { return vi.field_based ? (n&1) : false; }
+  void __stdcall SetCacheHints(int cachehints,int framesahead, int framesback) { };
 };
 
 
@@ -637,6 +661,7 @@ public:
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env) { return frame; }
   bool __stdcall GetParity(int n) { return false; }
   const VideoInfo& __stdcall GetVideoInfo() { return vi; }
+  void __stdcall SetCacheHints(int cachehints,int framesahead, int framesback) { };
 
   void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) {
     double Hz=440;
@@ -1347,7 +1372,7 @@ public:
     return v;
   }
   bool __stdcall GetParity(int n) { return vi.field_based ? (n&1) : false; }
-
+  void __stdcall SetCacheHints(int cachehints,int framesahead, int framesback) { };
   void __stdcall GetAudio(void*, __int64, __int64, IScriptEnvironment*) {}
 };
 

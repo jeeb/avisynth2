@@ -28,7 +28,7 @@ AVSFunction Audio_filters[] = {
   { "DelayAudio", "cf", DelayAudio::Create },
   { "AmplifydB", "cf[]f", Amplify::Create_dB },
   { "Amplify", "cf[]f", Amplify::Create },
-  { "Normalize", "c[left]f[right]f", Normalize::Create },
+  { "Normalize", "c[left]f", Normalize::Create },
   { "MixAudio", "cc[clip1_factor]f[clip2_factor]f", MixAudio::Create },
   { "ResampleAudio", "ci", ResampleAudio::Create },
   { "LowPassAudio", "ci[]f", FilterAudio::Create_LowPass },
@@ -112,7 +112,7 @@ void ConvertAudio::convertToFloat(char* inbuf, float* outbuf, char sample_type, 
     case SAMPLE_INT32: {
       signed int* samples = (signed int*)inbuf;
       for (i=0;i<count;i++) 
-        outbuf[i]=(float)samples[i] / (float)(1<<31);
+        outbuf[i]=(float)samples[i] / (float)(MAX_INT);
       break;     
     }
     case SAMPLE_FLOAT: {
@@ -135,20 +135,20 @@ void ConvertAudio::convertFromFloat(float* inbuf,void* outbuf, char sample_type,
     case SAMPLE_INT8: {
       signed char* samples = (signed char*)outbuf;
       for (i=0;i<count;i++) 
-        samples[i]=(signed char)(inbuf[i] * 128.0f);
+        samples[i]=Saturate_int8(inbuf[i] * 128.0f);
       break;
       }
     case SAMPLE_INT16: {
       signed short* samples = (signed short*)outbuf;
       for (i=0;i<count;i++) 
-        samples[i]=(signed short)(inbuf[i] * 32768.0f);
+        samples[i]=Saturate_int16(inbuf[i] * 32768.0f);
       break;
       }
 
     case SAMPLE_INT32: {
       signed int* samples = (signed int*)outbuf;
       for (i=0;i<count;i++) 
-        samples[i]=(int)(inbuf[i] * (float)(1<<31));
+        samples[i]= Saturate_int32(inbuf[i] * (float)(MAX_INT));
       break;     
     }
     case SAMPLE_FLOAT: {
@@ -578,13 +578,12 @@ AVSValue __cdecl Amplify::Create_dB(AVSValue args, void*, IScriptEnvironment* en
 
 /*****************************
  ***** Normalize audio  ******
- ***** Supports int16   ******
+ ***** Supports int16,float******
  ******************************/
-// Fixme: Support float
 // Fixme: Maxfactor should be different on different types
 
 Normalize::Normalize(PClip _child, double _max_factor)
-  : GenericVideoFilter(ConvertAudio::Create(_child,SAMPLE_INT16,SAMPLE_INT16)),
+  : GenericVideoFilter(ConvertAudio::Create(_child,SAMPLE_INT16|SAMPLE_FLOAT,SAMPLE_FLOAT)),
     max_factor(_max_factor)
 {
   max_volume=-1.0f;
@@ -612,15 +611,18 @@ void __stdcall Normalize::GetAudio(void* buf, __int64 start, __int64 count, IScr
       rem_samples*=vi.AudioChannels();
       child->GetAudio(buf, num_samples*passes, rem_samples, env);
       for (i=0;i<rem_samples;i++) {
-        max_volume=max(abs(samples[i]),max_volume);
+        i_max_volume=max(abs(samples[i]),i_max_volume);
       }
       max_volume=(float)i_max_volume/32768.0f;
+      max_factor=1.0f/max_volume;
+
     } else if (vi.SampleType()==SAMPLE_FLOAT) {  // Float 
+
       SFLOAT* samples = (SFLOAT*)buf;
       for (int i=0;i<passes;i++) {
           child->GetAudio(buf, num_samples*i, count, env);
           for (int i=0;i<num_samples;i++) {
-            max_volume=max(abs(samples[i]),max_volume);
+            max_volume=max(fabs(samples[i]),max_volume);
           }      
       }    
       // Remaining samples
@@ -628,23 +630,32 @@ void __stdcall Normalize::GetAudio(void* buf, __int64 start, __int64 count, IScr
       rem_samples*=vi.AudioChannels();
       child->GetAudio(buf, num_samples*passes, rem_samples, env);
       for (i=0;i<rem_samples;i++) {
-        max_volume=max(abs(samples[i]),max_volume);
+        max_volume=max(fabs(samples[i]),max_volume);
       }
 
+      max_factor=1.0f/max_volume;
     }
-
-    float volume=max_volume;
-    max_factor=(int)(max_factor*volume);
   } 
   if (vi.SampleType()==SAMPLE_INT16) {
+    int factor=(int)(max_factor*65536.0f);
     short* samples = (short*)buf;
     child->GetAudio(buf, start, count, env); 
     int channels=vi.AudioChannels();
     for (int i=0; i<count; ++i) {
       for (int j=0;j<channels;j++) {
-        samples[i*channels+j] = Saturate(int(Int32x32To64(samples[i*channels+j],max_factor) >> 16));
+        samples[i*channels+j] = Saturate(int(Int32x32To64(samples[i*channels+j],factor) >> 16));
       }
     } 
+  } else {
+    SFLOAT* samples = (SFLOAT*)buf;
+    child->GetAudio(buf, start, count, env); 
+    int channels=vi.AudioChannels();
+    for (int i=0; i<count; ++i) {
+      for (int j=0;j<channels;j++) {
+        samples[i*channels+j] = samples[i*channels+j]*max_factor;
+      }
+    } 
+
   }
   // Do float here
 }
@@ -652,7 +663,7 @@ void __stdcall Normalize::GetAudio(void* buf, __int64 start, __int64 count, IScr
 
 AVSValue __cdecl Normalize::Create(AVSValue args, void*, IScriptEnvironment* env) 
 {
-  double max_volume=args[1].AsFloat();
+  double max_volume=args[1].AsFloat(1.0);
   return new Normalize(args[0].AsClip(), max_volume);
 }
 

@@ -29,8 +29,8 @@
 #define MAX_SHORT (32767)
 #define MIN_SHORT (-32768)
 
-#define MAX_INT (1<<31)
-#define MIN_INT -(1<<31)
+#define MAX_INT (((__int64)1<<30)-1)   
+#define MIN_INT -(((__int64)1<<30))
 
 /* Conversion constants */
 #define Nhc       8
@@ -90,6 +90,25 @@ public:
 private:
 void ConvertAudio::convertToFloat(char* inbuf, float* outbuf, char sample_type, int count);
 void ConvertAudio::convertFromFloat(float* inbuf, void* outbuf, char sample_type, int count);
+
+  static __inline signed char Saturate_int8(float n) {
+    if (n <= -128.0f) return -128;
+    if (n >= 127.0f) return 127;
+    return (signed char)(int)n;
+  }
+
+
+  static __inline short Saturate_int16(float n) {
+    if (n <= -32768.0f) return -32768;
+    if (n >= 32767.0f) return 32767;
+    return (short)n;
+  }
+
+  static __inline int Saturate_int32(float n) {
+    if (n <= (float)MIN_INT) return MIN_INT;  
+    if (n >= (float)MAX_INT) return MAX_INT;
+    return (int)n;
+  }
 
   char src_format;
   char dst_format;

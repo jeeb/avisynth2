@@ -34,7 +34,7 @@ class Cache : public GenericVideoFilter
 public:
   Cache(PClip _child);
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
-
+  void __stdcall SetCacheHints(int cachehints,int framesahead, int framesback);
   static AVSValue __cdecl Create_Cache(AVSValue args, void*, IScriptEnvironment* env);
 
 private:
