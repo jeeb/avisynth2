@@ -86,11 +86,12 @@ struct VideoInfo {
   bool HasVideo() const { return (width!=0); }
   bool HasAudio() const { return (audio_samples_per_second!=0); }
   bool IsRGB() const { return !!(pixel_type&CS_BGR); }
-  bool IsRGB24() const { return (pixel_type&CS_BGR24)==CS_BGR24; }
+  bool IsRGB24() const { return (pixel_type&CS_BGR24)==CS_BGR24; } // Clear out additional properties
   bool IsRGB32() const { return (pixel_type & CS_BGR32) == CS_BGR32 ; }
   bool IsYUV() const { return !!(pixel_type&CS_YUV ); }
   bool IsYUY2() const { return (pixel_type & CS_YUY2) == CS_YUY2; }  
   bool IsYV12() const { return (pixel_type & CS_YV12) == CS_YV12; }
+  bool IsPlanar() const { return !!(pixel_type & CS_PLANAR); }
   bool IsFieldBased() const { return !!(pixel_type & CS_FIELDBASED); }
 //  int VideoPlanes() {return (pixel_type&CS_PLANAR) ? 3 : 1;}
   int BytesFromPixels(int pixels) const { return pixels * (BitsPerPixel()>>3); }   // Will not work on planar images, but will return only luma planes
@@ -192,7 +193,7 @@ class AVSValue;
 class VideoFrame {
   int refcount;
   VideoFrameBuffer* const vfb;
-  const int offset, pitch, row_size, height, offsetU, offsetV;  // U&V offsets are from top of picture.
+  const int offset, pitch, row_size, height, offsetU, offsetV, pitchUV;  // U&V offsets are from top of picture.
 
   friend class PVideoFrame;
   void AddRef() { ++refcount; }
@@ -202,14 +203,17 @@ class VideoFrame {
   friend class Cache;
 
   VideoFrame(VideoFrameBuffer* _vfb, int _offset, int _pitch, int _row_size, int _height);
-  VideoFrame(VideoFrameBuffer* _vfb, int _offset, int _pitch, int _row_size, int _height, int _offsetU, int _offsetV);
+  VideoFrame(VideoFrameBuffer* _vfb, int _offset, int _pitch, int _row_size, int _height, int _offsetU, int _offsetV, int _pitchUV);
 
   void* operator new(unsigned size);
 
 public:
   int GetPitch() const { return pitch; }
+  int GetPitch(int plane) const { switch (plane) {case PLANAR_U: case PLANAR_V: return pitchUV;} return pitch; }
   int GetRowSize() const { return row_size; }
+  int GetRowSize(int plane) const { switch (plane) {case PLANAR_U: case PLANAR_V: if (pitchUV) return row_size>>1; return 0;} return row_size; }
   int GetHeight() const { return height; }
+  int GetHeight(int plane) const {  switch (plane) {case PLANAR_U: case PLANAR_V: if (pitchUV) return height>>1; return 0;} return height; }
 
   // generally you shouldn't use these two 
   VideoFrameBuffer* GetFrameBuffer() const { return vfb; }
@@ -218,14 +222,19 @@ public:
 
   // in plugins use env->SubFrame()
   VideoFrame* Subframe(int rel_offset, int new_pitch, int new_row_size, int new_height) const;
-  VideoFrame* Subframe(int rel_offset, int new_pitch, int new_row_size, int new_height, int rel_offsetU, int rel_offsetV) const;
+  VideoFrame* Subframe(int rel_offset, int new_pitch, int new_row_size, int new_height, int rel_offsetU, int rel_offsetV, int pitchUV) const;
 
   const BYTE* GetReadPtr() const { return vfb->GetReadPtr() + offset; }
+  const BYTE* GetReadPtr(int plane) const { return vfb->GetReadPtr() + GetOffset(plane); }
 
   bool IsWritable() const { return (refcount == 1 && vfb->refcount == 1); }
 
   BYTE* GetWritePtr() const {
     return IsWritable() ? (vfb->GetWritePtr() + offset) : 0;
+  }
+
+  BYTE* GetWritePtr(int plane) const {
+    return IsWritable() ? (vfb->GetWritePtr() + GetOffset(plane)) : 0;
   }
 
   ~VideoFrame() { --vfb->refcount; }

@@ -84,13 +84,13 @@ void* VideoFrame::operator new(unsigned) {
 
 
 VideoFrame::VideoFrame(VideoFrameBuffer* _vfb, int _offset, int _pitch, int _row_size, int _height)
-  : refcount(0), vfb(_vfb), offset(_offset), pitch(_pitch), row_size(_row_size), height(_height),offsetU(_offset),offsetV(_offset)
+  : refcount(0), vfb(_vfb), offset(_offset), pitch(_pitch), row_size(_row_size), height(_height),offsetU(_offset),offsetV(_offset),pitchUV(0)  // PitchUV=0 so this doesn't take up additional space
 {
   InterlockedIncrement(&vfb->refcount);
 }
 
-VideoFrame::VideoFrame(VideoFrameBuffer* _vfb, int _offset, int _pitch, int _row_size, int _height, int _offsetU, int _offsetV)
-  : refcount(0), vfb(_vfb), offset(_offset), pitch(_pitch), row_size(_row_size), height(_height),offsetU(_offsetU),offsetV(_offsetV)
+VideoFrame::VideoFrame(VideoFrameBuffer* _vfb, int _offset, int _pitch, int _row_size, int _height, int _offsetU, int _offsetV, int _pitchUV)
+  : refcount(0), vfb(_vfb), offset(_offset), pitch(_pitch), row_size(_row_size), height(_height),offsetU(_offsetU),offsetV(_offsetV),pitchUV(_pitchUV)
 {
   InterlockedIncrement(&vfb->refcount);
 }
@@ -99,8 +99,8 @@ VideoFrame* VideoFrame::Subframe(int rel_offset, int new_pitch, int new_row_size
   return new VideoFrame(vfb, offset+rel_offset, new_pitch, new_row_size, new_height);
 }
 
-VideoFrame* VideoFrame::Subframe(int rel_offset, int new_pitch, int new_row_size, int new_height, int rel_offsetU, int rel_offsetV) const {
-  return new VideoFrame(vfb, offset+rel_offset, new_pitch, new_row_size, new_height, rel_offsetU+offsetU, rel_offsetV+offsetV);
+VideoFrame* VideoFrame::Subframe(int rel_offset, int new_pitch, int new_row_size, int new_height, int rel_offsetU, int rel_offsetV, int new_pitchUV) const {
+  return new VideoFrame(vfb, offset+rel_offset, new_pitch, new_row_size, new_height, rel_offsetU+offsetU, rel_offsetV+offsetV, new_pitchUV);
 }
 
 
@@ -467,6 +467,7 @@ public:
   void __stdcall PopContext();
   PVideoFrame __stdcall NewVideoFrame(const VideoInfo& vi, int align);
   PVideoFrame NewVideoFrame(int row_size, int height, int align);
+  PVideoFrame NewPlanarVideoFrame(int width, int height, int align);
   bool __stdcall MakeWritable(PVideoFrame* pvf);
   void __stdcall BitBlt(BYTE* dstp, int dst_pitch, const BYTE* srcp, int src_pitch, int row_size, int height);
   void __stdcall AtExit(IScriptEnvironment::ShutdownFunc function, void* user_data);
@@ -507,7 +508,7 @@ private:
 ScriptEnvironment::ScriptEnvironment() : at_exit(This()), function_table(This()), global_var_table(0, 0) {
   MEMORYSTATUS memstatus;
   GlobalMemoryStatus(&memstatus);
-  memory_max = max(memstatus.dwAvailPhys / 4,16*1024*1024);   // Minimum 16MB, otherwise available physical memory/4, no maximum
+  memory_max = min(memstatus.dwAvailPhys / 4,16*1024*1024);   // Minimum 16MB, otherwise available physical memory/4, no maximum
   memory_used = 0;
   var_table = new VarTable(0, &global_var_table);
   global_var_table.Set("true", true);
@@ -656,11 +657,11 @@ void ScriptEnvironment::PrescanPlugins()
   }
 }
 
-
-PVideoFrame ScriptEnvironment::NewVideoFrame(int row_size, int height, int align) {
-  int pitch = (row_size+align-1) / align * align;
-  int size = pitch * height;
-  VideoFrameBuffer* vfb = GetFrameBuffer(size+32);
+PVideoFrame ScriptEnvironment::NewPlanarVideoFrame(int width, int height, int align) {
+  int pitch = (width+align-1) / align * align;  // Y plane, width = 1 byte per pixel
+  int UVpitch = ((width>>1)+align-1) / align * align;  // UV plane, width = 1/2 byte per pixel
+  int size = pitch * height + UVpitch * height;
+  VideoFrameBuffer* vfb = GetFrameBuffer(size+(FRAME_ALIGN*4));
 #ifdef _DEBUG
   {
     static const BYTE filler[] = { 0x0A, 0x11, 0x0C, 0xA7, 0xED };
@@ -671,12 +672,37 @@ PVideoFrame ScriptEnvironment::NewVideoFrame(int row_size, int height, int align
     }
   }
 #endif
-  int offset = (-int(vfb->GetWritePtr())) & 7;
-  return new VideoFrame(vfb, offset, pitch, row_size, height);
+  int offset = (-int(vfb->GetWritePtr())) & (FRAME_ALIGN-1);  // align first line offset
+  int Uoffset = offset + pitch * height;  // UV offset will also be aligned
+  int Voffset = offset + pitch * height + UVpitch * (height>>1);  // UV offset will also be aligned
+  return new VideoFrame(vfb, offset, pitch, width, height, Uoffset, Voffset, UVpitch);
 }
 
-PVideoFrame __stdcall ScriptEnvironment::NewVideoFrame(const VideoInfo& vi, int align) {
-  return ScriptEnvironment::NewVideoFrame(vi.RowSize(), vi.height, align);
+
+PVideoFrame ScriptEnvironment::NewVideoFrame(int row_size, int height, int align) {
+  int pitch = (row_size+align-1) / align * align;
+  int size = pitch * height;
+  VideoFrameBuffer* vfb = GetFrameBuffer(size+(FRAME_ALIGN*4));
+#ifdef _DEBUG
+  {
+    static const BYTE filler[] = { 0x0A, 0x11, 0x0C, 0xA7, 0xED };
+    BYTE* p = vfb->GetWritePtr();
+    BYTE* q = p + vfb->GetDataSize()/5*5;
+    for (; p<q; p+=5) {
+      p[0]=filler[0]; p[1]=filler[1]; p[2]=filler[2]; p[3]=filler[3]; p[4]=filler[4];
+    }
+  }
+#endif
+  int offset = (-int(vfb->GetWritePtr())) & (FRAME_ALIGN-1);  // align first line offset  (alignment is free here!)
+  return new VideoFrame(vfb, offset, pitch, row_size, height);
+}
+ // Generates copy
+PVideoFrame __stdcall ScriptEnvironment::NewVideoFrame(const VideoInfo& vi, int align) { 
+  if (vi.IsPlanar()) { // Planar requires different math ;)
+    return ScriptEnvironment::NewVideoFrame(vi.width, vi.height, align);
+  } else {
+    return ScriptEnvironment::NewVideoFrame(vi.RowSize(), vi.height, align);
+  }
 }
 
 bool ScriptEnvironment::MakeWritable(PVideoFrame* pvf) {
@@ -688,11 +714,15 @@ bool ScriptEnvironment::MakeWritable(PVideoFrame* pvf) {
   // Otherwise, allocate a new frame (using NewVideoFrame) and
   // copy the data into it.  Then modify the passed PVideoFrame
   // to point to the new buffer.
-  else {
+  else {    
     const int row_size = vf->GetRowSize();
     const int height = vf->GetHeight();
     PVideoFrame dst = NewVideoFrame(row_size, height, FRAME_ALIGN);
     BitBlt(dst->GetWritePtr(), dst->GetPitch(), vf->GetReadPtr(), vf->GetPitch(), row_size, height);
+    // Blit More planes (pitch, rowsize and height should be 0, if none is present)
+    BitBlt(dst->GetWritePtr(PLANAR_U), dst->GetPitch(PLANAR_U), vf->GetReadPtr(PLANAR_U), vf->GetPitch(PLANAR_U), vf->GetRowSize(PLANAR_U), vf->GetHeight(PLANAR_U));
+    BitBlt(dst->GetWritePtr(PLANAR_V), dst->GetPitch(PLANAR_V), vf->GetReadPtr(PLANAR_V), vf->GetPitch(PLANAR_V), vf->GetRowSize(PLANAR_V), vf->GetHeight(PLANAR_V));
+
     *pvf = dst;
     return true;
   }
@@ -730,7 +760,8 @@ LinkedVideoFrameBuffer* ScriptEnvironment::GetFrameBuffer2(int size) {
     if (i->GetRefcount() == 0 && i->GetDataSize() == size)
       return i;
   }
-  // Plan C: allocate a new buffer, regardless of current memory usage
+  // Plan C: allocate a new buffer, regardless of current memory usage  
+  // FIXME: Could lead to massive allocation on memory thrashing, perhaps a plan D which deallocates all unused frames and reallocates memory would be better, if more than 2*allowed memory is used.
   return NewFrameBuffer(size);
 }
 
