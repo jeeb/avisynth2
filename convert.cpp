@@ -857,8 +857,7 @@ PVideoFrame Greyscale::GetFrame(int n, IScriptEnvironment* env)
       }
 		  srcpUV += pitch;
 	  }
-  }
-  if (vi.IsYUY2())
+  } else if (vi.IsYUY2())
 	{
 	  for (int y=0; y<myy; ++y) {
 		for (int x=0; x<myx; x++)

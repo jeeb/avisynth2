@@ -70,9 +70,10 @@ PVideoFrame SeparateFields::GetFrame(int n, IScriptEnvironment* env)
 {
   PVideoFrame frame = child->GetFrame(n>>1, env);
   if (vi.IsPlanar()) {
-    return frame->Subframe((GetParity(n) ^ vi.IsYUY2()) * frame->GetPitch(),
+    return frame->Subframe((GetParity(n) ^ vi.IsYUV()) * frame->GetPitch(),
       frame->GetPitch()*2, frame->GetRowSize(), frame->GetHeight()>>1, 
-      0,0, frame->GetPitch(PLANAR_U)*2);  // FIXME: Problematic???.
+//      0,0, frame->GetPitch(PLANAR_U)*2);
+      (GetParity(n) ^ vi.IsYUV()) * frame->GetPitch(PLANAR_U),(GetParity(n) ^ vi.IsYUV()) * frame->GetPitch(PLANAR_V), frame->GetPitch(PLANAR_U)*2);  // FIXME: Problematic???
   }
   return frame->Subframe((GetParity(n) ^ vi.IsYUY2()) * frame->GetPitch(),
     frame->GetPitch()*2, frame->GetRowSize(), frame->GetHeight()>>1);
@@ -194,8 +195,8 @@ PVideoFrame DoubleWeaveFields::GetFrame(int n, IScriptEnvironment* env)
 
 void DoubleWeaveFields::CopyField(const PVideoFrame& dst, const PVideoFrame& src, bool parity) 
 {
-  int add_pitch = dst->GetPitch() * (parity ^ vi.IsYUY2());
-  int add_pitchUV = dst->GetPitch(PLANAR_U) * (parity ^ vi.IsYUY2());
+  int add_pitch = dst->GetPitch() * (parity ^ vi.IsYUV());
+  int add_pitchUV = dst->GetPitch(PLANAR_U) * (parity ^ vi.IsYUV());
   BitBlt( dst->GetWritePtr() + add_pitch, dst->GetPitch()*2,
           src->GetReadPtr(), src->GetPitch(), src->GetRowSize(), src->GetHeight() );
   BitBlt( dst->GetWritePtr(PLANAR_U) + add_pitchUV, dst->GetPitch(PLANAR_U)*2,
@@ -251,8 +252,8 @@ PVideoFrame DoubleWeaveFrames::GetFrame(int n, IScriptEnvironment* env)
 
 void DoubleWeaveFrames::CopyAlternateLines(const PVideoFrame& dst, const PVideoFrame& src, bool parity) 
 {
-  int src_add_pitch = src->GetPitch() * (parity ^ vi.IsYUY2());
-  int dst_add_pitch = dst->GetPitch() * (parity ^ vi.IsYUY2());
+  int src_add_pitch = src->GetPitch() * (parity ^ vi.IsYUV());
+  int dst_add_pitch = dst->GetPitch() * (parity ^ vi.IsYUV());
   BitBlt( dst->GetWritePtr() + dst_add_pitch, dst->GetPitch()*2,
           src->GetReadPtr() + src_add_pitch, src->GetPitch()*2,
           src->GetRowSize(), src->GetHeight()>>1 );
