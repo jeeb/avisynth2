@@ -477,9 +477,9 @@ bool CAVIFileSynth::DelayInit() {
         vi = &filter_graph->GetVideoInfo();
 
         if (vi->IsYV12()&&(vi->width&3))
-          throw AvisynthError("Avisynth error: YV12 images for output must have a width diviable by 4 (use crop)!");
+          throw AvisynthError("Avisynth error: YV12 images for output must have a width divisible by 4 (use crop)!");
         if (vi->IsYUY2()&&(vi->width&3))
-          throw AvisynthError("Avisynth error: YUY2 images for output must have a width diviable by 4 (use crop)!");
+          throw AvisynthError("Avisynth error: YUY2 images for output must have a width divisible by 4 (use crop)!");
       }
       catch (AvisynthError error) {
         error_msg = error.msg;
