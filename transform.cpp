@@ -96,7 +96,7 @@ PVideoFrame FlipHorizontal::GetFrame(int n, IScriptEnvironment* env) {
   int dst_pitch = dst->GetPitch();
   int h = src->GetHeight();
   int bpp = vi.BytesFromPixels(1);
-  if (vi.IsYUY2()) {
+  if (vi.IsYUY2()) { // Avoid flipping UV in YUY2 mode.
     srcp-=4;
     for (int y=0; y<h;y++) {
       for (int x=0; x<row_size; x+=4) {
@@ -111,7 +111,7 @@ PVideoFrame FlipHorizontal::GetFrame(int n, IScriptEnvironment* env) {
     return dst;
   }
   srcp+=row_size-bpp;
-  for (int y=0; y<h;y++) {
+  for (int y=0; y<h;y++) { // Loop for RGB and planar luma.
     for (int x=0; x<row_size; x+=bpp) {
       for (int i=0;i<bpp;i++) {
         dstp[x+i] = srcp[-x+i];
