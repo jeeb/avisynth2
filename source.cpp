@@ -546,8 +546,10 @@ static AVSValue __cdecl Create_BlankClip(AVSValue args, void*, IScriptEnvironmen
   } else {
     vi.SetFPS(int(n+0.5), args[6].AsInt(vi_default.fps_denominator));
   }
-  vi.pixel_type |= vi_default.pixel_type;
-  vi.SetFieldBased(true);
+  if (!vi.pixel_type)
+    vi.pixel_type = vi_default.pixel_type;
+
+  vi.SetFieldBased(false);
   vi.audio_samples_per_second = args[7].AsInt(vi_default.audio_samples_per_second);
   vi.nchannels = args[8].AsInt(vi_default.nchannels);
   vi.sample_type = args[9].AsInt(vi_default.sample_type);

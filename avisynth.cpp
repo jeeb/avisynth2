@@ -710,7 +710,19 @@ PVideoFrame ScriptEnvironment::NewVideoFrame(int row_size, int height, int align
   return new VideoFrame(vfb, offset, pitch, row_size, height);
 }
 
+
 PVideoFrame __stdcall ScriptEnvironment::NewVideoFrame(const VideoInfo& vi, int align) { 
+  // Check requested pixel_type:
+  switch (vi.pixel_type) {
+    case VideoInfo::CS_BGR24:
+    case VideoInfo::CS_BGR32:
+    case VideoInfo::CS_YUY2:
+    case VideoInfo::CS_YV12:
+    case VideoInfo::CS_I420:
+      break;
+    default:
+      ThrowError("Filter Error: Filter attempted to create VideoFrame with invalid pixel_type.");
+  }
   // If align is negative, it will be forced, if not it may be made bigger
   if (vi.IsPlanar()) { // Planar requires different math ;)
     if (align<0) {

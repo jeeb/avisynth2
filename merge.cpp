@@ -699,7 +699,7 @@ void mmx_weigh_yv12(BYTE *p1,BYTE *p2, int p1_pitch, int p2_pitch,int rowsize, i
       xor eax, eax
 testloop:
       cmp ebx, eax
-      jl outloop
+      jle outloop
       punpcklbw mm0,[esi+eax]  // 4 pixels
        pxor mm3,mm3
       punpcklbw mm1,[edi+eax]  // y300 y200 y100 y000
