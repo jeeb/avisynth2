@@ -15,7 +15,7 @@
 // along with this program; if not, write to the Free Software
 // Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA, or visit
 // http://www.gnu.org/copyleft/gpl.html .
-//
+
 #ifndef __Audio_H__
 #define __Audio_H__
 
@@ -143,20 +143,22 @@ class GetChannel : public GenericVideoFilter
  **/
 {
 public:
-  GetChannel(PClip _clip, bool _left);
+  GetChannel(PClip _clip, int _channel);
   virtual ~GetChannel()
    {if (tempbuffer_size) {delete[] tempbuffer;tempbuffer_size=0;}}
 
   void __stdcall GetAudio(void* buf, int start, int count, IScriptEnvironment* env);
   static PClip Create_left(PClip clip);
   static PClip Create_right(PClip clip);
+  static PClip Create_n(PClip clip, int n);
   static AVSValue __cdecl Create_left(AVSValue args, void*, IScriptEnvironment*);
   static AVSValue __cdecl Create_right(AVSValue args, void*, IScriptEnvironment*);
+  static AVSValue __cdecl Create_n(AVSValue args, void*, IScriptEnvironment*);
 
 private:
   signed short *tempbuffer;
   int tempbuffer_size;
-	bool left;
+	int channel;
 };
 
 class KillAudio : public GenericVideoFilter 
