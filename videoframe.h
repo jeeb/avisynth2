@@ -24,8 +24,6 @@
 #include <utility>    //for pair
 //include <memory>      //for auto_ptr
 #include <vector> 
-#include <functional> //for unary_function 
-#include <algorithm>  //for remove_if()  
 using namespace std;
 
 
@@ -33,7 +31,7 @@ using namespace std;
 //and with a operator=(T*)  (replacement for reset(T*) missing in VC6 STL)
 template <class T> class simple_auto_ptr {
 
-  T * ptr;
+  mutable T * ptr;
 
 public:
   simple_auto_ptr() : ptr(NULL) { }
@@ -52,7 +50,7 @@ public:
   operator bool() const { return ptr != NULL; }
 
   T * get() const { return ptr; }  
-  T * release() const { T * result = ptr; ((simple_auto_ptr<T>*)this)->ptr = NULL; return result; }
+  T * release() const { T * result = ptr; ptr = NULL; return result; }
   void swap(simple_auto_ptr<T>&) { std::swap<T*>(ptr, other.ptr); }
 
 }; 
@@ -66,29 +64,28 @@ class VideoFrameBuffer : public RefCounted {
   typedef VideoFrame::dimension dimension;
   typedef VideoFrame::Align Align;
   typedef simple_auto_ptr<BYTE> Buffer;  //auto_ptr<BYTE> Buffer;
-  typedef pair<unsigned, Buffer> MemoryPiece;
+  typedef pair<int, Buffer> MemoryPiece;
   typedef vector<MemoryPiece> AllocationVector;
 
   static AllocationVector alloc;
 
   Buffer data;
-  unsigned size;
+  int size;  
   dimension pitch;
   Align align;
 
-  VideoFrameBuffer(const VideoFrameBuffer& other, unsigned rel_offset, dimension row_size, dimension height);
-
 public:
+
   VideoFrameBuffer(dimension row_size, dimension height, Align _align);
   ~VideoFrameBuffer() { alloc.push_back(MemoryPiece(size, data)); }
 
   const BYTE * GetDataPtr() const { return data.get(); }
   BYTE * GetDataPtr() { return data.get(); }
   dimension GetPitch() const { return pitch; }
+  int GetSize() const { return size; }
+  Align GetAlign() const { return align; }
   
-  unsigned FirstOffset() const { return unsigned(data.get()) % align; }
-
-  VideoFrameBuffer * SmartCopy(unsigned rel_offset, dimension row_size, dimension height) { return new VideoFrameBuffer(*this, rel_offset, row_size, height); }
+  int FirstOffset() const { return int(data.get()) % align; }
 
   dimension Aligned(dimension dim) { return (dim + align - 1) / align * align; }
 };
@@ -103,13 +100,29 @@ class BufferWindow {
   typedef VideoFrame::Align Align;  
 
   PVideoFrameBuffer vfb;
-  unsigned offset;
+  int offset;
   dimension row_size, height;
   
+  inline static dimension RowSizeCheck(dimension row_size) {
+    static AvisynthError NEG_WIDTH_ERR("Filter Error: Attempting to request a VideoFrame with a negative or zero width");
+    if (row_size <= 0)
+      throw NEG_WIDTH_ERR;
+    return row_size;
+  }
+  inline static dimension HeightCheck(dimension height) {
+    static AvisynthError NEG_HEIGHT_ERR("Filter Error: Attempting to request a VideoFrame with a negative or zero height");
+    if (height <= 0)
+      throw NEG_HEIGHT_ERR;
+    return height;
+  }
+
 public:
   BufferWindow(dimension _row_size, dimension _height, Align align)
-    : row_size(_row_size), height(_height), vfb(new VideoFrameBuffer(row_size, height, align)), offset(vfb->FirstOffset()) { }
+    : row_size(RowSizeCheck(_row_size)), height(HeightCheck(_height)), vfb(new VideoFrameBuffer(row_size, height, align)), offset(vfb->FirstOffset()) { }
+  //copy constructor
   BufferWindow(const BufferWindow& other) : row_size(other.row_size), height(other.height), vfb(other.vfb), offset(other.offset) { }
+  //redimensioning constructor, will try reusing buffer if the new window can fit in 
+  BufferWindow(const BufferWindow& other, dimension left, dimension right, dimension top, dimension bottom);
 
   dimension GetPitch()   const { return vfb->GetPitch(); }
   dimension GetRowSize() const { return row_size; }
@@ -117,15 +130,19 @@ public:
   dimension GetHeight()  const { return height; }
   
   const BYTE* GetReadPtr() const { return vfb->GetDataPtr() + offset; }
-  BYTE* GetWritePtr() { 
-    if (vfb->isShared()) {
-      vfb = vfb->SmartCopy(offset, row_size, height);
-      offset = vfb->FirstOffset();
-    }
-    return vfb->GetDataPtr() + offset;
-  } 
-  
+  BYTE* GetWritePtr();  
+
+  //copy other into self at the given coords (which can be negatives)
+  //only overlap is copied, no effect if there is none
+  Copy(const BufferWindow& other, dimension left, dimension top);  
+
 };
+
+
+
+
+
+
 
 class PropertyList;
 
@@ -133,7 +150,7 @@ typedef smart_ptr_to_cst<PropertyList> CPPropertyList;
 typedef smart_ptr<PropertyList> PPropertyList;
 
 
-class PropertyList {
+class PropertyList : public RefCounted {
 
   typedef VideoFrame::CPProperty CPProperty;
   typedef VideoFrame::PropertyName PropertyName;
@@ -144,11 +161,10 @@ class PropertyList {
 
 public:
   CPProperty GetProperty(const PropertyName& name) const;
-  void SetProperty(const CPProperty& prop);
-  void RemoveProperty(const PropertyName& name);
-
-protected:
-  virtual void clean();
+  PropertyList * SetProperty(CPProperty prop);
+  PropertyList * RemoveProperty(const PropertyName& name);
+ 
+  PropertyList * RemoveVolatileProperties();  
 
 };
 
@@ -158,22 +174,26 @@ protected:
 
 class VideoFrameAncestor : public VideoFrame {
 
-  PPropertyList propList;
+  CPPropertyList propList;
 
-  static CPPropertyList emptyList;
+  static CPPropertyList emptyList;  //empty list of properties
+  static CPPropertyList fieldBasedList;  //list containing the single property fieldBased
 
 protected:
-  VideoFrameAncestor() : propList(emptyList) { }
+  VideoFrameAncestor(bool fieldBased) : propList(fieldBased? fieldBasedList : emptyList) { }
   VideoFrameAncestor(const VideoFrameAncestor& other) : propList(other.propList) { }
 
-  virtual void clean() { propList = CPPropertyList(propList); }
-  //clone if shared and perform clean 
-    
-public:
-  virtual const Property * GetProperty(const PropertyName& name) const ;
-  virtual void SetProperty(const CPProperty& prop) { propList->SetProperty(prop); }    
-  virtual void RemoveProperty(const PropertyName& name) { propList->RemoveProperty(name); }
+  virtual void clean() { propList = PPropertyList(propList)->RemoveVolatileProperties(); }
+  //clone if shared and perform clean on the property list
 
+public:
+  virtual CPProperty GetProperty(const PropertyName& name) const;
+  virtual void SetProperty(CPProperty prop) { propList = PPropertyList(propList)->SetProperty(prop); }    
+  virtual void RemoveProperty(const PropertyName& name) { propList = PPropertyList(propList)->RemoveProperty(name); }
+
+  virtual PVideoFrame NewVideoFrame(const VideoInfo& vi, Align align) const;
+
+  
 };
 
 
@@ -181,14 +201,20 @@ public:
 //by opposition to PlanarVideoFrame...
 class NormalVideoFrame : public VideoFrameAncestor {
 
+  typedef smart_ptr_to_cst<NormalVideoFrame> CPNormalVideoFrame;
+
   BufferWindow main;
 
-  void CheckPlane(Plane plane) const { if (plane != NOT_PLANAR) throw NoSuchPlane(); }
+  inline void CheckPlane(Plane plane) const { if (plane != NOT_PLANAR) throw NoSuchPlane(); }
 
-protected:  
 
+
+protected: 
   NormalVideoFrame(const NormalVideoFrame& other) : VideoFrameAncestor(other), main(other.main) { }
-  NormalVideoFrame(dimension row_size, dimension height, Align align) : main(row_size, height, align) { }
+  NormalVideoFrame(dimension width, dimension height, Align align, bool fieldBased)
+    : VideoFrameAncestor(fieldBased), main(WidthToRowSize(width), HeightCheck(height), align) { }
+
+  
 
 public:
   virtual dimension GetPitch(Plane plane) const throw(NoSuchPlane) { CheckPlane(plane); return main.GetPitch(); }
@@ -199,9 +225,14 @@ public:
   virtual const BYTE * GetReadPtr(Plane plane) const throw(NoSuchPlane) { CheckPlane(plane); return main.GetReadPtr(); }
   virtual BYTE * GetWritePtr(Plane plane) throw(NoSuchPlane) { CheckPlane(plane); return main.GetWritePtr(); }
 
-public:
-  virtual void DownSize(dimension left, dimension right, dimension top, dimension bottom);
-
+  //here we are still in pixels
+  virtual void SizeChange(dimension left, dimension right, dimension top, dimension bottom)
+  { 
+    //now in bytes
+    main = BufferWindow(main, WidthToRowSize(left), WidthToRowSize(right), HeightCheck(top), HeightCheck(bottom));
+  }
+  
+  virtual void Copy(CPVideoFrame other, dimension left, dimension top);
 
 };
 
@@ -209,13 +240,14 @@ class RGB24VideoFrame : public NormalVideoFrame {
 
 public:
   RGB24VideoFrame(const RGB24VideoFrame& other) : NormalVideoFrame(other) { } 
-  RGB24VideoFrame(dimension width, dimension height, Align align) : NormalVideoFrame(3*width, height, align) { }
+  RGB24VideoFrame(dimension width, dimension height, Align align, bool fieldBased)
+    : NormalVideoFrame(width, height, align, fieldBased) { }
 
-  virtual VideoInfo::ColorSpace GetColorSpace() const { return VideoInfo::CS_BGR24; }
+  virtual ColorSpace GetColorSpace() const { return VideoInfo::CS_BGR24; }
 
 
 protected:
-  virtual RefCounted * clone() const { return new RGB24VideoFrame(*this); }
+  virtual RefCounted * clone() const { return new RGB24VideoFrame(*this); }  
 
 };
 
@@ -223,20 +255,24 @@ class RGB32VideoFrame : public NormalVideoFrame {
 
 public:
   RGB32VideoFrame(const RGB32VideoFrame& other) : NormalVideoFrame(other) { } 
-  RGB32VideoFrame(dimension width, dimension height, Align align) : NormalVideoFrame(4*width, height, align) { }
+  RGB32VideoFrame(dimension width, dimension height, Align align, bool fieldBased)
+    : NormalVideoFrame(width, height, align, fieldBased) { }
 
-  virtual VideoInfo::ColorSpace GetColorSpace() const { return VideoInfo::CS_BGR32; }
+  virtual ColorSpace GetColorSpace() const { return VideoInfo::CS_BGR32; }
 
   virtual RefCounted * clone() const { return new RGB32VideoFrame(*this); }
 };
 
 class YUY2VideoFrame : public NormalVideoFrame {
 
+  static const string ODD_WIDTH;   //error msg when odd width in YUY2                 
+
 public:
   YUY2VideoFrame(const YUY2VideoFrame& other) : NormalVideoFrame(other) { } 
-  YUY2VideoFrame(dimension width, dimension height, Align align) : NormalVideoFrame(2*width, height, align) { }
+  YUY2VideoFrame(dimension width, dimension height, Align align, bool fieldBased)
+    : NormalVideoFrame(2*ParityCheck(width, ODD_WIDTH), height, align, fieldBased)  { }    
 
-  virtual VideoInfo::ColorSpace GetColorSpace() const { return VideoInfo::CS_YUY2; }
+  virtual ColorSpace GetColorSpace() const { return VideoInfo::CS_YUY2; }
 
 
 protected:
@@ -268,10 +304,14 @@ class PlanarVideoFrame : public VideoFrameAncestor {
     throw NoSuchPlane();
   }
 
+  static const string ODD_WIDTH, ODD_HEIGHT, FB_AND_NOT_MOD4_HT;
+
 public:
   PlanarVideoFrame(const PlanarVideoFrame& other) : VideoFrameAncestor(other), y(other.y), u(other.u), v(other.v) { }
-  PlanarVideoFrame(dimension width, dimension height, Align align) 
-    : y(width, height, align), u(width>>1, height>>1, align), v(width>>1, height>>1, align) { }
+  PlanarVideoFrame(dimension width, dimension height, Align align, bool fieldBased) 
+    : VideoFrameAncestor(FieldBasedCheck(fieldBased, height>>1, FB_AND_NOT_MOD4_HT)), 
+      y(ParityCheck(width, ODD_WIDTH), ParityCheck(height, ODD_HEIGHT), align), u(width>>1, height>>1, align), v(width>>1, height>>1, align) { }
+  
 
   virtual dimension GetPitch(Plane plane) const throw(NoSuchPlane) { return GetPlane(plane).GetPitch(); }
   virtual dimension GetRowSize(Plane plane) const throw(NoSuchPlane) { return GetPlane(plane).GetRowSize(); }
@@ -281,9 +321,9 @@ public:
   virtual const BYTE * GetReadPtr(Plane plane) const throw(NoSuchPlane) { return GetPlane(plane).GetReadPtr(); }
   virtual BYTE * GetWritePtr(Plane plane) throw(NoSuchPlane) { return GetPlane(plane).GetWritePtr(); }
 
-  virtual VideoInfo::ColorSpace GetColorSpace() const { return VideoInfo::CS_YV12; }
+  virtual ColorSpace GetColorSpace() const { return VideoInfo::CS_YV12; }
 
-  virtual void DownSize(dimension left, dimension right, dimension top, dimension bottom);
+  virtual void SizeChange(dimension left, dimension right, dimension top, dimension bottom);
 
 
 protected:
