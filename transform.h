@@ -76,6 +76,28 @@ private:
 
 
 
+class AlignPlanar : public GenericVideoFilter 
+{
+public:
+  AlignPlanar(PClip _clip);
+  static PClip Create(PClip clip);
+  PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
+};
+
+
+
+
+
+class FillBorder : public GenericVideoFilter 
+{
+public:
+  FillBorder(PClip _clip);
+  static PClip Create(PClip clip);
+  PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
+};
+
+
+
 
 /**** Factory methods ****/
 

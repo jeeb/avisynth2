@@ -569,52 +569,6 @@ enum {
 #define MIN_INT 0x80000000
 
 
-class ConvertAudio : public GenericVideoFilter 
-/**
-  * Helper class to convert audio to any format
- **/
-{
-public:
-  ConvertAudio(PClip _clip, int prefered_format);
-  void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env);
-
-  static PClip Create(PClip clip, int sample_type, int prefered_type);
-  static AVSValue __cdecl Create_float(AVSValue args, void*, IScriptEnvironment*);
-  static AVSValue __cdecl Create_32bit(AVSValue args, void*, IScriptEnvironment*);
-  static AVSValue __cdecl Create_16bit(AVSValue args, void*, IScriptEnvironment*);
-  static AVSValue __cdecl Create_8bit(AVSValue args, void*, IScriptEnvironment*);
-  virtual ~ConvertAudio()
-  {if (tempbuffer_size) {delete[] tempbuffer;tempbuffer_size=0;}}
-private:
-void ConvertAudio::convertToFloat(char* inbuf, float* outbuf, char sample_type, int count);
-void ConvertAudio::convertFromFloat(float* inbuf, void* outbuf, char sample_type, int count);
-
-  __inline int Saturate_int8(float n);
-  __inline short Saturate_int16(float n);
-  __inline int Saturate_int24(float n);
-  __inline int Saturate_int32(float n);
-
-  char src_format;
-  char dst_format;
-  int src_bps;
-  char *tempbuffer;
-  SFLOAT *floatbuffer;
-  int tempbuffer_size;
-};
-
-class AlignPlanar : public GenericVideoFilter {
-public:
-  AlignPlanar(PClip _clip);
-  static PClip Create(PClip clip);
-  PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
-};
-
-class FillBorder : public GenericVideoFilter {
-public:
-  FillBorder(PClip _clip);
-  static PClip Create(PClip clip);
-  PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
-};
 
 class IScriptEnvironment {
 public:

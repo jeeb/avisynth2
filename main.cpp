@@ -22,6 +22,7 @@
 
 #define INITGUID
 #include "internal.h"
+#include "audio.h"
 
 
 static long gRefCnt=0;

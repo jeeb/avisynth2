@@ -44,7 +44,7 @@ RSC=rc.exe
 # PROP Ignore_Export_Lib 0
 # PROP Target_Dir ""
 # ADD BASE CPP /nologo /MT /W3 /GX /O2 /D "WIN32" /D "NDEBUG" /D "_WINDOWS" /D "_MBCS" /D "_USRDLL" /D "AVISYNTH_EXPORTS" /YX /FD /c
-# ADD CPP /nologo /G6 /MD /W3 /GX /Zd /Ot /Og /Op- /Ob2 /D "NDEBUG" /D "INC_OLE2" /D "STRICT" /D "WIN32" /D "_WIN32" /D "_MT" /D "_DLL" /D "_MBCS" /D "_USRDLL" /D "AVISYNTH_EXPORTS" /YX /FD /Gs /GF /c
+# ADD CPP /nologo /G6 /MD /W3 /GX /Zd /Ot /Og /Ob2 /D "NDEBUG" /D "INC_OLE2" /D "STRICT" /D "WIN32" /D "_WIN32" /D "_MT" /D "_DLL" /D "_MBCS" /D "_USRDLL" /D "AVISYNTH_EXPORTS" /YX /FD /Gs /GF /c
 # SUBTRACT CPP /Ox /Oa /Ow /Oi /Fr
 # ADD BASE MTL /nologo /D "NDEBUG" /mktyplib203 /win32
 # ADD MTL /nologo /D "NDEBUG" /mktyplib203 /win32
@@ -237,6 +237,14 @@ SOURCE=.\avisynth.h
 # Begin Source File
 
 SOURCE=.\avisynth.rc
+# End Source File
+# Begin Source File
+
+SOURCE=.\cache.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\cache.h
 # End Source File
 # Begin Source File
 
@@ -508,14 +516,6 @@ SOURCE=.\merge.h
 # Begin Group "Script"
 
 # PROP Default_Filter ""
-# Begin Source File
-
-SOURCE=.\cache.cpp
-# End Source File
-# Begin Source File
-
-SOURCE=.\cache.h
-# End Source File
 # Begin Source File
 
 SOURCE=.\expression.cpp

@@ -327,6 +327,102 @@ AVSValue __cdecl AddBorders::Create(AVSValue args, void*, IScriptEnvironment* en
 
 
 
+/******************************
+ *******   AlignPlanar   ******
+ *****************************/
+
+
+AlignPlanar::AlignPlanar(PClip _clip) : GenericVideoFilter(_clip) {}
+
+PVideoFrame __stdcall AlignPlanar::GetFrame(int n, IScriptEnvironment* env) {
+  PVideoFrame src = child->GetFrame(n, env);
+  if (!(src->GetRowSize(PLANAR_Y_ALIGNED)&(FRAME_ALIGN-1))) return src;
+  PVideoFrame dst = env->NewVideoFrame(vi);
+  if ((dst->GetRowSize(PLANAR_Y_ALIGNED)&(FRAME_ALIGN-1))) 
+    env->ThrowError("AlignPlanar: [internal error] Returned frame was not aligned!");
+
+
+  BitBlt(dst->GetWritePtr(), dst->GetPitch(), src->GetReadPtr(), src->GetPitch(), src->GetRowSize(), src->GetHeight());
+  BitBlt(dst->GetWritePtr(PLANAR_V), dst->GetPitch(PLANAR_V), src->GetReadPtr(PLANAR_V), src->GetPitch(PLANAR_V), src->GetRowSize(PLANAR_V), src->GetHeight(PLANAR_V));
+  BitBlt(dst->GetWritePtr(PLANAR_U), dst->GetPitch(PLANAR_U), src->GetReadPtr(PLANAR_U), src->GetPitch(PLANAR_U), src->GetRowSize(PLANAR_U), src->GetHeight(PLANAR_U));
+  return dst;
+}
+
+
+PClip AlignPlanar::Create(PClip clip) 
+{
+  if (!clip->GetVideoInfo().IsPlanar()) {  // If not planar, already ok.
+    return clip;
+  }
+  else 
+    return new AlignPlanar(clip);
+}
+
+
+
+
+
+
+/******************************
+ *******   Fill Border   ******
+ *****************************/
+
+
+ /*  This function fills up the right side of the picture on planar images with duplicates of the rightmost pixel
+  *   TODO: Implement fast ISSE routines
+  */
+
+FillBorder::FillBorder(PClip _clip) : GenericVideoFilter(_clip) {
+}
+
+PVideoFrame __stdcall FillBorder::GetFrame(int n, IScriptEnvironment* env) {
+
+  PVideoFrame src = child->GetFrame(n, env);
+  if (src->GetRowSize(PLANAR_Y)==src->GetRowSize(PLANAR_Y_ALIGNED)) return src;  // No need to fill extra pixels
+  
+  unsigned char* Ydata = src->GetWritePtr(PLANAR_U) - (src->GetOffset(PLANAR_U)-src->GetOffset(PLANAR_Y)); // Nasty hack, to avoid "MakeWritable" - never, EVER do this at home!
+  unsigned char* Udata = src->GetWritePtr(PLANAR_U);
+  unsigned char* Vdata = src->GetWritePtr(PLANAR_V);
+
+  int fillp=src->GetRowSize(PLANAR_Y_ALIGNED) - src->GetRowSize(PLANAR_Y);
+  int h=src->GetHeight(PLANAR_Y);
+
+  Ydata = &Ydata[src->GetRowSize(PLANAR_Y)-1];
+  for (int y=0;y<h;y++){
+    for (int x=1;x<=fillp;x++) {
+      Ydata[x]=Ydata[0];
+    }
+    Ydata+=src->GetPitch(PLANAR_Y);
+  }
+
+  fillp=src->GetRowSize(PLANAR_U_ALIGNED) - src->GetRowSize(PLANAR_U);
+  Udata = &Udata[src->GetRowSize(PLANAR_U)-1];
+  Vdata = &Vdata[src->GetRowSize(PLANAR_V)-1];
+  h=src->GetHeight(PLANAR_U);
+
+  for (y=0;y<h;y++){
+    for (int x=1;x<=fillp;x++) {
+      Udata[x]=Udata[0];
+      Vdata[x]=Vdata[0];
+    }
+    Udata+=src->GetPitch(PLANAR_U);
+    Vdata+=src->GetPitch(PLANAR_V);
+  }
+  return src;
+}
+ 
+
+PClip FillBorder::Create(PClip clip) 
+{
+  if (!clip->GetVideoInfo().IsPlanar()) {  // If not planar, already ok.
+    return clip;
+  }
+  else 
+    return new FillBorder(clip);
+}
+
+
+
 
 
 /**********************************
