@@ -465,6 +465,14 @@ SOURCE=.\transform.h
 # PROP Default_Filter ""
 # Begin Source File
 
+SOURCE=.\Color.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\Color.h
+# End Source File
+# Begin Source File
+
 SOURCE=.\convolution.cpp
 # End Source File
 # Begin Source File
