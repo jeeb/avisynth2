@@ -96,7 +96,7 @@ struct VideoInfo {
 //  int VideoPlanes() {return (pixel_type&CS_PLANAR) ? 3 : 1;}
   int BytesFromPixels(int pixels) const { return pixels * (BitsPerPixel()>>3); }   // Will not work on planar images, but will return only luma planes
   int RowSize() const { return BytesFromPixels(width); }
-  int BMPSize() const { return height * ((RowSize()+3) & -4); }
+  int BMPSize() const { if (IsPlanar()) {int p = height * ((RowSize()+3) & -4); p+=p/2; return p;  } return height * ((RowSize()+3) & -4); }
   __int64 AudioSamplesFromFrames(__int64 frames) const { return (__int64(frames) * audio_samples_per_second * fps_denominator / fps_numerator); }
   int FramesFromAudioSamples(__int64 samples) const { return (__int64(samples) * fps_numerator / fps_denominator / audio_samples_per_second); }
   __int64 AudioSamplesFromBytes(__int64 bytes) const { return bytes / BytesPerAudioSample(); }

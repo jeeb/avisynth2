@@ -708,6 +708,9 @@ void CAVIStreamSynth::ReadFrame(void* lpBuffer, int n) {
   // BMP scanlines are always dword-aligned
   const int out_pitch = (row_size+3) & -4;
   BitBlt((BYTE*)lpBuffer, out_pitch, frame->GetReadPtr(), pitch, row_size, frame->GetHeight());
+  // TODO: Make the following more eyepleasing
+  BitBlt((BYTE*)lpBuffer+(out_pitch*frame->GetHeight()), out_pitch/2, frame->GetReadPtr(PLANAR_U), frame->GetPitch(PLANAR_U), frame->GetRowSize(PLANAR_U), frame->GetHeight(PLANAR_U));
+  BitBlt((BYTE*)lpBuffer+(out_pitch*frame->GetHeight()+frame->GetHeight(PLANAR_V)*pitch/2), out_pitch/2, frame->GetReadPtr(PLANAR_V), frame->GetPitch(PLANAR_V), frame->GetRowSize(PLANAR_V), frame->GetHeight(PLANAR_V));
 }
 
 
