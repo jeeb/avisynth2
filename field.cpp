@@ -62,15 +62,21 @@ SeparateFields::SeparateFields(PClip _child, IScriptEnvironment* env)
   vi.height >>= 1;
   vi.fps_numerator *= 2;
   vi.num_frames *= 2;
-  vi.pixel_type |= VideoInfo::CS_FIELDBASED;
+  vi.SetFieldBased(true);
 }
 
 
 PVideoFrame SeparateFields::GetFrame(int n, IScriptEnvironment* env) 
 {
   PVideoFrame frame = child->GetFrame(n>>1, env);
+  if (vi.IsPlanar()) {
+    return frame->Subframe((GetParity(n) ^ vi.IsYUY2()) * frame->GetPitch(),
+      frame->GetPitch()*2, frame->GetRowSize(), frame->GetHeight()>>1, 
+      0,0, frame->GetPitch(PLANAR_U)*2);  // FIXME: Problematic???.
+  }
   return frame->Subframe((GetParity(n) ^ vi.IsYUY2()) * frame->GetPitch(),
     frame->GetPitch()*2, frame->GetRowSize(), frame->GetHeight()>>1);
+  
 }
 
 
@@ -166,7 +172,7 @@ DoubleWeaveFields::DoubleWeaveFields(PClip _child)
   : GenericVideoFilter(_child) 
 {
   vi.height *= 2;
-  vi.pixel_type &= ~VideoInfo::CS_FIELDBASED;
+  vi.SetFieldBased(false);
 }
 
 
@@ -189,8 +195,13 @@ PVideoFrame DoubleWeaveFields::GetFrame(int n, IScriptEnvironment* env)
 void DoubleWeaveFields::CopyField(const PVideoFrame& dst, const PVideoFrame& src, bool parity) 
 {
   int add_pitch = dst->GetPitch() * (parity ^ vi.IsYUY2());
+  int add_pitchUV = dst->GetPitch(PLANAR_U) * (parity ^ vi.IsYUY2());
   BitBlt( dst->GetWritePtr() + add_pitch, dst->GetPitch()*2,
           src->GetReadPtr(), src->GetPitch(), src->GetRowSize(), src->GetHeight() );
+  BitBlt( dst->GetWritePtr(PLANAR_U) + add_pitchUV, dst->GetPitch(PLANAR_U)*2,
+          src->GetReadPtr(PLANAR_U), src->GetPitch(PLANAR_U), src->GetRowSize(PLANAR_U), src->GetHeight(PLANAR_U) );
+  BitBlt( dst->GetWritePtr(PLANAR_V) + add_pitchUV, dst->GetPitch(PLANAR_V)*2,
+          src->GetReadPtr(PLANAR_V), src->GetPitch(PLANAR_V), src->GetRowSize(PLANAR_V), src->GetHeight(PLANAR_V) );
 }
 
 
@@ -245,6 +256,12 @@ void DoubleWeaveFrames::CopyAlternateLines(const PVideoFrame& dst, const PVideoF
   BitBlt( dst->GetWritePtr() + dst_add_pitch, dst->GetPitch()*2,
           src->GetReadPtr() + src_add_pitch, src->GetPitch()*2,
           src->GetRowSize(), src->GetHeight()>>1 );
+  BitBlt( dst->GetWritePtr(PLANAR_U) , dst->GetPitch(PLANAR_U)*2,
+          src->GetReadPtr(PLANAR_U) , src->GetPitch(PLANAR_U)*2,
+          src->GetRowSize(PLANAR_U), src->GetHeight(PLANAR_U)>>1 );
+  BitBlt( dst->GetWritePtr(PLANAR_V) , dst->GetPitch(PLANAR_V)*2,
+          src->GetReadPtr(PLANAR_V) , src->GetPitch(PLANAR_V)*2,
+          src->GetRowSize(PLANAR_V), src->GetHeight(PLANAR_V)>>1 );
 }
 
 

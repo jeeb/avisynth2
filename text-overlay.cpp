@@ -103,17 +103,46 @@ HDC Antialiaser::GetDC() {
 }
 
 
-void Antialiaser::Apply( const VideoInfo& vi, BYTE* buf, int pitch, int textcolor, 
+void Antialiaser::Apply( const VideoInfo& vi, PVideoFrame* frame, int pitch, int textcolor, 
                          int halocolor ) 
 {
   if (vi.IsRGB32())
-    ApplyRGB32(buf, pitch, textcolor, halocolor);
+    ApplyRGB32((*frame)->GetWritePtr(), pitch, textcolor, halocolor);
   else if (vi.IsRGB24())
-    ApplyRGB24(buf, pitch, textcolor, halocolor);
+    ApplyRGB24((*frame)->GetWritePtr(), pitch, textcolor, halocolor);
   else if (vi.IsYUY2())
-    ApplyYUY2(buf, pitch, textcolor, halocolor);
+    ApplyYUY2((*frame)->GetWritePtr(), pitch, textcolor, halocolor);
+  else if (vi.IsYV12())
+    ApplyYV12((*frame)->GetWritePtr(), pitch, textcolor, halocolor, (*frame)->GetPitch(PLANAR_U),(*frame)->GetWritePtr(PLANAR_U),(*frame)->GetWritePtr(PLANAR_V));
 }
 
+void Antialiaser::ApplyYV12(BYTE* buf, int pitch, int textcolor, int halocolor, int pitchUV,BYTE* bufU,BYTE* bufV) {
+  if (dirty) GetAlphaRect();
+  int Ytext = ((textcolor>>16)&255), Utext = ((textcolor>>8)&255), Vtext = (textcolor&255);
+  int Yhalo = ((halocolor>>16)&255), Uhalo = ((halocolor>>8)&255), Vhalo = (halocolor&255);
+  int w2=w*2;
+  char* alpha = alpha_bits;
+  for (int y=0; y<(h>>1); y++) {
+    for (int x=0; x<w; x+=2) {
+      if (*(__int32*)&alpha[x*2] || *(__int32*)&alpha[x*2+w2]) {
+        buf[x+0] = (buf[x+0] * (64-alpha[x*2+0]-alpha[x*2+1]) + Ytext * alpha[x*2+0] + Yhalo * alpha[x*2+1]) >> 6;
+        buf[x+1] = (buf[x+1] * (64-alpha[x*2+2]-alpha[x*2+3]) + Ytext * alpha[x*2+2] + Yhalo * alpha[x*2+3]) >> 6;
+        buf[x+0+pitch] = (buf[x+0+pitch] * (64-alpha[x*2+0+((w2))]-alpha[x*2+1+(w2)]) + Ytext * alpha[x*2+0+(w2)] + Yhalo * alpha[x*2+1+(w2)]) >> 6;
+        buf[x+1+pitch] = (buf[x+1+pitch] * (64-alpha[x*2+2+(w2)]-alpha[x*2+3+(w2)]) + Ytext * alpha[x*2+2+(w2)] + Yhalo * alpha[x*2+3+(w2)]) >> 6;
+
+        int auv1 = (alpha[x*2]+alpha[x*2+2]+alpha[x*2+(w2)]+alpha[x*2+2+(w2)])>>1;
+        int auv2 = (alpha[x*2+1]+alpha[x*2+3]+alpha[x*2+1+(w2)]+alpha[x*2+3+(w2)])>>1;
+
+        bufU[x>>1] = (bufU[x>>1] * (128-auv1-auv2) + Utext * auv1 + Uhalo * auv2) >> 7;
+        bufV[x>>1] = (bufV[x>>1] * (128-auv1-auv2) + Vtext * auv1 + Vhalo * auv2) >> 7;
+      }
+    }
+    buf += pitch*2;
+    bufU += pitchUV;
+    bufV += pitchUV;
+    alpha += w*4;
+  }
+}
 
 
 void Antialiaser::ApplyYUY2(BYTE* buf, int pitch, int textcolor, int halocolor) {
@@ -378,8 +407,8 @@ PVideoFrame ShowFrameNumber::GetFrame(int n, IScriptEnvironment* env) {
   }
   GdiFlush();
 
-  antialiaser.Apply(vi, frame->GetWritePtr(), frame->GetPitch(),
-    vi.IsYUY2() ? 0xD21092 : 0xFFFF00, vi.IsYUY2() ? 0x108080 : 0);
+  antialiaser.Apply(vi, &frame, frame->GetPitch(),
+    vi.IsYUV() ? 0xD21092 : 0xFFFF00, vi.IsYUV() ? 0x108080 : 0);
 
   return frame;
 }
@@ -453,8 +482,8 @@ PVideoFrame __stdcall ShowSMPTE::GetFrame(int n, IScriptEnvironment* env)
   TextOut(hdc, vi.width*4, vi.height*8-32, text, strlen(text));
   GdiFlush();
 
-  antialiaser.Apply( vi, frame->GetWritePtr(), frame->GetPitch(),
-                     vi.IsYUY2() ? 0xD21092 : 0xFFFF00, vi.IsYUY2() ? 0x108080 : 0 );
+  antialiaser.Apply( vi, &frame, frame->GetPitch(),
+                     vi.IsYUV() ? 0xD21092 : 0xFFFF00, vi.IsYUY2() ? 0x108080 : 0 );
 
   return frame;
 }
@@ -483,7 +512,7 @@ Subtitle::Subtitle( PClip _child, const char _text[], int _x, int _y, int _first
  : GenericVideoFilter(_child), antialiaser(0), text(_text), x(_x), y(_y), 
    firstframe(_firstframe), lastframe(_lastframe), fontname(MyStrdup(_fontname)), size(_size*8)
 {
-  if (vi.IsYUY2()) {
+  if (vi.IsYUV()) {
     textcolor = RGB2YUV(_textcolor);
     halocolor = RGB2YUV(_halocolor);
   } else {
@@ -507,7 +536,7 @@ PVideoFrame Subtitle::GetFrame(int n, IScriptEnvironment* env)
   if (n >= firstframe && n <= lastframe) {
     if (!antialiaser)
       InitAntialiaser();
-    antialiaser->Apply(vi, frame->GetWritePtr(), frame->GetPitch(), textcolor, halocolor);
+    antialiaser->Apply(vi, &frame, frame->GetPitch(), textcolor, halocolor);
   } else {
     // if we get far enough away from the frames we're supposed to
     // subtitle, then junk the buffered drawing information
@@ -843,7 +872,7 @@ comp_loopx:
     env->MakeWritable(&f1);
     BYTE* dstp = f1->GetWritePtr();
     int dst_pitch = f1->GetPitch();
-    antialiaser.Apply( vi, dstp, dst_pitch, vi.IsYUY2() ? 0xD21092 : 0xFFFF00, vi.IsYUY2() ? 0x108080 : 0 );
+    antialiaser.Apply( vi, &f1, dst_pitch, vi.IsYUV() ? 0xD21092 : 0xFFFF00, vi.IsYUV() ? 0x108080 : 0 );
 
     if (show_graph) {
       // original idea by Marc_FD
@@ -957,10 +986,10 @@ void ApplyMessage( PVideoFrame* frame, const VideoInfo& vi, const char* message,
   RECT r = { 4*8, 4*8, (vi.width-4)*8, (vi.height-4)*8 };
   DrawText(hdcAntialias, message, lstrlen(message), &r, DT_NOPREFIX|DT_CENTER);
   GdiFlush();
-  if (vi.IsYUY2()) {
+  if (vi.IsYUV()) {
     textcolor = RGB2YUV(textcolor);
     halocolor = RGB2YUV(halocolor);
   }
-  antialiaser.Apply(vi, (*frame)->GetWritePtr(), (*frame)->GetPitch(), textcolor, halocolor);
+  antialiaser.Apply(vi, frame, (*frame)->GetPitch(), textcolor, halocolor);
 }
 

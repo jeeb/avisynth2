@@ -75,19 +75,39 @@ PVideoFrame __stdcall StackVertical::GetFrame(int n, IScriptEnvironment* env)
   PVideoFrame src2 = child2->GetFrame(n, env);
   PVideoFrame dst = env->NewVideoFrame(vi);
   const BYTE* src1p = src1->GetReadPtr();
+  const BYTE* src1pU = src1->GetReadPtr(PLANAR_U);
+  const BYTE* src1pV = src1->GetReadPtr(PLANAR_V);
   const BYTE* src2p = src2->GetReadPtr();
+  const BYTE* src2pU = src2->GetReadPtr(PLANAR_U);
+  const BYTE* src2pV = src2->GetReadPtr(PLANAR_V);
   BYTE* dstp = dst->GetWritePtr();
+  BYTE* dstpU = dst->GetWritePtr(PLANAR_U);
+  BYTE* dstpV = dst->GetWritePtr(PLANAR_V);
   const int src1_pitch = src1->GetPitch();
+  const int src1_pitchUV = src1->GetPitch(PLANAR_U);
   const int src2_pitch = src2->GetPitch();
+  const int src2_pitchUV = src2->GetPitch(PLANAR_U);
   const int dst_pitch = dst->GetPitch();
+  const int dst_pitchUV = dst->GetPitch(PLANAR_V);
   const int src1_height = src1->GetHeight();
+  const int src1_heightUV = src1->GetHeight(PLANAR_U);
   const int src2_height = src2->GetHeight();
+  const int src2_heightUV = src2->GetHeight(PLANAR_U);
   const int row_size = dst->GetRowSize();
+  const int row_sizeUV = dst->GetRowSize(PLANAR_U);
+
   BYTE* dstp2 = dstp + dst_pitch * src1->GetHeight();
+  BYTE* dstp2U = dstpU + dst_pitchUV * src1->GetHeight(PLANAR_U);
+  BYTE* dstp2V = dstpV + dst_pitchUV * src1->GetHeight(PLANAR_V);
 
   BitBlt(dstp, dst_pitch, src1p, src1_pitch, row_size, src1_height);
   BitBlt(dstp2, dst_pitch, src2p, src2_pitch, row_size, src2_height);
 
+  BitBlt(dstpU, dst_pitchUV, src1pU, src1_pitchUV, row_sizeUV, src1_heightUV);
+  BitBlt(dstp2U, dst_pitchUV, src2pU, src2_pitchUV, row_sizeUV, src2_heightUV);
+
+  BitBlt(dstpV, dst_pitchUV, src1pV, src1_pitchUV, row_sizeUV, src1_heightUV);
+  BitBlt(dstp2V, dst_pitchUV, src2pV, src2_pitchUV, row_sizeUV, src2_heightUV);
   return dst;
 }
 
@@ -135,17 +155,38 @@ PVideoFrame __stdcall StackHorizontal::GetFrame(int n, IScriptEnvironment* env)
   PVideoFrame src2 = child2->GetFrame(n, env);
   PVideoFrame dst = env->NewVideoFrame(vi);
   const BYTE* src1p = src1->GetReadPtr();
+  const BYTE* src1pU = src1->GetReadPtr(PLANAR_U);
+  const BYTE* src1pV = src1->GetReadPtr(PLANAR_V);
+
   const BYTE* src2p = src2->GetReadPtr();
+  const BYTE* src2pU = src2->GetReadPtr(PLANAR_U);
+  const BYTE* src2pV = src2->GetReadPtr(PLANAR_V);
   BYTE* dstp = dst->GetWritePtr();
+  BYTE* dstpU = dst->GetWritePtr(PLANAR_U);
+  BYTE* dstpV = dst->GetWritePtr(PLANAR_V);
   const int src1_pitch = src1->GetPitch();
   const int src2_pitch = src2->GetPitch();
+  const int src1_pitchUV = src1->GetPitch(PLANAR_U);
+  const int src2_pitchUV = src2->GetPitch(PLANAR_U);
   const int dst_pitch = dst->GetPitch();
+  const int dst_pitchUV = dst->GetPitch(PLANAR_U);
   const int src1_row_size = src1->GetRowSize();
   const int src2_row_size = src2->GetRowSize();
+  const int src1_row_sizeUV = src1->GetRowSize(PLANAR_U);
+  const int src2_row_sizeUV = src2->GetRowSize(PLANAR_V);
   BYTE* dstp2 = dstp + src1_row_size;
+  BYTE* dstp2U = dstpU + src1_row_sizeUV;
+  BYTE* dstp2V = dstpV + src1_row_sizeUV;
+  const int dst_heightUV = dst->GetHeight(PLANAR_U);
 
   BitBlt(dstp, dst_pitch, src1p, src1_pitch, src1_row_size, vi.height);
   BitBlt(dstp2, dst_pitch, src2p, src2_pitch, src2_row_size, vi.height);
+
+  BitBlt(dstpU, dst_pitchUV, src1pU, src1_pitchUV, src1_row_sizeUV, dst_heightUV);
+  BitBlt(dstp2U, dst_pitchUV, src2pU, src2_pitchUV, src2_row_sizeUV, dst_heightUV);
+
+  BitBlt(dstpV, dst_pitchUV, src1pV, src1_pitchUV, src1_row_sizeUV, dst_heightUV);
+  BitBlt(dstp2V, dst_pitchUV, src2pV, src2_pitchUV, src2_row_sizeUV, dst_heightUV);
 
   return dst;
 }

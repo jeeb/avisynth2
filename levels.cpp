@@ -51,7 +51,7 @@ Levels::Levels( PClip _child, int in_min, double gamma, int in_max, int out_min,
     env->ThrowError("Levels: gamma must be positive");
   gamma = 1/gamma;
   int divisor = in_max - in_min + (in_max == in_min);
-  if (vi.IsYUY2()) 
+  if (vi.IsYUV()) 
   {
     for (int i=0; i<256; ++i) 
     {
@@ -81,7 +81,7 @@ PVideoFrame __stdcall Levels::GetFrame(int n, IScriptEnvironment* env)
   PVideoFrame frame = child->GetFrame(n, env);
   env->MakeWritable(&frame);
   BYTE* p = frame->GetWritePtr();
-  const int pitch = frame->GetPitch();
+  int pitch = frame->GetPitch();
   if (vi.IsYUY2()) {
     for (int y=0; y<vi.height; ++y) {
       for (int x=0; x<vi.width; ++x) {
@@ -91,7 +91,32 @@ PVideoFrame __stdcall Levels::GetFrame(int n, IScriptEnvironment* env)
       p += pitch;
     }
   } 
-  else {
+  else if (vi.IsYV12()){
+    for (int y=0; y<vi.height; ++y) {
+      for (int x=0; x<vi.width; ++x) {
+        p[x] = map[p[x]];
+      }
+      p += pitch;
+    }
+    pitch = frame->GetPitch(PLANAR_U);
+    p = frame->GetWritePtr(PLANAR_U);
+    int w=frame->GetRowSize(PLANAR_U);
+    int h=frame->GetHeight(PLANAR_U);
+    for (y=0; y<h; ++y) {
+      for (int x=0; x<w; ++x) {
+        p[x] = mapchroma[p[x]];
+      }
+      p += pitch;
+    }
+    p = frame->GetWritePtr(PLANAR_V);
+    for (y=0; y<h; ++y) {
+      for (int x=0; x<w; ++x) {
+        p[x] = mapchroma[p[x]];
+      }
+      p += pitch;
+    }
+
+  } else if (vi.IsRGB()) {
     const int row_size = frame->GetRowSize();
     for (int y=0; y<vi.height; ++y) {
       for (int x=0; x<row_size; ++x) {
@@ -122,7 +147,7 @@ HSIAdjust::HSIAdjust( PClip _child, double h, double s, int min, double gamma, i
                       IScriptEnvironment* env )
   : GenericVideoFilter(_child)
 {
-  if (!vi.IsYUY2())
+  if (!vi.IsYUV())
     env->ThrowError("HSIAdjust requires YUV input");
 	BYTE p;
 	double x;
@@ -153,19 +178,44 @@ PVideoFrame __stdcall HSIAdjust::GetFrame(int n, IScriptEnvironment* env)
   PVideoFrame frame = child->GetFrame(n, env);
   env->MakeWritable(&frame);
   BYTE* p = frame->GetWritePtr();
-  const int pitch = frame->GetPitch();
-	const int row_size = frame->GetRowSize();
-
-	for (int y=0; y<vi.height; ++y) 
-  {
-    for (int x=0; x<vi.width; x+=2) 
+  int pitch = frame->GetPitch();
+  if (vi.IsYUY2()) {
+	  for (int y=0; y<vi.height; ++y) 
     {
-      p[x*2] = mapY[p[x*2]];
-      p[x*2+1] = mapU[p[x*2+1]];
-      p[x*2+2] = mapY[p[x*2+2]];
-      p[x*2+3] = mapV[p[x*2+3]];
+      for (int x=0; x<vi.width; x+=2) 
+      {
+        p[x*2] = mapY[p[x*2]];
+        p[x*2+1] = mapU[p[x*2+1]];
+        p[x*2+2] = mapY[p[x*2+2]];
+        p[x*2+3] = mapV[p[x*2+3]];
+      }
+   	  p += pitch;
     }
-   	p += pitch;
+  } else if (vi.IsYV12()) {
+    for (int y=0; y<vi.height; ++y) {
+      for (int x=0; x<vi.width; ++x) {
+        p[x] = mapY[p[x]];
+      }
+      p += pitch;
+    }
+    pitch = frame->GetPitch(PLANAR_U);
+    p = frame->GetWritePtr(PLANAR_U);
+    int w = frame->GetRowSize(PLANAR_U);
+    int h = frame->GetHeight(PLANAR_U);
+    for (y=0; y<h; ++y) {
+      for (int x=0; x<w; ++x) {
+        p[x] = mapU[p[x]];
+      }
+      p += pitch;
+    }
+    p = frame->GetWritePtr(PLANAR_V);
+    for (y=0; y<h; ++y) {
+      for (int x=0; x<w; ++x) {
+        p[x] = mapV[p[x]];
+      }
+      p += pitch;
+    }
+
   }
   return frame;
 }
@@ -189,7 +239,7 @@ AVSValue __cdecl HSIAdjust::Create(AVSValue args, void*, IScriptEnvironment* env
 RGBAdjust::RGBAdjust(PClip _child, double r, double g, double b, double a, IScriptEnvironment* env)
   : GenericVideoFilter(_child)
 {
-  if (vi.IsYUY2())
+  if (!vi.IsRGB())
     env->ThrowError("RGBAdjust requires RGB input");
   int p;
   for (int i=0; i<256; ++i) 

@@ -727,7 +727,12 @@ bool ScriptEnvironment::MakeWritable(PVideoFrame* pvf) {
   else {    
     const int row_size = vf->GetRowSize();
     const int height = vf->GetHeight();
-    PVideoFrame dst = NewVideoFrame(row_size, height, FRAME_ALIGN);
+    PVideoFrame dst;
+    if (vf->GetPitch(PLANAR_U)) {  // we have no videoinfo, so we can only assume that it is Planar
+      dst = NewPlanarVideoFrame(row_size, height, FRAME_ALIGN,false);  // Always V first on internal images
+    } else {
+      dst = NewVideoFrame(row_size, height, FRAME_ALIGN);
+    }
     BitBlt(dst->GetWritePtr(), dst->GetPitch(), vf->GetReadPtr(), vf->GetPitch(), row_size, height);
     // Blit More planes (pitch, rowsize and height should be 0, if none is present)
     BitBlt(dst->GetWritePtr(PLANAR_V), dst->GetPitch(PLANAR_V), vf->GetReadPtr(PLANAR_V), vf->GetPitch(PLANAR_V), vf->GetRowSize(PLANAR_V), vf->GetHeight(PLANAR_V));

@@ -38,7 +38,8 @@ public:
   virtual ~Antialiaser();
   HDC GetDC();
   
-  void Apply(const VideoInfo& vi, BYTE* buf, int pitch, int textcolor, int halocolor);
+  void Apply(const VideoInfo& vi, PVideoFrame* frame, int pitch, int textcolor, int halocolor);
+  void ApplyYV12(BYTE* buf, int pitch, int textcolor, int halocolor, int UVpitch,BYTE* bufV,BYTE* bufU);
   void ApplyYUY2(BYTE* buf, int pitch, int textcolor, int halocolor);
   void ApplyRGB24(BYTE* buf, int pitch, int textcolor, int halocolor);
   void ApplyRGB32(BYTE* buf, int pitch, int textcolor, int halocolor);  
