@@ -891,3 +891,126 @@ IScriptEnvironment* __stdcall CreateScriptEnvironment(int version) {
   else
     return 0;
 }
+
+/*******************************************
+ *******   Convert Audio -> Arbitrary ******
+ ******************************************/
+
+// Fixme: Implement 24 bit samples
+// FIXME: 8 bit output not working for some reason - giving heavily distorted sound.
+// Optme: Could be made onepass, but that would make it immensely complex
+ConvertAudio::ConvertAudio(PClip _clip, int _sample_type) 
+  : GenericVideoFilter(_clip)
+{
+  dst_format=_sample_type;
+  src_format=vi.SampleType();
+  // Set up convertion matrix
+  src_bps=vi.BytesPerChannelSample();  // Store old size
+  vi.sample_type=dst_format;
+  tempbuffer_size=0;
+}
+
+
+void __stdcall ConvertAudio::GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) 
+{
+  int channels=vi.AudioChannels();
+  if (tempbuffer_size) {
+    if (tempbuffer_size<count) {
+      delete[] tempbuffer;
+      delete[] floatbuffer;
+      tempbuffer=new char[count*src_bps*channels];
+      floatbuffer=new float[count*channels];
+      tempbuffer_size=count;
+    }
+  } else {
+    tempbuffer=new char[count*src_bps*channels];
+    floatbuffer=new float[count*channels];
+    tempbuffer_size=count;
+  }
+  child->GetAudio(tempbuffer, start, count, env);
+  convertToFloat(tempbuffer, floatbuffer, src_format, count*channels);
+  convertFromFloat(floatbuffer, buf, dst_format, count*channels);
+
+}
+
+
+void ConvertAudio::convertToFloat(char* inbuf, float* outbuf, char sample_type, int count) {
+  int i;
+  switch (sample_type) {
+    case SAMPLE_INT8: {
+      signed char* samples = (signed char*)inbuf;
+      for (i=0;i<count;i++) 
+        outbuf[i]=(float)samples[i] / 128.0f;
+      break;
+      }
+    case SAMPLE_INT16: {
+      signed short* samples = (signed short*)inbuf;
+      for (i=0;i<count;i++) 
+        outbuf[i]=(float)samples[i] / 32768.0f;
+      break;
+      }
+
+    case SAMPLE_INT32: {
+      signed int* samples = (signed int*)inbuf;
+      for (i=0;i<count;i++) 
+        outbuf[i]=(float)samples[i] / (float)(MAX_INT);
+      break;     
+    }
+    case SAMPLE_FLOAT: {
+      SFLOAT* samples = (SFLOAT*)inbuf;
+      for (i=0;i<count;i++) 
+        outbuf[i]=samples[i];
+      break;     
+    }
+    default: { 
+      for (i=0;i<count;i++) 
+        outbuf[i]=0.0f;
+      break;     
+    }
+  }
+}
+
+void ConvertAudio::convertFromFloat(float* inbuf,void* outbuf, char sample_type, int count) {
+  int i;
+  switch (sample_type) {
+    case SAMPLE_INT8: {
+      signed char* samples = (signed char*)outbuf;
+      for (i=0;i<count;i++) 
+        samples[i]=Saturate_int8(inbuf[i] * 128.0f);
+      break;
+      }
+    case SAMPLE_INT16: {
+      signed short* samples = (signed short*)outbuf;
+      for (i=0;i<count;i++) 
+        samples[i]=Saturate_int16(inbuf[i] * 32768.0f);
+      break;
+      }
+
+    case SAMPLE_INT32: {
+      signed int* samples = (signed int*)outbuf;
+      for (i=0;i<count;i++) 
+        samples[i]= Saturate_int32(inbuf[i] * (float)(MAX_INT));
+      break;     
+    }
+    case SAMPLE_FLOAT: {
+      SFLOAT* samples = (SFLOAT*)outbuf;
+      for (i=0;i<count;i++) 
+        samples[i]=inbuf[i];
+      break;     
+    }
+    default: { 
+    }
+  }
+}
+
+// There are two type parameters. Acceptable sample types and a prefered sample type.
+// If the current clip is already one of the defined types in sampletype, this will be returned.
+// If not, the current clip will be converted to the prefered type.
+PClip ConvertAudio::Create(PClip clip, int sample_type, int prefered_type) 
+{
+  if (clip->GetVideoInfo().SampleType()&sample_type) {  // Sample type is already ok!
+    return clip;
+  }
+  else 
+    return new ConvertAudio(clip,prefered_type);
+}

@@ -425,6 +425,56 @@ enum {
                               //         will have anyway)
 };
 
+#define MAX_INT (((__int64)1<<30)-1)   
+#define MIN_INT -(((__int64)1<<30))
+
+
+class ConvertAudio : public GenericVideoFilter 
+/**
+  * Class to convert audio to any format
+ **/
+{
+public:
+  ConvertAudio(PClip _clip, int prefered_format);
+  void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env);
+
+  static PClip Create(PClip clip, int sample_type, int prefered_type);
+  static AVSValue __cdecl Create_float(AVSValue args, void*, IScriptEnvironment*);
+  static AVSValue __cdecl Create_32bit(AVSValue args, void*, IScriptEnvironment*);
+  static AVSValue __cdecl Create_16bit(AVSValue args, void*, IScriptEnvironment*);
+  static AVSValue __cdecl Create_8bit(AVSValue args, void*, IScriptEnvironment*);
+  virtual ~ConvertAudio()
+  {if (tempbuffer_size) {delete[] tempbuffer;tempbuffer_size=0;}}
+private:
+void ConvertAudio::convertToFloat(char* inbuf, float* outbuf, char sample_type, int count);
+void ConvertAudio::convertFromFloat(float* inbuf, void* outbuf, char sample_type, int count);
+
+  static __inline signed char Saturate_int8(float n) {
+    if (n <= -128.0f) return -128;
+    if (n >= 127.0f) return 127;
+    return (signed char)(int)n;
+  }
+
+
+  static __inline short Saturate_int16(float n) {
+    if (n <= -32768.0f) return -32768;
+    if (n >= 32767.0f) return 32767;
+    return (short)n;
+  }
+
+  static __inline int Saturate_int32(float n) {
+    if (n <= (float)MIN_INT) return MIN_INT;  
+    if (n >= (float)MAX_INT) return MAX_INT;
+    return (int)n;
+  }
+
+  char src_format;
+  char dst_format;
+  int src_bps;
+  char *tempbuffer;
+  SFLOAT *floatbuffer;
+  int tempbuffer_size;
+};
 
 class IScriptEnvironment {
 public:
