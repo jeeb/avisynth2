@@ -134,7 +134,9 @@ public:
 
   //copy other into self at the given coords (which can be negatives)
   //only overlap is copied, no effect if there is none
-  Copy(const BufferWindow& other, dimension left, dimension top);  
+  Copy(const BufferWindow& other, dimension left, dimension top); 
+  
+  Blend(const BufferWindow& other, float factor);
 
 };
 
@@ -178,6 +180,8 @@ class VideoFrameAncestor : public VideoFrame {
 
   static CPPropertyList emptyList;  //empty list of properties
   static CPPropertyList fieldBasedList;  //list containing the single property fieldBased
+
+  static const string UNMATCHING_CLR_SPACE; // = "ColorSpace don't match"
 
 protected:
   VideoFrameAncestor(bool fieldBased) : propList(fieldBased? fieldBasedList : emptyList) { }

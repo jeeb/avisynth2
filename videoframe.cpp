@@ -97,8 +97,17 @@ BufferWindow::Copy(const BufferWindow& other, dimension left, dimension top)
     IScriptEnvironment::BitBlt(dst + copy_offset, pitch, src + copy_offset_other, pitch_other, copy_row_size, copy_height);                                          
 }
 
+BufferWindow::Blend(const BufferWindow& other, float factor)
+{
+  static const AvsiynthError UNMATCHING_SIZE("Blend Error: Height or Width don't match");
+  static const AvisynthError ILLEGAL_BLEND_FACTOR("Blend Error: factor should be between 0 & 1");
+  if (row_size != other.row_size || height != other.height)
+    throw UNMATCHING_SIZE;
+  if (factor < 0 || factor > 1)
+    throw ILLEGAL_BLEND_FACTOR;
 
-
+  //TODO: Code ME !!
+}
 
 PropertyList::CPProperty PropertyList::GetProperty(const PropertyName& name) const
 {
@@ -143,8 +152,9 @@ PropertyList * PropertyList::RemoveVolatileProperties()
 //naive implementation: I convert other to the same colorspace and then copy..
 void NormalVideoFrame::Copy(CPVideoFrame other, dimension left, dimension top)
 {
-  //bettter do these conversions/checks before colorspace conversions
+  if (GetColorSpace() != other->GetColorSpace())
+    throw AvisynthError("Copy Error: " + UNMATCHING_CLR_SPACE);
   left = WidthToRowSize(left);
   top = HeightCheck(top);          
-  main.Copy(( (CPNormalVideoFrame)other->ConvertTo(GetColorSpace()) )->main, left, top);
+  main.Copy( (CPNormalVideoFrame)other)->main, left, top);
 }
