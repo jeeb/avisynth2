@@ -28,6 +28,7 @@ AVSFunction Audio_filters[] = {
   { "DelayAudio", "cf", DelayAudio::Create },
   { "AmplifydB", "cf[]f+", Amplify::Create_dB },
   { "Amplify", "cf[]f+", Amplify::Create },
+  { "AssumeSampleRate", "ci", AssumeRate::Create },
   { "Normalize", "c[left]f", Normalize::Create },
   { "MixAudio", "cc[clip1_factor]f[clip2_factor]f", MixAudio::Create },
   { "ResampleAudio", "ci", ResampleAudio::Create },
@@ -38,6 +39,7 @@ AVSFunction Audio_filters[] = {
   { "ConvertToMono", "c", ConvertToMono::Create },
   { "EnsureVBRMP3Sync", "c", EnsureVBRMP3Sync::Create },
   { "MergeChannels", "c+", MergeChannels::Create },
+  { "MonoToStereo", "cc", MergeChannels::Create },
   { "GetLeftChannel", "c", GetChannel::Create_left },
   { "GetRightChannel", "c", GetChannel::Create_right },
   { "GetChannel", "ci+", GetChannel::Create_n },
@@ -221,6 +223,27 @@ PClip ConvertAudio::Create(PClip clip, int sample_type, int prefered_type)
   else 
     return new ConvertAudio(clip,prefered_type);
 }
+
+
+
+/*************************************
+ *******   Assume SampleRate  ********
+ *************************************/
+
+AssumeRate::AssumeRate(PClip _clip, int _rate) 
+  : GenericVideoFilter(_clip)
+{
+  if (_rate<0) 
+    _rate=0;
+
+    vi.audio_samples_per_second=_rate;
+} 
+
+AVSValue __cdecl AssumeRate::Create(AVSValue args, void*, IScriptEnvironment*) 
+{
+  return new AssumeRate(args[0].AsClip(),args[1].AsInt());
+}
+
 
 
 

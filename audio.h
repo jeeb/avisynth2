@@ -68,6 +68,15 @@ static int makeFilter(short Imp[], int *LpScl, unsigned short Nwing, double Frol
 /********************************************************************
 ********************************************************************/
 
+class AssumeRate : public GenericVideoFilter 
+/**
+  * Changes the sample rate of a clip
+ **/
+{
+public:
+  AssumeRate(PClip _clip, int _rate);
+  static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment*);
+};
 
 
 
