@@ -45,7 +45,7 @@ AVSFunction Audio_filters[] = {
 };
 
 
-
+// FIXME: Most int64's are often cropped to ints
  
 
  
@@ -91,7 +91,7 @@ AVSValue __cdecl ConvertAudioTo16bit::Create(AVSValue args, void*, IScriptEnviro
  ******************************************/
 
 // Fixme: Implement 24 bit samples
-
+// Optme: Could be made onepass, but that would make it immensely complex
 ConvertAudio::ConvertAudio(PClip _clip, int _sample_type) 
   : GenericVideoFilter(_clip)
 {
@@ -196,7 +196,9 @@ void ConvertAudio::convertFromFloat(float* inbuf,void* outbuf, char sample_type,
   }
 }
 
-
+// There are two type parameters. Acceptable sample types and a prefered sample type.
+// If the current clip is already one of the defined types in sampletype, this will be returned.
+// If not, the current clip will be converted to the prefered type.
 PClip ConvertAudio::Create(PClip clip, int sample_type, int prefered_type) 
 {
   if (clip->GetVideoInfo().SampleType()&sample_type) {  // Sample type is already ok!
@@ -220,7 +222,8 @@ AVSValue __cdecl ConvertAudio::Create(AVSValue args, void*, IScriptEnvironment*)
  *****************************************/
 
 ConvertToMono::ConvertToMono(PClip _clip) 
-  : GenericVideoFilter(ConvertAudioTo16bit::Create(_clip))
+  : GenericVideoFilter(ConvertAudio::Create(_clip,
+  SAMPLE_INT16|SAMPLE_FLOAT, SAMPLE_INT16))
 {
 	
   vi.nchannels = 1;
@@ -228,26 +231,39 @@ ConvertToMono::ConvertToMono(PClip _clip)
 }
 
 
-void __stdcall ConvertToMono::GetAudio(void* buf, int start, int count, IScriptEnvironment* env) 
+void __stdcall ConvertToMono::GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) 
 {
   int channels=vi.AudioChannels();
   if (tempbuffer_size) {
     if (tempbuffer_size<count) {
       delete[] tempbuffer;
-      tempbuffer=new signed short[count*channels];
+      tempbuffer=new char[count*channels*vi.BytesPerChannelSample()];
       tempbuffer_size=count;
     }
   } else {
-    tempbuffer=new signed short[count*channels];
+    tempbuffer=new char[count*channels*vi.BytesPerChannelSample()];
     tempbuffer_size=count;
   }
   child->GetAudio(tempbuffer, start, count, env);
-  signed short* samples = (signed short*)buf;
-  for (int i=0; i<count; i++) {
-    int tsample=0;    
-    for (int j=0;j<channels;j++) 
-      tsample+=tempbuffer[i*channels+j]; // Accumulate samples
-    samples[i] =(short)((tsample+(channels>>1))/channels);
+  if (vi.SampleType()&SAMPLE_INT16) {
+    signed short* samples = (signed short*)buf;
+    signed short* tempsamples = (signed short*)tempbuffer;
+    for (int i=0; i<count; i++) {
+      int tsample=0;    
+      for (int j=0;j<channels;j++) 
+        tsample+=tempbuffer[i*channels+j]; // Accumulate samples
+      samples[i] =(short)((tsample+(channels>>1))/channels);
+    }
+  } else if (vi.SampleType()&SAMPLE_FLOAT) {
+    SFLOAT* samples = (SFLOAT*)buf;
+    SFLOAT* tempsamples = (SFLOAT*)tempbuffer;
+    SFLOAT f_channels= (SFLOAT)channels;
+    for (int i=0; i<count; i++) {
+      SFLOAT tsample=0.0f;    
+      for (int j=0;j<channels;j++) 
+        tsample+=tempsamples[i*channels+j]; // Accumulate samples
+      samples[i] =(short)(tsample/f_channels);
+    }
   }
 }
 
@@ -278,7 +294,7 @@ EnsureVBRMP3Sync::EnsureVBRMP3Sync(PClip _clip)
 }
 
 
-void __stdcall EnsureVBRMP3Sync::GetAudio(void* buf, int start, int count, IScriptEnvironment* env) 
+void __stdcall EnsureVBRMP3Sync::GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env)
 {
   signed short* samples = (signed short*)buf;
 
@@ -332,7 +348,7 @@ MonoToStereo::MonoToStereo(PClip _child, PClip _clip, IScriptEnvironment* env)
 }
 
 
-void __stdcall MonoToStereo::GetAudio(void* buf, int start, int count, IScriptEnvironment* env) 
+void __stdcall MonoToStereo::GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) 
 {
 /*  if (tempbuffer_size) {
     if (tempbuffer_size<(count*4)) {
@@ -405,7 +421,7 @@ GetChannel::GetChannel(PClip _clip, int _channel)
 }
 
 
-void __stdcall GetChannel::GetAudio(void* buf, int start, int count, IScriptEnvironment* env) 
+void __stdcall GetChannel::GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) 
 {
   if (tempbuffer_size) {
     if (tempbuffer_size<(count*2)) {
@@ -488,13 +504,13 @@ AVSValue __cdecl KillAudio::Create(AVSValue args, void*, IScriptEnvironment*)
  *****************************/
 
 DelayAudio::DelayAudio(double delay, PClip _child)
- : GenericVideoFilter(_child), delay_samples(int(delay * vi.audio_samples_per_second + 0.5))
+ : GenericVideoFilter(_child), delay_samples(__int64(delay * vi.audio_samples_per_second + 0.5))
 {
   vi.num_audio_samples += delay_samples;
 }
 
 
-void DelayAudio::GetAudio(void* buf, int start, int count, IScriptEnvironment* env) 
+void DelayAudio::GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env)
 {
   child->GetAudio(buf, start-delay_samples, count, env);
 }
@@ -520,7 +536,7 @@ Amplify::Amplify(PClip _child, double _left_factor, double _right_factor)
     right_factor(int(_right_factor*65536+.5)) {}
 
 
-void __stdcall Amplify::GetAudio(void* buf, int start, int count, IScriptEnvironment* env) 
+void __stdcall Amplify::GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env)
 {
   child->GetAudio(buf, start, count, env);
   short* samples = (short*)buf;
@@ -563,7 +579,7 @@ Normalize::Normalize(PClip _child, double _left_factor, double _right_factor)
   }
 
 
-void __stdcall Normalize::GetAudio(void* buf, int start, int count, IScriptEnvironment* env) 
+void __stdcall Normalize::GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env)
 {
   short* samples = (short*)buf;
   if (max_volume==-1) {
@@ -629,7 +645,7 @@ MixAudio::MixAudio(PClip _child, PClip _clip, double _track1_factor, double _tra
 	}
 
 
-void __stdcall MixAudio::GetAudio(void* buf, int start, int count, IScriptEnvironment* env) 
+void __stdcall MixAudio::GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env)
 {
   if (tempbuffer_size) {
     if (tempbuffer_size<(count*2)) {
@@ -689,7 +705,7 @@ FilterAudio::FilterAudio(PClip _child, int _cutoff, float _rez, int _lowpass)
 } 
 
 
-void __stdcall FilterAudio::GetAudio(void* buf, int start, int count, IScriptEnvironment* env) 
+void __stdcall FilterAudio::GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) 
 {
   if (lowpass<2) {    
     //Algorithm 1: Lowpass is only used in ALT-mode
@@ -906,7 +922,7 @@ ResampleAudio::ResampleAudio(PClip _child, int _target_rate, IScriptEnvironment*
 }
 
 
-void __stdcall ResampleAudio::GetAudio(void* buf, int start, int count, IScriptEnvironment* env) 
+void __stdcall ResampleAudio::GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env)
 {
   if (skip_conversion) {
 		child->GetAudio(buf, start, count, env);

@@ -117,12 +117,12 @@ public:
   virtual ~ConvertToMono()
   {if (tempbuffer_size) {delete[] tempbuffer;tempbuffer_size=0;}}
 
-  void __stdcall GetAudio(void* buf, int start, int count, IScriptEnvironment* env);
+  void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env);
   static PClip Create(PClip clip);
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment*);
 
 private:
-  signed short *tempbuffer;
+  char *tempbuffer;
   int tempbuffer_size;
 };
 
@@ -134,7 +134,7 @@ class EnsureVBRMP3Sync : public GenericVideoFilter
 public:
   EnsureVBRMP3Sync(PClip _clip);
 
-  void __stdcall GetAudio(void* buf, int start, int count, IScriptEnvironment* env);
+  void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env);
   static PClip Create(PClip clip);
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment*);
 
@@ -152,7 +152,7 @@ public:
   virtual ~MonoToStereo()
   {if (tempbuffer_size) {delete[] tempbuffer;tempbuffer_size=0;}}
 
-  void __stdcall GetAudio(void* buf, int start, int count, IScriptEnvironment* env);
+  void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env);
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment*);
 
 private:
@@ -173,7 +173,7 @@ public:
   virtual ~GetChannel()
    {if (tempbuffer_size) {delete[] tempbuffer;tempbuffer_size=0;}}
 
-  void __stdcall GetAudio(void* buf, int start, int count, IScriptEnvironment* env);
+  void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env);
   static PClip Create_left(PClip clip);
   static PClip Create_right(PClip clip);
   static PClip Create_n(PClip clip, int n);
@@ -206,7 +206,7 @@ class DelayAudio : public GenericVideoFilter
 {  
 public:
   DelayAudio(double delay, PClip _child);
-  virtual void __stdcall GetAudio(void* buf, int start, int count, IScriptEnvironment* env);
+  void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env);
 
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
 
@@ -223,7 +223,7 @@ class Amplify : public GenericVideoFilter
 {
 public:
   Amplify(PClip _child, double _left_factor, double _right_factor);
-  void __stdcall GetAudio(void* buf, int start, int count, IScriptEnvironment* env);
+  void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env);
 
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
   static AVSValue __cdecl Create_dB(AVSValue args, void*, IScriptEnvironment* env);
@@ -250,7 +250,7 @@ class FilterAudio : public GenericVideoFilter
 {
 public:
   FilterAudio(PClip _child, int _cutoff, float _rez, int lowpass);
-  void __stdcall GetAudio(void* buf, int start, int count, IScriptEnvironment* env);
+  void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env);
   virtual ~FilterAudio()
   {if (tempbuffer_size) {delete[] tempbuffer;tempbuffer_size=0;}}
 
@@ -293,7 +293,7 @@ class Normalize : public GenericVideoFilter
 {
 public:
   Normalize(PClip _child, double _left_factor, double _right_factor);
-  void __stdcall GetAudio(void* buf, int start, int count, IScriptEnvironment* env);
+  void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env);
 
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
   static AVSValue __cdecl Create_dB(AVSValue args, void*, IScriptEnvironment* env);
@@ -318,7 +318,7 @@ class MixAudio : public GenericVideoFilter
 {
 public:
   MixAudio(PClip _child, PClip _clip, double _track1_factor, double _track2_factor, IScriptEnvironment* env);
-  void __stdcall GetAudio(void* buf, int start, int count, IScriptEnvironment* env);
+  void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env);
 
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
   virtual ~MixAudio() {delete[] tempbuffer;tempbuffer_size=0;}
@@ -350,7 +350,7 @@ public:
   ResampleAudio(PClip _child, int _target_rate, IScriptEnvironment* env);
   virtual ~ResampleAudio() 
     { delete[] srcbuffer; }
-  void __stdcall GetAudio(void* buf, int start, int count, IScriptEnvironment* env);
+  void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env);
 
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
 
