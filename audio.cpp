@@ -466,7 +466,6 @@ void __stdcall Normalize::GetAudio(void* buf, __int64 start, __int64 count, IScr
   if (max_volume<0.0f) {
     int passes=vi.num_audio_samples/count;
     int num_samples=count;
-    num_samples*=vi.AudioChannels();
     // Read samples into buffer and test them
     if (vi.SampleType()==SAMPLE_INT16) {
       short* samples = (short*)buf;
@@ -479,7 +478,6 @@ void __stdcall Normalize::GetAudio(void* buf, __int64 start, __int64 count, IScr
       }    
       // Remaining samples
       int rem_samples=vi.num_audio_samples%count;
-      rem_samples*=vi.AudioChannels();
       child->GetAudio(buf, num_samples*passes, rem_samples, env);
       for (i=0;i<rem_samples;i++) {
         i_max_volume=max(abs(samples[i]),i_max_volume);
@@ -822,7 +820,7 @@ AVSValue __cdecl FilterAudio::Create_LowPassALT(AVSValue args, void*, IScriptEnv
 ResampleAudio::ResampleAudio(PClip _child, int _target_rate, IScriptEnvironment* env)
   : GenericVideoFilter(ConvertAudio::Create(_child,SAMPLE_INT16|SAMPLE_FLOAT,SAMPLE_FLOAT)), target_rate(_target_rate)
 {
-  if (target_rate==vi.audio_samples_per_second) {
+  if ((target_rate==vi.audio_samples_per_second)||(vi.audio_samples_per_second==0)) {
 		skip_conversion=true;
 		return;
 	} 

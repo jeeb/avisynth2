@@ -117,7 +117,15 @@ void Tokenizer::NextToken() {
       break;
 
     case '<':    // these operators have versions followed by '='
-    case '>':
+      if ((pc[1] == '=') || (pc[1] == '>')) {
+        SetToOperator(pc[0] * 256 + pc[1]);
+        pc += 2;
+      } else {
+        SetToOperator(*pc++);
+      }
+      break;
+
+    case '>':    // these operators have versions followed by '='
     case '!':
     case '=':
       if (pc[1] != '=') {
@@ -127,7 +135,7 @@ void Tokenizer::NextToken() {
         pc += 2;
       }
       break;
-
+ 
     case '+':    // these operators have single and double (++, &&, ||, ==) versions
     case '&':
     case '|':
