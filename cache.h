@@ -21,21 +21,31 @@
 
 #include "internal.h"
 #include <vector>
-#include <utility>  //for pair
-#include <memory>   //for auto_ptr
 using namespace std;
-
 
 /********************************************************************
 ********************************************************************/
 
 
-//polymorphic frame cache for use by the Cache filter
+//polymorphic frame cache for use by the Cache Filter
 class FrameCache {
 
 public:
-  virtual PVideoFrame fetch(int n) = 0;
-  virtual void store(int n, const PVideoFrame& frame) = 0;
+  virtual PVideoFrame __stdcall  fetch(int n) { return PVideoFrame(); }
+  virtual void __stdcall  store(int n, const PVideoFrame& frame) { }
+  virtual ~FrameCache() { }
+
+protected:
+	struct CachedVideoFrame {
+	  int n;
+	  long seq_number;
+	  PVideoFrame frame;
+    CachedVideoFrame() : n(-1) { }
+    CachedVideoFrame(int _n, const PVideoFrame& _frame);
+    void set(int _n, const PVideoFrame& _frame);
+    bool isValid() const ;
+  };
+  typedef vector<CachedVideoFrame> CacheVector;
 
 };  
 
@@ -43,22 +53,26 @@ public:
 //frames out of range are likely to be uncached
 class RangeCache : public FrameCache {
 
+  CacheVector cache;
+
 public:
-  RangeCache(int scale);
+  RangeCache(int scale) : cache(scale) { }
   
-  virtual PVideoFrame fetch(int n);
-  virtual void store(int n, const PVideoFrame& frame);
+  virtual PVideoFrame __stdcall fetch(int n);
+  virtual void __stdcall store(int n, const PVideoFrame& frame);
 };
 
 //frame cache who keeps the last used frames
-//(fectched frames restart at the beginning of the queue)
+//(fetched frames restart at the beginning of the queue)
 class QueueCache : public FrameCache {
 
-public:
-  QueueCache(int scale);
+  CacheVector cache;
 
-  virtual PVideoFrame fetch(int n);
-  virtual void store(int n, const PVideoFrame& frame);
+public:
+  QueueCache(int scale) : cache(scale) { }
+
+  virtual PVideoFrame __stdcall fetch(int n);
+  virtual void __stdcall store(int n, const PVideoFrame& frame);
 };
 
 
@@ -101,6 +115,12 @@ private:
         CACHE_ST_BEING_GENERATED = 1<<2
   };
 
+
+/* Replacement code of the private section when using FrameCache
+  
+  FrameCache* cache;
+
+ */
 
 };
 
