@@ -25,13 +25,6 @@ LicenseText "AviSynth is distributed under the following license agreement.$\nYo
 LicenseData GPL.txt
 
 
-Function .onInit
-	
-MessageBox MB_YESNO|MB_ICONQUESTION   "This will install AviSynth 2.5.0 beta. Do you wish to continue ?" IDYES NoAbort
-		Abort
-	NoAbort:
-FunctionEnd
-
 InstallDir "$PROGRAMFILES\AviSynth 2.5"
 
 InstallDirRegKey HKLM SOFTWARE\AviSynth "Install_Dir_2_5"
@@ -86,7 +79,6 @@ CreateDirectory  "$SMPROGRAMS\AviSynth 2.5"
 
 Delete $INSTDIR\Uninstall.exe 
 WriteUninstaller $INSTDIR\Uninstall.exe
-
 goto dll_ok
 dll_not_ok:
 MessageBox MB_OK "Could not copy avisynth.dll to system directory - Close down all applications that use Avisynth, and sure to have write permission to the system directory, and try again."
@@ -132,10 +124,63 @@ SectionEnd
 ;WriteUninstaller $INSTDIR\Uninstall.exe
 
 ;SectionEnd
+
+SectionDivider
+
 Section "Associate AVS files with Notepad"
   SectionIn 1 2
   WriteRegStr HKCR "avsfile\shell\open\command" "" 'notepad.exe "%1"'
 SectionEnd
+
+Section "Associate AVS files with Media Player 6.4"
+;  SectionIn 1 2
+  IfFileExists "$PROGRAMFILES\Windows Media Player\mplayer2.exe" mplayer_found
+  MessageBox MB_OK "The location of mplayer2.exe could not be found - you need to set the association manually!" IDOK mplayer_end
+  goto mplayer_end
+mplayer_found:	
+  WriteRegStr HKCR "avsfile\shell\open\command" "" '$PROGRAMFILES\Windows Media Player\mplayer2.exe "%1"'
+mplayer_end:
+SectionEnd
+
+!define SECTION_ON 0x80000000
+!define SECTION_OFF 0x7FFFFFFF
+!define ass_notepad 4
+!define ass_mediaplayer 5
+
+Function .onInit
+  MessageBox MB_YESNO|MB_ICONQUESTION   "This will install AviSynth 2.5.0 beta. Do you wish to continue ?" IDYES NoAbort
+		Abort
+	NoAbort:
+  SectionGetFlags ${ass_notepad} $6
+  SectionGetFlags ${ass_mediaplayer} $7
+  IntOp $6 $6 | ${SECTION_ON}
+  IntOp $7 $7 & ${SECTION_OFF}
+FunctionEnd
+
+
+Function .onSelChange
+  SectionGetFlags ${ass_notepad} $1
+  SectionGetFlags ${ass_mediaplayer} $2
+  ; Set last unchecked as checked, if both are active
+  IntOp $3 $1 & ${SECTION_ON}
+  IntOp $4 $2 & ${SECTION_ON}
+  IntOp $5 $3 & $4
+  IntCmp $5 0 endosl_end   ; Both are not checked - jump!
+  IntOp $6 $6 ^ ${SECTION_ON}  ; Invert on flag
+  IntOp $7 $7 ^ ${SECTION_ON}
+  IntOp $1 $1 & ${SECTION_OFF}  ; Clear selection
+  IntOp $2 $2 & ${SECTION_OFF}
+  IntOp $1 $1 | $6  
+  IntOp $2 $2 | $7
+  SectionSetFlags ${ass_notepad} $1
+  SectionSetFlags ${ass_mediaplayer} $2
+  
+endosl_end:
+  SectionGetFlags ${ass_notepad} $6
+  SectionGetFlags ${ass_mediaplayer} $7
+  IntOp $6 $6 & ${SECTION_ON}
+  IntOp $7 $7 & ${SECTION_ON}
+FunctionEnd
 
 Section "Uninstall"
 
