@@ -471,8 +471,26 @@ static PVideoFrame CreateBlankFrame(const VideoInfo& vi, int color, IScriptEnvir
   if (!vi.HasVideo()) return 0;
   PVideoFrame frame = env->NewVideoFrame(vi);
   BYTE* p = frame->GetWritePtr();
-  const int size = frame->GetPitch() * frame->GetHeight();
-  if (vi.IsYUY2()) {
+  int size = frame->GetPitch() * frame->GetHeight();
+  if (vi.IsYV12()) {
+    int color_yuv = RGB2YUV(color);
+    int Cval = (color_yuv>>16)&0xff;
+    Cval |= (Cval<<8)|(Cval<<16)|(Cval<<24);
+    for (int i=0; i<size; i+=4)
+      *(unsigned*)(p+i) = Cval;
+    p = frame->GetWritePtr(PLANAR_U);
+    size = frame->GetPitch(PLANAR_U) * frame->GetHeight(PLANAR_U);
+    Cval = (color_yuv>>8)&0xff;
+    Cval |= (Cval<<8)|(Cval<<16)|(Cval<<24);
+    for (i=0; i<size; i+=4)
+      *(unsigned*)(p+i) = Cval;
+    size = frame->GetPitch(PLANAR_V) * frame->GetHeight(PLANAR_V);
+    p = frame->GetWritePtr(PLANAR_V);
+    Cval = (color_yuv)&0xff;
+    Cval |= (Cval<<8)|(Cval<<16)|(Cval<<24);
+    for (i=0; i<size; i+=4)
+      *(unsigned*)(p+i) = Cval;
+  } else if (vi.IsYUY2()) {
     int color_yuv = RGB2YUV(color);
     unsigned d = (color_yuv>>16) * 0x010001 + ((color_yuv>>8)&255) * 0x0100 + (color_yuv&255) * 0x01000000;
     for (int i=0; i<size; i+=4)
@@ -492,7 +510,11 @@ static PVideoFrame CreateBlankFrame(const VideoInfo& vi, int color, IScriptEnvir
 }
 
 static AVSValue __cdecl Create_BlankClip(AVSValue args, void*, IScriptEnvironment* env) {
-  VideoInfo vi_default = { 640, 480, 24, 1, 240, VideoInfo::CS_BGR32, 44100, 0, 2, SAMPLE_INT16 };  /// fixme: NOTHING is probably not correct due to changed structs!!!!  Stupid way of defaulting anyway
+  VideoInfo vi_default;
+  memset(&vi_default, 0, sizeof(VideoInfo));
+  vi_default.fps_denominator=1; vi_default.fps_numerator=24; vi_default.height=480; vi_default.pixel_type=VideoInfo::CS_BGR32; vi_default.num_frames=240; vi_default.width=640;
+  vi_default.audio_samples_per_second=44100; vi_default.nchannels=1; vi_default.num_audio_samples=44100*10; vi_default.sample_type=SAMPLE_INT16;
+
   VideoInfo vi;
   if (args[0].Defined()) {
     vi_default = args[0].AsClip()->GetVideoInfo();
@@ -505,12 +527,14 @@ static AVSValue __cdecl Create_BlankClip(AVSValue args, void*, IScriptEnvironmen
     const char* pixel_type_string = args[4].AsString();
     if (!lstrcmpi(pixel_type_string, "YUY2")) {
       vi.pixel_type = VideoInfo::CS_YUY2;
+    } else if (!lstrcmpi(pixel_type_string, "YV12")) {
+      vi.pixel_type = VideoInfo::CS_YV12;
     } else if (!lstrcmpi(pixel_type_string, "RGB24")) {
       vi.pixel_type = VideoInfo::CS_BGR24;
     } else if (!lstrcmpi(pixel_type_string, "RGB32")) {
       vi.pixel_type = VideoInfo::CS_BGR32;
     } else {
-      env->ThrowError("BlankClip: pixel_type must be \"RGB32\", \"RGB24\", or \"YUY2\"");
+      env->ThrowError("BlankClip: pixel_type must be \"RGB32\", \"RGB24\", \"YV12\" or \"YUY2\"");
     }
   }
   double n = args[5].AsFloat(double(vi_default.fps_numerator));
@@ -1463,8 +1487,8 @@ AVSValue __cdecl Create_SegmentedSource(AVSValue args, void* use_directshow, ISc
 }
 
 AVSValue __cdecl Create_Version(AVSValue args, void*, IScriptEnvironment* env) {
-  return Create_MessageClip("Avisynth v2.5 alpha [Test Version]\n"
-          "\xA9 2000-2002 Ben Rudiak-Gould, et al.\n"
+  return Create_MessageClip(AVS_VERSTR
+          "\n\xA9 2000-2002 Ben Rudiak-Gould, et al.\n"
           "http://www.avisynth.org",
   -1, -1, VideoInfo::CS_BGR24, false, 0xECF2BF, 0, 0x404040, env);
 }

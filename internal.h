@@ -19,6 +19,8 @@
 #ifndef __Internal_H__
 #define __Internal_H__
 
+#define AVS_VERSION 2.07
+#define AVS_VERSTR "AviSynth 2.50 beta (avisynth.org) 13 nov. 2002"
 
 #define WIN32_LEAN_AND_MEAN
 #include <objbase.h>
