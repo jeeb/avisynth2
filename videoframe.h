@@ -218,17 +218,18 @@ class NormalVideoFrame : public VideoFrameAncestor {
 
   typedef smart_ptr_to_cst<NormalVideoFrame> CPNormalVideoFrame;
 
-  BufferWindow main;
-
   inline void CheckPlane(Plane plane) const { if (plane != NOT_PLANAR) throw NoSuchPlane(); }
 
+protected:
+  
+  BufferWindow main;
 
-
-protected: 
   NormalVideoFrame(const NormalVideoFrame& other) : VideoFrameAncestor(other), main(other.main) { }
   NormalVideoFrame(dimension width, dimension height, Align align, bool fieldBased)
     : VideoFrameAncestor(fieldBased), main(WidthToRowSize(width), HeightCheck(height), align) { }
+
   
+
 public:
   virtual dimension GetPitch(Plane plane) const throw(NoSuchPlane) { CheckPlane(plane); return main.GetPitch(); }
   virtual dimension GetRowSize(Plane plane) const throw(NoSuchPlane) { CheckPlane(plane); return main.GetRowSize(); }
@@ -237,6 +238,7 @@ public:
 
   virtual const BYTE * GetReadPtr(Plane plane) const throw(NoSuchPlane) { CheckPlane(plane); return main.GetReadPtr(); }
   virtual BYTE * GetWritePtr(Plane plane) throw(NoSuchPlane) { CheckPlane(plane); return main.GetWritePtr(); }
+
 
   //here we are still in pixels
   virtual void SizeChange(dimension left, dimension right, dimension top, dimension bottom)
@@ -252,47 +254,63 @@ public:
   virtual void Blend(CPVideoFrame other, float factor);
 };
 
-class RGB24VideoFrame : public NormalVideoFrame {
+
+class RGBVideoFrame : public NormalVideoFrame {
+
+public:
+  RGBVideoFrame(const RGBVideoFrame& other) : NormalVideoFrame(other) { }
+  RGBVideoFrame(dimension width, dimension height, Align align, bool fieldBased)
+    : NormalVideoFrame(width, height, align, fieldBased) { }
+
+
+  virtual void FlipHorizontal();
+
+  virtual void TurnLeft(); 
+  virtual void TurnRight();
+
+};
+
+class RGB24VideoFrame : public RGBVideoFrame {
 
 protected:
   virtual RefCounted * clone() const { return new RGB24VideoFrame(*this); }  
 
 
 public:
-  template <class VF> RGB24VideoFrame(const VF& other);  //converting constructor
-  template <> RGB24VideoFrame(const RGB24VideoFrame& other) : NormalVideoFrame(other) { } 
+  RGB24VideoFrame(const RGB32VideoFrame& other);  //converting constrcutors
+  RGB24VideoFrame(const YUY2VideoFrame& other);
+  RGB24VideoFrame(const PlanarVideoFrame& other);
+  RGB24VideoFrame(const RGB24VideoFrame& other) : RGBVideoFrame(other) { } 
   RGB24VideoFrame(dimension width, dimension height, Align align, bool fieldBased)
-    : NormalVideoFrame(width, height, align, fieldBased) { }
+    : RGBVideoFrame(width, height, align, fieldBased) { }
 
   virtual ColorSpace GetColorSpace() const { return VideoInfo::CS_BGR24; }
 
+  virtual dimension WidthToRowSize(dimension width) const { return 3 * width; }
+
   virtual CPVideoFrame ConvertTo(ColorSpace space) const;
 
-  virtual void FlipHorizontal();
-
-  virtual void TurnLeft(); 
-  virtual void TurnRight();
 };
 
-class RGB32VideoFrame : public NormalVideoFrame {
+class RGB32VideoFrame : public RGBVideoFrame {
 
 protected:
   virtual RefCounted * clone() const { return new RGB32VideoFrame(*this); }
 
 public:
-  template <class VF> RGB32VideoFrame(const VF& other);  //converting constructor
-  template <>  RGB32VideoFrame(const RGB32VideoFrame& other) : NormalVideoFrame(other) { } 
+  RGB32VideoFrame(const RGB24VideoFrame& other);  //converting constrcutors
+  RGB32VideoFrame(const YUY2VideoFrame& other);
+  RGB32VideoFrame(const PlanarVideoFrame& other);
+  RGB32VideoFrame(const RGB32VideoFrame& other) : RGBVideoFrame(other) { } 
   RGB32VideoFrame(dimension width, dimension height, Align align, bool fieldBased)
-    : NormalVideoFrame(width, height, align, fieldBased) { }
+    : RGBVideoFrame(width, height, align, fieldBased) { }
 
   virtual ColorSpace GetColorSpace() const { return VideoInfo::CS_BGR32; }
 
+  virtual dimension WidthToRowSize(dimension width) const { return 4 * width; }
+
   virtual CPVideoFrame ConvertTo(ColorSpace space) const;
 
-  virtual void FlipHorizontal();
-
-  virtual void TurnLeft(); 
-  virtual void TurnRight();
 };
 
 
@@ -305,8 +323,10 @@ protected:
 
   
 public:
-  template <class VF> YUY2VideoFrame(const VF& other); //converting constructor
-  template <> YUY2VideoFrame(const YUY2VideoFrame& other) : NormalVideoFrame(other) { } //spec of the above
+  YUY2VideoFrame(const RGB32VideoFrame& other);  //converting constructors
+  YUY2VideoFrame(const RGB24VideoFrame& other);
+  YUY2VideoFrame(const PlanarVideoFrame& other);
+  YUY2VideoFrame(const YUY2VideoFrame& other) : NormalVideoFrame(other) { } //spec of the above
   YUY2VideoFrame(dimension width, dimension height, Align align, bool fieldBased)
     : NormalVideoFrame(width, height, align, fieldBased)  { }    
 
@@ -354,8 +374,10 @@ protected:
   virtual RefCounted * clone() const { return new PlanarVideoFrame(*this); }
 
 public:
-  template <class VF> PlanarVideoFrame(const VF& other);  //converting constructor
-  template <> PlanarVideoFrame(const PlanarVideoFrame& other) : VideoFrameAncestor(other), y(other.y), u(other.u), v(other.v) { }
+  PlanarVideoFrame(const RGB32VideoFrame& other);  //converting constructors
+  PlanarVideoFrame(const RGB24VideoFrame& other);
+  PlanarVideoFrame(const YUY2VideoFrame& other);
+  PlanarVideoFrame(const PlanarVideoFrame& other) : VideoFrameAncestor(other), y(other.y), u(other.u), v(other.v) { }
   PlanarVideoFrame(dimension width, dimension height, Align align, bool fieldBased) 
     : VideoFrameAncestor(fieldBased), y(WidthToRowSize(width), HeightCheck(height), align),
        u(width>>1, height>>1, align), v(width>>1, height>>1, align) { }
@@ -370,6 +392,12 @@ public:
 
   virtual ColorSpace GetColorSpace() const { return VideoInfo::CS_YV12; }
   
+  virtual dimension GetVideoHeight() const { return y.GetHeight(); }  
+  virtual dimension GetVideoWidth() const { return y.GetWidth(); }
+
+  virtual dimension 
+
+
   virtual CPVideoFrame ConvertTo(ColorSpace space) const;
 
   virtual void SizeChange(dimension left, dimension right, dimension top, dimension bottom);
