@@ -317,8 +317,8 @@ Tweak::Tweak( PClip _child, double _hue, double _sat, double _bright, double _co
               IScriptEnvironment* env ) 
   : GenericVideoFilter(_child), hue(_hue), sat(_sat), bright(_bright), cont(_cont)
 {
-  if (!vi.IsYUY2())
-		env->ThrowError("Tweak: YUY2 data only (no RGB); use ConvertToYUY2");
+  if (vi.IsRGB())
+		env->ThrowError("Tweak: YUV data only (no RGB)");
 }
 
 
@@ -326,21 +326,25 @@ PVideoFrame __stdcall Tweak::GetFrame(int n, IScriptEnvironment* env)
 {
 	double Hue;
 	int Sin, Cos;
-	int y1, y2, u, v, u2, v2;
+	int y1, y2, u, v;
 	int Sat = (int) (sat * 512);
 	int Cont = (int) (cont * 512);
 	int Bright = (int) bright;
 
-    PVideoFrame src = child->GetFrame(n, env);
-    env->MakeWritable(&src);
+  PVideoFrame src = child->GetFrame(n, env);
+  env->MakeWritable(&src);
 
-    BYTE* srcp = src->GetWritePtr();
+  BYTE* srcp = src->GetWritePtr();
 
-    const int src_pitch = src->GetPitch();
-    const int row_size = src->GetRowSize();
-	if (row_size % 4)
-		env->ThrowError("Tweak: width must be a multiple of 2; use Crop");
-    const int height = src->GetHeight();
+  int src_pitch = src->GetPitch();
+  int height = src->GetHeight();
+  int row_size = src->GetRowSize();
+	
+  if (row_size % 2 && vi.IsYUY2())
+		env->ThrowError("Tweak: YUY2 width must be a multiple of 2; use Crop");
+  if (row_size % 4 && vi.IsYV12())
+		env->ThrowError("Tweak: YV12 width must be a multiple of 4; use Crop");
+  
 
  	Hue = (hue * 3.1415926) / 180.0;
 	Sin = (int) (sin(Hue) * 4096);
@@ -351,10 +355,17 @@ PVideoFrame __stdcall Tweak::GetFrame(int n, IScriptEnvironment* env)
 		__int64 satcont64 = (in64 Sat<<48) + (in64 Cont<<32) + (in64 Sat<<16) + in64 Cont;
 		__int64 bright64 = (in64 Bright<<32) + in64 Bright;
 
-		asm_tweak_ISSE(srcp, row_size>>2, height, src_pitch-row_size, hue64, satcont64, bright64);
+    if (vi.IsYUY2()) {
+      asm_tweak_ISSE_YUY2(srcp, row_size>>2, height, src_pitch-row_size, hue64, satcont64, bright64);   
+      return src;
+    }
+    else if (vi.IsYV12()) {
+      //TODO: asm_tweak_ISSE_YV12
+      //return src;
+    }
 	}
-	else {
 
+	if (vi.IsYUY2()) {
 		for (int y = 0; y < height; y++)
 		{
 			for (int x = 0; x < row_size; x+=4)
@@ -368,30 +379,60 @@ PVideoFrame __stdcall Tweak::GetFrame(int n, IScriptEnvironment* env)
 				y2 += (int) Bright;
 				y1 += 16;
 				y2 += 16;
-				if (y1 < 0) y1 = 0;
-				else if (y1 > 255) y1 = 255;
-				if (y2 < 0) y2 = 0;
-				else if (y2 > 255) y2 = 255;
+				y1 = min(max(y1,0),255);
+        y2 = min(max(y2,0),255);
 				srcp[x] = (int) y1;
 				srcp[x+2] = (int) y2;
 
 				/* hue and saturation */
 				u = srcp[x+1] - 128;
 				v = srcp[x+3] - 128;
-				u2 = (u * Cos + v * Sin) >> 12;
-				v2 = (v * Cos - u * Sin) >> 12;
-				u = ((u2 * Sat) >> 9) + 128;
-				v = ((v2 * Sat) >> 9) + 128;
-				if (u < 0) u = 0;
-				if (u > 255) u = 255;
-				if (v < 0) v = 0;
-				if (v > 255) v = 255;
+				u = (u * Cos + v * Sin) >> 12;
+				v = (v * Cos - u * Sin) >> 12;
+				u = ((u * Sat) >> 9) + 128;
+				v = ((v * Sat) >> 9) + 128;
+				u = min(max(u,0),255);
+        v = min(max(v,0),255);
 				srcp[x+1] = u;
 				srcp[x+3] = v;
 			}
 			srcp += src_pitch;
 		}
-	}
+  } else if (vi.IsYV12()) {
+    int y;  // VC6 scoping sucks
+    for (y=0; y<height; ++y) {
+      for (int x=0; x<row_size; ++x) {
+        /* brightness and contrast */
+				y1 = srcp[x] - 16;
+				y1 = (Cont * y1) >> 9;				
+				y1 += (int) Bright;
+				y1 += 16;				
+				y1 = min(max(y1,0),255);
+				srcp[x] = (int) y1;
+      }
+      srcp += src_pitch;
+    }
+    src_pitch = src->GetPitch(PLANAR_U);
+    BYTE * srcpu = src->GetWritePtr(PLANAR_U);
+    BYTE * srcpv = src->GetWritePtr(PLANAR_V);
+    row_size = src->GetRowSize(PLANAR_U);
+    height = src->GetHeight(PLANAR_U);
+    for (y=0; y<height; ++y) {
+      for (int x=0; x<row_size; ++x) {
+        /* hue and saturation */
+				u = srcpu[x] - 128;
+				v = srcpv[x] - 128;
+				u = (u * Cos + v * Sin) >> 12;
+				v = (v * Cos - u * Sin) >> 12;
+				u = ((u * Sat) >> 9) + 128;
+				v = ((v * Sat) >> 9) + 128;
+				srcpu[x] = min(max(u,0),255);
+        srcpv[x] = min(max(v,0),255);				
+      }
+      srcpu += src_pitch;
+      srcpv += src_pitch;
+    }
+  }
 
   return src;
 }
@@ -409,7 +450,7 @@ AVSValue __cdecl Tweak::Create(AVSValue args, void* user_data, IScriptEnvironmen
 
 
 // Integer SSE optimization by "Dividee".
-void __declspec(naked) asm_tweak_ISSE( BYTE *srcp, int w, int h, int modulo, __int64 hue, 
+void __declspec(naked) asm_tweak_ISSE_YUY2( BYTE *srcp, int w, int h, int modulo, __int64 hue, 
                                        __int64 satcont, __int64 bright ) 
 {
 	static const __int64 norm = 0x0080001000800010i64;
