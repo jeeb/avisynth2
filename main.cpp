@@ -20,8 +20,10 @@
 // http://www.gnu.org/copyleft/gpl.html .
 
 
+#define FP_STATE 0x9001f
 #define INITGUID
 #include "internal.h"
+#include <float.h>
 
 
 static long gRefCnt=0;
@@ -445,6 +447,8 @@ STDMETHODIMP CAVIFileSynth::Open(LPCSTR szFile, UINT mode, LPCOLESTR lpszFileNam
 }
 
 bool CAVIFileSynth::DelayInit() {
+  int fp_state = _control87( 0, 0 );
+  _control87( FP_STATE, 0xffffffff );
   if (szScriptName) {
     try {
       try {
@@ -463,17 +467,26 @@ bool CAVIFileSynth::DelayInit() {
         vi = &filter_graph->GetVideoInfo();
       }
       catch (AvisynthError error) {
+        _clear87();
+        __asm {emms};
+        _control87( fp_state, 0xffffffff );
         error_msg = error.msg;
         AVSValue args[2] = { error.msg, 0xff3333 };
         static const char* arg_names[2] = { 0, "text_color" };
         filter_graph = env->Invoke("MessageClip", AVSValue(args, 2), arg_names).AsClip();
         vi = &filter_graph->GetVideoInfo();
       }
+      _clear87();
+      __asm {emms};
+      _control87( fp_state, 0xffffffff );
       delete[] szScriptName;
       szScriptName = 0;
       return true;
     }
     catch (...) {
+      _clear87();
+      __asm {emms};
+      _control87( fp_state, 0xffffffff );
       return false;
     }
   } else {
@@ -739,6 +752,8 @@ STDMETHODIMP CAVIStreamSynth::Read(LONG lStart, LONG lSamples, LPVOID lpBuffer, 
 
 //  _RPT3(0,"%p->CAVIStreamSynth::Read(%ld samples at %ld)\n", this, lSamples, lStart);
 //  _RPT2(0,"\tbuffer: %ld bytes at %p\n", cbBuffer, lpBuffer);
+  int fp_state = _control87( 0, 0 );
+  _control87( FP_STATE, 0xffffffff );
 
   if (fAudio) {
     if (lSamples == AVISTREAMREAD_CONVENIENT)
@@ -778,9 +793,14 @@ STDMETHODIMP CAVIStreamSynth::Read(LONG lStart, LONG lSamples, LPVOID lpBuffer, 
     }
   }
   catch (...) {
+    _clear87();
+    __asm {emms};
+    _control87( fp_state, 0xffffffff );
     return E_FAIL;
   }
-
+  _clear87();
+  __asm {emms};
+  _control87( fp_state, 0xffffffff );
   return S_OK;
 }
 
