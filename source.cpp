@@ -1109,8 +1109,17 @@ public:
     pvf = env->NewVideoFrame(vi, 4);
     PBYTE buf;
     pSamples->GetPointer(&buf);
+    if (!vi.IsPlanar()) {
     env->BitBlt(pvf->GetWritePtr(), pvf->GetPitch(), buf,
       pvf->GetPitch(), pvf->GetRowSize(), pvf->GetHeight());
+    } else {
+    env->BitBlt(pvf->GetWritePtr(PLANAR_Y), pvf->GetPitch(PLANAR_Y), buf,
+      pvf->GetPitch(PLANAR_Y), pvf->GetRowSize(PLANAR_Y), pvf->GetHeight(PLANAR_Y));
+    env->BitBlt(pvf->GetWritePtr(PLANAR_V), pvf->GetPitch(PLANAR_U), buf + pvf->GetOffset(PLANAR_U),
+      pvf->GetPitch(PLANAR_U), pvf->GetRowSize(PLANAR_U), pvf->GetHeight(PLANAR_U));
+    env->BitBlt(pvf->GetWritePtr(PLANAR_U), pvf->GetPitch(PLANAR_V), buf+ pvf->GetOffset(PLANAR_V),
+      pvf->GetPitch(PLANAR_V), pvf->GetRowSize(PLANAR_V), pvf->GetHeight(PLANAR_V));
+    }
     if (state == State_Running) {
       SetEvent(evtNewSampleReady);
       WaitForSingleObject(evtDoneWithSample, INFINITE);
@@ -1308,7 +1317,7 @@ public:
 
     cur_frame = 0;
     base_sample_time = 0;
-    no_search = false;
+    no_search = true;   // FIXME: Seeking manually disabled
   }
 
   ~DirectShowSource() { get_sample.StopGraph(); gb->Release(); }
@@ -1340,6 +1349,7 @@ public:
       __int64 sample_time = __int64(n) * avg_time_per_frame + (avg_time_per_frame>>1);
       if (n > cur_frame || n > cur_frame+10) {
         if (get_sample.SeekTo(sample_time)!=S_OK) {
+          no_search=true;
           if (cur_frame<n) {  // seek manually
             while (get_sample.GetSampleEndTime()+base_sample_time <= sample_time) {
               get_sample.NextSample();

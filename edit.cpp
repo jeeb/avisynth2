@@ -69,7 +69,7 @@ PVideoFrame Trim::GetFrame(int n, IScriptEnvironment* env)
 }
 
 
-void __stdcall Trim::GetAudio(void* buf, int start, int count, IScriptEnvironment* env) 
+void __stdcall Trim::GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) 
 {
   child->GetAudio(buf, start+audio_offset, count, env);
 }
@@ -232,14 +232,14 @@ PVideoFrame Splice::GetFrame(int n, IScriptEnvironment* env)
 }
 
 
-void Splice::GetAudio(void* buf, int start, int count, IScriptEnvironment* env) 
+void Splice::GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) 
 {
   if (start+count <= audio_switchover_point)
     child->GetAudio(buf, start, count, env);
   else if (start >= audio_switchover_point)
     child2->GetAudio(buf, start - audio_switchover_point, count, env);
   else {
-    const int count1 = audio_switchover_point - start;
+    const __int64 count1 = audio_switchover_point - start;
     child->GetAudio(buf, start, count1, env);
     child2->GetAudio((char*)buf+vi.BytesFromAudioSamples(count1), 0, count-count1, env);
   }
@@ -366,7 +366,7 @@ PVideoFrame Dissolve::GetFrame(int n, IScriptEnvironment* env)
 }
 
 
-void Dissolve::GetAudio(void* buf, int start, int count, IScriptEnvironment* env) 
+void Dissolve::GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) 
 {
   if (start+count <= audio_fade_start)
     child->GetAudio(buf, start, count, env);
@@ -519,7 +519,7 @@ bool Reverse::GetParity(int n)
 }
 
 
-void Reverse::GetAudio(void* buf, int start, int count, IScriptEnvironment* env) 
+void Reverse::GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) 
 {
   child->GetAudio(buf, vi.num_audio_samples - start - count, count, env);
   int xor = vi.BytesPerAudioSample() - 1;
@@ -568,7 +568,7 @@ Loop::Loop(PClip _child, int _times, int _start, int _end, IScriptEnvironment* e
 
     start_samples = (((start*vi.audio_samples_per_second)*vi.fps_denominator)/ vi.fps_numerator);
     loop_ends_at_sample = (((end*vi.audio_samples_per_second)*vi.fps_denominator)/ vi.fps_numerator);
-    loop_len_samples = (int)(0.5+(double)(loop_ends_at_sample-start_samples)/(double)times);
+    loop_len_samples = (__int64)(0.5+(double)(loop_ends_at_sample-start_samples)/(double)times);
 
     vi.num_audio_samples+=(loop_len_samples*times);
   }
@@ -586,7 +586,7 @@ bool Loop::GetParity(int n)
   return child->GetParity(convert(n));
 }
  
-void Loop::GetAudio(void* buf, int s_start, int count, IScriptEnvironment* env) {
+void Loop::GetAudio(void* buf, __int64 s_start, __int64 count, IScriptEnvironment* env) {
 
 
   if (s_start+count<start_samples) {
@@ -611,7 +611,7 @@ void Loop::GetAudio(void* buf, int s_start, int count, IScriptEnvironment* env) 
       child->GetAudio(samples,start_samples+fetch_at_sample,count,env);
       return;
     } else {  // Get as many as possible without getting over the length of the loop 
-      int get_count=loop_len_samples-fetch_at_sample;
+      __int64 get_count=loop_len_samples-fetch_at_sample;
       if (get_count>count) get_count=count;  // Just to be safe
       if (get_count+s_start>loop_ends_at_sample) get_count=loop_ends_at_sample-(get_count+s_start); // Just to be safe
       child->GetAudio(samples,start_samples+fetch_at_sample,get_count,env);

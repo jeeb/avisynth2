@@ -208,7 +208,7 @@ AVSValue __cdecl ConvertToRGB::Create24(AVSValue args, void*, IScriptEnvironment
  *********************************/
 
 ConvertToYUY2::ConvertToYUY2(PClip _child, IScriptEnvironment* env)
-  : GenericVideoFilter(_child), rgb32(vi.IsRGB32())
+  : GenericVideoFilter(_child), src_cs(vi.pixel_type)
 {
   if (vi.width & 1)
     env->ThrowError("ConvertToYUY2: image width must be even");
@@ -363,7 +363,7 @@ outloop:
 PVideoFrame __stdcall ConvertToYUY2::GetFrame(int n, IScriptEnvironment* env) 
 {
   PVideoFrame src = child->GetFrame(n, env);
-	if (rgb32) {
+	if ((src_cs&VideoInfo::CS_BGR32)==VideoInfo::CS_BGR32) {
 		if ((env->GetCPUFlags() & CPUF_MMX)) {
 			PVideoFrame dst = env->NewVideoFrame(vi);
 			BYTE* yuv = dst->GetWritePtr();
@@ -372,6 +372,37 @@ PVideoFrame __stdcall ConvertToYUY2::GetFrame(int n, IScriptEnvironment* env)
 			return dst;
 		}
 	}
+	if ((src_cs&VideoInfo::CS_YV12)==VideoInfo::CS_YV12) {
+    PVideoFrame dst = env->NewVideoFrame(vi);
+    BYTE* yuv = dst->GetWritePtr();
+    const BYTE* yp = src->GetReadPtr(PLANAR_Y);
+    const BYTE* up = src->GetReadPtr(PLANAR_U);
+    const BYTE* vp = src->GetReadPtr(PLANAR_V);
+
+    int dst_pitch=dst->GetPitch();
+    int src_pitchUV=src->GetPitch(PLANAR_U);
+    int src_pitchY=src->GetPitch(PLANAR_Y);
+
+    for (int y=0; y<(vi.height>>1); y++) {
+      for (int x=0; x<(vi.width>>1); x++) {
+        yuv[x*4]=yp[x*2];
+        yuv[x*4+2]=yp[x*2+1];
+        yuv[x*4+1]=up[x];
+        yuv[x*4+3]=vp[x];
+
+        yuv[x*4+dst_pitch]=yp[x*2+src_pitchY];
+        yuv[x*4+2+dst_pitch]=yp[x*2+1+src_pitchY];
+        yuv[x*4+1+dst_pitch]=up[x];
+        yuv[x*4+3+dst_pitch]=vp[x];
+      }
+      yp += src_pitchY*2;
+      up += src_pitchUV;
+      vp += src_pitchUV;
+      yuv += dst_pitch*2;
+    }
+    return dst;
+  }
+
   PVideoFrame dst = env->NewVideoFrame(vi);
   BYTE* yuv = dst->GetWritePtr();
   const BYTE* rgb = src->GetReadPtr() + (vi.height-1) * src->GetPitch();
@@ -382,7 +413,7 @@ PVideoFrame __stdcall ConvertToYUY2::GetFrame(int n, IScriptEnvironment* env)
 
   const int yuv_offset = dst->GetPitch() - dst->GetRowSize();
   const int rgb_offset = -src->GetPitch() - src->GetRowSize();
-  const int rgb_inc = rgb32 ? 4 : 3;
+  const int rgb_inc = ((src_cs&VideoInfo::CS_BGR32)==VideoInfo::CS_BGR32) ? 4 : 3;
 
   for (int y=vi.height; y>0; --y) 
   {
@@ -413,10 +444,9 @@ PVideoFrame __stdcall ConvertToYUY2::GetFrame(int n, IScriptEnvironment* env)
 AVSValue __cdecl ConvertToYUY2::Create(AVSValue args, void*, IScriptEnvironment* env) 
 {
   PClip clip = args[0].AsClip();
-  if (clip->GetVideoInfo().IsRGB())
-    return new ConvertToYUY2(clip, env);
-  else
+  if (clip->GetVideoInfo().IsYUY2())
     return clip;
+  return new ConvertToYUY2(clip, env);
 }
 
 

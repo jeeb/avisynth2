@@ -33,14 +33,14 @@ class Trim : public GenericVideoFilter
 public:
   Trim(int _firstframe, int _lastframe, PClip _child);
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
-  void __stdcall GetAudio(void* buf, int start, int count, IScriptEnvironment* env);
+  void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env);
   bool __stdcall GetParity(int n);
 
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);  
 
 private:
   int firstframe;
-  int audio_offset;
+  __int64 audio_offset;
 };
 
 
@@ -111,7 +111,7 @@ class Splice : public GenericVideoFilter
 public:
   Splice(PClip _child1, PClip _child2, bool realign_sound, IScriptEnvironment* env);
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
-  void __stdcall GetAudio(void* buf, int start, int count, IScriptEnvironment* env);
+  void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env);
   bool __stdcall GetParity(int n);
 
   static AVSValue __cdecl CreateUnaligned(AVSValue args, void*, IScriptEnvironment* env);
@@ -120,7 +120,7 @@ public:
 private:
   const PClip child2;
   int video_switchover_point;
-  int audio_switchover_point;
+  __int64 audio_switchover_point;
 };
 
 
@@ -134,7 +134,7 @@ class Dissolve : public GenericVideoFilter
 public:
   Dissolve(PClip _child1, PClip _child2, int _overlap, IScriptEnvironment* env);
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
-  void __stdcall GetAudio(void* buf, int start, int count, IScriptEnvironment* env);
+  void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env);
   bool __stdcall GetParity(int n);
 
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
@@ -183,7 +183,7 @@ public:
   Reverse(PClip _child);
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
   bool __stdcall GetParity(int n);
-  void __stdcall GetAudio(void* buf, int start, int count, IScriptEnvironment* env);
+  void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env);
 
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
 };
@@ -199,11 +199,12 @@ public:
 	Loop(PClip _child, int times, int _start, int _end, IScriptEnvironment* env);
 	PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
 	bool __stdcall GetParity(int n);
-  void __stdcall GetAudio(void* buf, int start, int count, IScriptEnvironment* env);
+  void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env);
 
 	static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
 private:
-	int frames, start, end, times, start_samples, loop_ends_at_sample,loop_len_samples;
+	int frames, start, end, times;
+  __int64 start_samples, loop_ends_at_sample,loop_len_samples;
 	int convert(int n);
 };
 

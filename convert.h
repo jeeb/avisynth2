@@ -142,7 +142,7 @@ public:
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
 
 private:
-  const bool rgb32;
+  const int src_cs;  // Source colorspace
 
 };
 

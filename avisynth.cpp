@@ -508,7 +508,7 @@ private:
 ScriptEnvironment::ScriptEnvironment() : at_exit(This()), function_table(This()), global_var_table(0, 0) {
   MEMORYSTATUS memstatus;
   GlobalMemoryStatus(&memstatus);
-  memory_max = min(memstatus.dwAvailPhys / 4,16*1024*1024);   // Minimum 16MB, otherwise available physical memory/4, no maximum
+  memory_max = max(memstatus.dwAvailPhys / 4,16*1024*1024);   // Minimum 16MB, otherwise available physical memory/4, no maximum
   memory_used = 0;
   var_table = new VarTable(0, &global_var_table);
   global_var_table.Set("true", true);
@@ -659,7 +659,8 @@ void ScriptEnvironment::PrescanPlugins()
 
 PVideoFrame ScriptEnvironment::NewPlanarVideoFrame(int width, int height, int align) {
   int pitch = (width+align-1) / align * align;  // Y plane, width = 1 byte per pixel
-  int UVpitch = ((width>>1)+align-1) / align * align;  // UV plane, width = 1/2 byte per pixel
+//  int UVpitch = ((width>>1)+align-1) / align * align;  // UV plane, width = 1/2 byte per pixel - can't align UV planes seperately.
+  int UVpitch = pitch>>1;  // UV plane, width = 1/2 byte per pixel
   int size = pitch * height + UVpitch * height;
   VideoFrameBuffer* vfb = GetFrameBuffer(size+(FRAME_ALIGN*4));
 #ifdef _DEBUG
@@ -672,7 +673,7 @@ PVideoFrame ScriptEnvironment::NewPlanarVideoFrame(int width, int height, int al
     }
   }
 #endif
-  int offset = (-int(vfb->GetWritePtr())) & (FRAME_ALIGN-1);  // align first line offset
+  int offset = (-int(vfb->GetWritePtr())) & (align-1);  // align first line offset
   int Uoffset = offset + pitch * height;  // UV offset will also be aligned
   int Voffset = offset + pitch * height + UVpitch * (height>>1);  // UV offset will also be aligned
   return new VideoFrame(vfb, offset, pitch, width, height, Uoffset, Voffset, UVpitch);
@@ -699,7 +700,7 @@ PVideoFrame ScriptEnvironment::NewVideoFrame(int row_size, int height, int align
  // Generates copy
 PVideoFrame __stdcall ScriptEnvironment::NewVideoFrame(const VideoInfo& vi, int align) { 
   if (vi.IsPlanar()) { // Planar requires different math ;)
-    return ScriptEnvironment::NewVideoFrame(vi.width, vi.height, align);
+    return ScriptEnvironment::NewPlanarVideoFrame(vi.width, vi.height, align);
   } else {
     return ScriptEnvironment::NewVideoFrame(vi.RowSize(), vi.height, align);
   }
