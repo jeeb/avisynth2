@@ -29,6 +29,7 @@
 
 AVSFunction Transform_filters[] = {
   { "FlipVertical", "c", FlipVertical::Create },     
+  { "FlipHorizontal", "c", FlipHorizontal::Create },     
   { "Crop", "ciiii", Crop::Create },              // left, top, width, height *OR*
                                                   //  left, top, -right, -bottom (VDub style)
   { "CropBottom", "ci", Create_CropBottom },      // bottom amount
@@ -58,7 +59,18 @@ PVideoFrame FlipVertical::GetFrame(int n, IScriptEnvironment* env) {
   int row_size = src->GetRowSize();
   int src_pitch = src->GetPitch();
   int dst_pitch = dst->GetPitch();
-  BitBlt(dstp, dst_pitch, srcp + (vi.height-1) * src_pitch, -src_pitch, row_size, vi.height);
+  env->BitBlt(dstp, dst_pitch, srcp + (vi.height-1) * src_pitch, -src_pitch, row_size, vi.height);
+  if (vi.IsPlanar()) {
+    srcp = src->GetReadPtr(PLANAR_U);
+    dstp = dst->GetWritePtr(PLANAR_U);
+    row_size = src->GetRowSize(PLANAR_U);
+    src_pitch = src->GetPitch(PLANAR_U);
+    dst_pitch = dst->GetPitch(PLANAR_U);
+    env->BitBlt(dstp, dst_pitch, srcp + (src->GetHeight(PLANAR_U)-1) * src_pitch, -src_pitch, row_size, src->GetHeight(PLANAR_U));
+    srcp = src->GetReadPtr(PLANAR_V);
+    dstp = dst->GetWritePtr(PLANAR_V);
+    env->BitBlt(dstp, dst_pitch, srcp + (src->GetHeight(PLANAR_U)-1) * src_pitch, -src_pitch, row_size, src->GetHeight(PLANAR_U));
+  }
   return dst;
 }
 
@@ -70,9 +82,79 @@ AVSValue __cdecl FlipVertical::Create(AVSValue args, void*, IScriptEnvironment* 
 
 
 
+/********************************
+ *******   Flip Horizontal   ******
+ ********************************/
+
+PVideoFrame FlipHorizontal::GetFrame(int n, IScriptEnvironment* env) {
+  PVideoFrame src = child->GetFrame(n, env);
+  PVideoFrame dst = env->NewVideoFrame(vi);
+  const BYTE* srcp = src->GetReadPtr();
+  BYTE* dstp = dst->GetWritePtr();
+  int row_size = src->GetRowSize();
+  int src_pitch = src->GetPitch();
+  int dst_pitch = dst->GetPitch();
+  int h = src->GetHeight();
+  int bpp = vi.BytesFromPixels(1);
+  if (vi.IsYUY2()) {
+    srcp-=4;
+    for (int y=0; y<h;y++) {
+      for (int x=0; x<row_size; x+=4) {
+        dstp[x] = srcp[-x+2];
+        dstp[x+1] = srcp[-x+1];
+        dstp[x+2] = srcp[-x];
+        dstp[x+3] = srcp[-x+3];
+      }
+      srcp += src_pitch;
+      dstp += dst_pitch;
+    }
+    return dst;
+  }
+  srcp+=row_size-bpp;
+  for (int y=0; y<h;y++) {
+    for (int x=0; x<row_size; x+=bpp) {
+      for (int i=0;i<bpp;i++) {
+        dstp[x+i] = srcp[-x+i];
+      }
+    }
+    srcp += src_pitch;
+    dstp += dst_pitch;
+  }
+  if (vi.IsPlanar()) {  //For planar always 1bpp
+    srcp = src->GetReadPtr(PLANAR_U);
+    dstp = dst->GetWritePtr(PLANAR_U);
+    row_size = src->GetRowSize(PLANAR_U);
+    src_pitch = src->GetPitch(PLANAR_U);
+    dst_pitch = dst->GetPitch(PLANAR_U);
+    h = src->GetHeight(PLANAR_U);
+    srcp+=row_size-1;
+    for (int y=0; y<h;y++) {
+      for (int x=0; x<row_size; x++) {
+        dstp[x] = srcp[-x];
+      }
+      srcp += src_pitch;
+      dstp += dst_pitch;
+    }
+    srcp = src->GetReadPtr(PLANAR_V);
+    dstp = dst->GetWritePtr(PLANAR_V);
+    srcp+=row_size-1;
+    for (y=0; y<h;y++) {
+      for (int x=0; x<row_size; x++) {
+        dstp[x] = srcp[-x];
+      }
+      srcp += src_pitch;
+      dstp += dst_pitch;
+    }
+
+  }
+  return dst;
+}
 
 
-
+AVSValue __cdecl FlipHorizontal::Create(AVSValue args, void*, IScriptEnvironment* env) 
+{
+  return new FlipHorizontal(args[0].AsClip());
+}
 
 
 

@@ -40,6 +40,19 @@ public:
 };
 
 
+class FlipHorizontal : public GenericVideoFilter 
+/**
+  * Class to Horizontally flip a video
+ **/
+{
+public:
+  FlipHorizontal(PClip _child) : GenericVideoFilter(_child) {}
+  PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
+
+  static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
+};
+
+
 class Crop : public GenericVideoFilter 
 /**
   * Class to crop a video
