@@ -207,7 +207,7 @@ class Amplify : public GenericVideoFilter
  **/
 {
 public:
-  Amplify(PClip _child, double _left_factor, double _right_factor);
+  Amplify(PClip _child, float* _volumes);
   void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env);
 
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
@@ -215,7 +215,7 @@ public:
 
 
 private:
-  const float left_factor, right_factor;
+  const float* volumes;
 
   static __inline short Saturate(int n) {
     if (n <= -32768) return -32768;

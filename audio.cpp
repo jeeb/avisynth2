@@ -26,8 +26,8 @@
 
 AVSFunction Audio_filters[] = {
   { "DelayAudio", "cf", DelayAudio::Create },
-  { "AmplifydB", "cf[]f+", Amplify::Create_dB },
-  { "Amplify", "cf[]f+", Amplify::Create },
+  { "AmplifydB", "cf+", Amplify::Create_dB },
+  { "Amplify", "cf+", Amplify::Create },
   { "AssumeSampleRate", "ci", AssumeRate::Create },
   { "Normalize", "c[left]f", Normalize::Create },
   { "MixAudio", "cc[clip1_factor]f[clip2_factor]f", MixAudio::Create },
@@ -598,12 +598,11 @@ AVSValue __cdecl DelayAudio::Create(AVSValue args, void*, IScriptEnvironment* en
 /********************************
  *******   Amplify Audio   ******
  *******************************/
-// FIXME: Support more volumes (for additional channels) - now only left channel is used! Use an array!
 
-Amplify::Amplify(PClip _child, double _left_factor, double _right_factor)
+
+Amplify::Amplify(PClip _child, float* _volumes)
   : GenericVideoFilter(ConvertAudio::Create(_child,SAMPLE_INT16|SAMPLE_FLOAT|SAMPLE_INT32,SAMPLE_FLOAT)),
-    left_factor(_left_factor),
-    right_factor(_right_factor) {
+    volumes(_volumes) {
 }
 
 
@@ -612,12 +611,13 @@ void __stdcall Amplify::GetAudio(void* buf, __int64 start, __int64 count, IScrip
   child->GetAudio(buf, start, count, env);
   int channels=vi.AudioChannels();
   if (vi.SampleType()==SAMPLE_INT16) {
+    int* i_v=new int[channels];
     short* samples = (short*)buf;
-    int lf_16=int(left_factor*65535.0f+0.5f);
-    int rf_16=int(right_factor*65535.0f+0.5f);
+    for (int v=0;v<channels;v++)
+      i_v[v]=int(volumes[v]*65535.0f+0.5f);
     for (int i=0; i<count; ++i) {
       for (int j=0;j<channels;j++) {
-        samples[i*channels+j] = Saturate(int(Int32x32To64(samples[i*channels+j],lf_16) >> 16));
+        samples[i*channels+j] = Saturate(int(Int32x32To64(samples[i*channels+j],i_v[j]) >> 16));
       }
     } 
     return;
@@ -625,11 +625,12 @@ void __stdcall Amplify::GetAudio(void* buf, __int64 start, __int64 count, IScrip
 
   if (vi.SampleType()==SAMPLE_INT32) {
     int* samples = (int*)buf;
-    int lf_16=int(left_factor*65535.0f+0.5f);
-    int rf_16=int(left_factor*65535.0f+0.5f);
+    int* i_v=new int[channels];
+    for (int v=0;v<channels;v++)
+      i_v[v]=int(volumes[v]*65535.0f+0.5f);
     for (int i=0; i<count; ++i) {
       for (int j=0;j<channels;j++) {
-        samples[i*channels+j] = Saturate_int32(Int32x32To64(samples[i*channels+j],lf_16) >> 16);
+        samples[i*channels+j] = Saturate_int32(Int32x32To64(samples[i*channels+j],i_v[j]) >> 16);
       }
     } 
     return;
@@ -638,7 +639,7 @@ void __stdcall Amplify::GetAudio(void* buf, __int64 start, __int64 count, IScrip
     SFLOAT* samples = (SFLOAT*)buf;
     for (int i=0; i<count; ++i) {
       for (int j=0;j<channels;j++) {
-        samples[i*channels+j] = samples[i*channels+j]*left_factor;   // Does not saturate, as other filters do. We should saturate only on conversion.
+        samples[i*channels+j] = samples[i*channels+j]*volumes[j];   // Does not saturate, as other filters do. We should saturate only on conversion.
       }
     } 
     return;
@@ -648,18 +649,32 @@ void __stdcall Amplify::GetAudio(void* buf, __int64 start, __int64 count, IScrip
 
 AVSValue __cdecl Amplify::Create(AVSValue args, void*, IScriptEnvironment* env) 
 {
-  double left_factor = args[1].AsFloat();
-  double right_factor = args[2].AsFloat(left_factor);
-  return new Amplify(args[0].AsClip(), left_factor, right_factor);
+  if (!args[0].AsClip()->GetVideoInfo().AudioChannels())
+    return args[0];
+  AVSValue args_c = args[1];
+  const int num_args = args_c.ArraySize();
+  const int ch = args[0].AsClip()->GetVideoInfo().AudioChannels();
+  float* child_array = new float[ch];
+  for (int i=0; i<ch; ++i) {
+    child_array[i] = args_c[min(i,num_args-1)].AsFloat();
+  }
+  return new Amplify(args[0].AsClip(), child_array);
 }
 
   
 
 AVSValue __cdecl Amplify::Create_dB(AVSValue args, void*, IScriptEnvironment* env) 
 {
-    double left_factor = args[1].AsFloat();
-    double right_factor = args[2].AsFloat(left_factor);
-    return new Amplify(args[0].AsClip(), dBtoScaleFactor(left_factor), dBtoScaleFactor(right_factor));
+  if (!args[0].AsClip()->GetVideoInfo().AudioChannels())
+    return args[0];
+  AVSValue args_c = args[1];
+  const int num_args = args_c.ArraySize();
+  const int ch = args[0].AsClip()->GetVideoInfo().AudioChannels();
+  float* child_array = new float[ch];
+  for (int i=0; i<ch; ++i) {
+    child_array[i] = dBtoScaleFactor(args_c[min(i,num_args-1)].AsFloat());
+  }
+  return new Amplify(args[0].AsClip(), child_array);
 }
 
 
