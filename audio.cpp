@@ -34,58 +34,24 @@ AVSFunction Audio_filters[] = {
   { "LowPassAudio", "ci[]f", FilterAudio::Create_LowPass },
 //  { "LowPassAudioALT", "ci", FilterAudio::Create_LowPassALT },
   { "HighPassAudio", "ci[]f", FilterAudio::Create_HighPass },
-  { "ConvertAudioTo16bit", "c", ConvertAudioTo16bit::Create },
+  { "ConvertAudioTo16bit", "c", ConvertAudio::Create_16bit },
+  { "ConvertAudioTo8bit", "c", ConvertAudio::Create_8bit },
+  { "ConvertAudioTo32bit", "c", ConvertAudio::Create_32bit },
+  { "ConvertAudioToFloat", "c", ConvertAudio::Create_float },
   { "ConvertToMono", "c", ConvertToMono::Create },
   { "EnsureVBRMP3Sync", "c", EnsureVBRMP3Sync::Create },
   { "MonoToStereo", "cc", MonoToStereo::Create },
   { "GetLeftChannel", "c", GetChannel::Create_left },
   { "GetRightChannel", "c", GetChannel::Create_right },
+  { "GetChannel", "ci", GetChannel::Create_n },
   { "KillAudio", "c", KillAudio::Create },
   { 0 }
 };
 
 
-// FIXME: Most int64's are often cropped to ints
+// FIXME: Most int64's are often cropped to ints - count is ok to be int, but not start
  
-
  
-/******************************************
- *******   Convert Audio -> 16 bit   ******
- *****************************************/
-
-ConvertAudioTo16bit::ConvertAudioTo16bit(PClip _clip) 
-  : GenericVideoFilter(_clip)
-{
-  vi.sample_type = SAMPLE_INT16;
-}
-
-
-void __stdcall ConvertAudioTo16bit::GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) 
-{
-  int n = vi.BytesFromAudioSamples(count)/2;
-  signed short* p16 = (signed short*)buf;
-  BYTE* p8 = (BYTE*)buf + n;
-  child->GetAudio(p8, start, count, env);
-  for (int i=0; i<n; ++i)
-    p16[i] = short(p8[i] * 256 + 0x8080);
-}
-
-
-PClip ConvertAudioTo16bit::Create(PClip clip) 
-{
-  if (clip->GetVideoInfo().SampleType()==SAMPLE_INT16)
-    return clip;
-  else 
-    return new ConvertAudioTo16bit(clip);
-}
-
-
-AVSValue __cdecl ConvertAudioTo16bit::Create(AVSValue args, void*, IScriptEnvironment*) 
-{
-  return Create(args[0].AsClip());
-}
-
-
 /*******************************************
  *******   Convert Audio -> Arbitrary ******
  ******************************************/
@@ -208,14 +174,27 @@ PClip ConvertAudio::Create(PClip clip, int sample_type, int prefered_type)
     return new ConvertAudio(clip,prefered_type);
 }
 
-/*
-AVSValue __cdecl ConvertAudio::Create(AVSValue args, void*, IScriptEnvironment*) 
+
+AVSValue __cdecl ConvertAudio::Create_16bit(AVSValue args, void*, IScriptEnvironment*) 
 {
-  return Create(args[0].AsClip());
+  return Create(args[0].AsClip(),SAMPLE_INT16,SAMPLE_INT16);
 }
-*/
+
+AVSValue __cdecl ConvertAudio::Create_8bit(AVSValue args, void*, IScriptEnvironment*) 
+{
+  return Create(args[0].AsClip(),SAMPLE_INT8,SAMPLE_INT8);
+}
 
 
+AVSValue __cdecl ConvertAudio::Create_32bit(AVSValue args, void*, IScriptEnvironment*) 
+{
+  return Create(args[0].AsClip(),SAMPLE_INT32,SAMPLE_INT32);
+}
+
+AVSValue __cdecl ConvertAudio::Create_float(AVSValue args, void*, IScriptEnvironment*) 
+{
+  return Create(args[0].AsClip(),SAMPLE_FLOAT,SAMPLE_FLOAT);
+}
 
 /******************************************
  *******   Convert Audio -> Mono     ******
@@ -331,8 +310,8 @@ AVSValue __cdecl EnsureVBRMP3Sync::Create(AVSValue args, void*, IScriptEnvironme
  *******************************************/
 
 MonoToStereo::MonoToStereo(PClip _child, PClip _clip, IScriptEnvironment* env) 
-  : GenericVideoFilter(ConvertAudioTo16bit::Create(_child)),
-	right(ConvertAudioTo16bit::Create(_clip))
+  : GenericVideoFilter(ConvertAudio::Create(_child,SAMPLE_INT16|SAMPLE_INT32|SAMPLE_FLOAT,SAMPLE_FLOAT)),
+	right(ConvertAudio::Create(_clip,SAMPLE_INT16|SAMPLE_INT32|SAMPLE_FLOAT,SAMPLE_FLOAT))
 {
 /*	const VideoInfo& vi2 = right->GetVideoInfo();
 
@@ -410,12 +389,15 @@ AVSValue __cdecl MonoToStereo::Create(AVSValue args, void*, IScriptEnvironment* 
  ***************************************************/
 
 
-// FIXME: Support float samples
+// FIXME: Support ALL type of samples
 
 GetChannel::GetChannel(PClip _clip, int _channel) 
-  : GenericVideoFilter(ConvertAudioTo16bit::Create(_clip)),
+  : GenericVideoFilter(_clip),
 		channel(_channel)
 {	
+  src_bps=vi.BytesPerAudioSample();
+  src_cbps=vi.BytesPerChannelSample();
+//  src_channels=vi.AudioChannels();
   vi.nchannels = 1;
   tempbuffer_size=0;
 }
@@ -424,19 +406,20 @@ GetChannel::GetChannel(PClip _clip, int _channel)
 void __stdcall GetChannel::GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) 
 {
   if (tempbuffer_size) {
-    if (tempbuffer_size<(count*2)) {
+    if (tempbuffer_size<count) {
       delete[] tempbuffer;
-      tempbuffer=new signed short[count*2];
+      tempbuffer=new char[count*src_bps];
       tempbuffer_size=count;
     }
   } else {
-    tempbuffer=new signed short[count*2];
+    tempbuffer=new char[count*src_bps];
     tempbuffer_size=count;
   }
   child->GetAudio(tempbuffer, start, count, env);
-  signed short* samples = (signed short*)buf;
-  for (int i=0; i<count; i++)
-		samples[i] = tempbuffer[i*2+channel];
+  char* samples = (char*)buf;
+  for (int i=0; i<count; i++) 
+    for (int j=0;i<src_cbps;j++)
+		  samples[i+j] = tempbuffer[i*src_bps+(channel*src_cbps)+j];
 }
 
 
@@ -461,6 +444,7 @@ PClip GetChannel::Create_n(PClip clip, int n)
   if (clip->GetVideoInfo().AudioChannels()==1)
     return clip;
   else
+    if (clip->GetVideoInfo().AudioChannels()<n) return clip;
     return new GetChannel(clip,n);
 }
 
@@ -528,24 +512,51 @@ AVSValue __cdecl DelayAudio::Create(AVSValue args, void*, IScriptEnvironment* en
 /********************************
  *******   Amplify Audio   ******
  *******************************/
-// Fixme: Support float
+// FIXME: Support more volumes (for additional channels) - now only left channel is used! Use an array!
 
 Amplify::Amplify(PClip _child, double _left_factor, double _right_factor)
-  : GenericVideoFilter(ConvertAudioTo16bit::Create(_child)),
-    left_factor(int(_left_factor*65536+.5)),
-    right_factor(int(_right_factor*65536+.5)) {}
+  : GenericVideoFilter(ConvertAudio::Create(_child,SAMPLE_INT16|SAMPLE_FLOAT|SAMPLE_INT32,SAMPLE_FLOAT)),
+    left_factor(_left_factor),
+    right_factor(_right_factor) {
+}
 
 
 void __stdcall Amplify::GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env)
 {
   child->GetAudio(buf, start, count, env);
-  short* samples = (short*)buf;
   int channels=vi.AudioChannels();
-  for (int i=0; i<count; ++i) {
-   for (int j=0;j<channels;j++) {
-      samples[i*channels+j] = Saturate(int(Int32x32To64(samples[i*channels+j],left_factor) >> 16));
-    }
-  } 
+  if (vi.SampleType()==SAMPLE_INT16) {
+    short* samples = (short*)buf;
+    int lf_16=int(left_factor*65535.0f+0.5f);
+    int rf_16=int(right_factor*65535.0f+0.5f);
+    for (int i=0; i<count; ++i) {
+      for (int j=0;j<channels;j++) {
+        samples[i*channels+j] = Saturate(int(Int32x32To64(samples[i*channels+j],lf_16) >> 16));
+      }
+    } 
+    return;
+  }
+
+  if (vi.SampleType()==SAMPLE_INT32) {
+    int* samples = (int*)buf;
+    int lf_16=int(left_factor*65535.0f+0.5f);
+    int rf_16=int(left_factor*65535.0f+0.5f);
+    for (int i=0; i<count; ++i) {
+      for (int j=0;j<channels;j++) {
+        samples[i*channels+j] = Saturate_int32(Int32x32To64(samples[i*channels+j],lf_16) >> 16);
+      }
+    } 
+    return;
+  }
+  if (vi.SampleType()==SAMPLE_FLOAT) {
+    SFLOAT* samples = (SFLOAT*)buf;
+    for (int i=0; i<count; ++i) {
+      for (int j=0;j<channels;j++) {
+        samples[i*channels+j] = samples[i*channels+j]*left_factor;   // Does not saturate, as other filters do. We should saturate only on conversion.
+      }
+    } 
+    return;
+  }
 }
 
 
@@ -572,7 +583,7 @@ AVSValue __cdecl Amplify::Create_dB(AVSValue args, void*, IScriptEnvironment* en
 // Fixme: Support float
 
 Normalize::Normalize(PClip _child, double _left_factor, double _right_factor)
-  : GenericVideoFilter(ConvertAudioTo16bit::Create(_child)),
+  : GenericVideoFilter(ConvertAudio::Create(_child,SAMPLE_INT16|SAMPLE_FLOAT,SAMPLE_FLOAT)),
     left_factor(int(_left_factor*65536+.5)),
     right_factor(int(_right_factor*65536+.5)) {
   max_volume=-1;
@@ -626,10 +637,11 @@ AVSValue __cdecl Normalize::Create(AVSValue args, void*, IScriptEnvironment* env
 /*****************************
  ***** Mix audio  tracks ******
  ******************************/
+// FIXME: SUPPORT floats!!
 
 MixAudio::MixAudio(PClip _child, PClip _clip, double _track1_factor, double _track2_factor, IScriptEnvironment* env)
-  : GenericVideoFilter(ConvertAudioTo16bit::Create(_child)),
-    clip(ConvertAudioTo16bit::Create(_clip)),
+  : GenericVideoFilter(ConvertAudio::Create(_child,SAMPLE_INT16|SAMPLE_FLOAT,SAMPLE_FLOAT)),
+    clip(ConvertAudio::Create(_clip,SAMPLE_INT16|SAMPLE_FLOAT,SAMPLE_FLOAT)),
 		track1_factor(int(_track1_factor*65536+.5)),
     track2_factor(int(_track2_factor*65536+.5)) {
 
@@ -691,8 +703,9 @@ AVSValue __cdecl MixAudio::Create(AVSValue args, void*, IScriptEnvironment* env)
  *******  Adapted by Klaus Post         *******
  ***********************************************/
 
+// FIXME: Support float
 FilterAudio::FilterAudio(PClip _child, int _cutoff, float _rez, int _lowpass)
-  : GenericVideoFilter(ConvertAudioTo16bit::Create(_child)),
+  : GenericVideoFilter(ConvertAudio::Create(_child,SAMPLE_INT16|SAMPLE_FLOAT,SAMPLE_FLOAT)),
     cutoff(_cutoff),
     rez(_rez), 
     lowpass(_lowpass) {
@@ -888,8 +901,10 @@ AVSValue __cdecl FilterAudio::Create_LowPassALT(AVSValue args, void*, IScriptEnv
  *******   Resample Audio   ******
  *******************************/
 
+// FIXME: Support float
+
 ResampleAudio::ResampleAudio(PClip _child, int _target_rate, IScriptEnvironment* env)
-  : GenericVideoFilter(ConvertAudioTo16bit::Create(_child)), target_rate(_target_rate)
+  : GenericVideoFilter(ConvertAudio::Create(_child,SAMPLE_INT16|SAMPLE_FLOAT,SAMPLE_FLOAT)), target_rate(_target_rate)
 {
   if (target_rate==vi.audio_samples_per_second) {
 		skip_conversion=true;

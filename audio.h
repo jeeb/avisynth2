@@ -29,6 +29,9 @@
 #define MAX_SHORT (32767)
 #define MIN_SHORT (-32768)
 
+#define MAX_INT (1<<31)
+#define MIN_INT -(1<<31)
+
 /* Conversion constants */
 #define Nhc       8
 #define Na        7
@@ -68,19 +71,6 @@ static int makeFilter(short Imp[], int *LpScl, unsigned short Nwing, double Frol
 ********************************************************************/
 
 
-class ConvertAudioTo16bit : public GenericVideoFilter 
-/**
-  * Class to convert audio to 16-bit
- **/
-{
-public:
-  ConvertAudioTo16bit(PClip _clip);
-  void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env);
-
-  static PClip Create(PClip clip);
-  static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment*);
-};
-
 class ConvertAudio : public GenericVideoFilter 
 /**
   * Class to convert audio to any format
@@ -91,7 +81,10 @@ public:
   void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env);
 
   static PClip Create(PClip clip, int sample_type, int prefered_type);
-//  static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment*);
+  static AVSValue __cdecl Create_float(AVSValue args, void*, IScriptEnvironment*);
+  static AVSValue __cdecl Create_32bit(AVSValue args, void*, IScriptEnvironment*);
+  static AVSValue __cdecl Create_16bit(AVSValue args, void*, IScriptEnvironment*);
+  static AVSValue __cdecl Create_8bit(AVSValue args, void*, IScriptEnvironment*);
   virtual ~ConvertAudio()
   {if (tempbuffer_size) {delete[] tempbuffer;tempbuffer_size=0;}}
 private:
@@ -182,9 +175,11 @@ public:
   static AVSValue __cdecl Create_n(AVSValue args, void*, IScriptEnvironment*);
 
 private:
-  signed short *tempbuffer;
+  char *tempbuffer;
   int tempbuffer_size;
 	int channel;
+  int src_bps;
+  int src_cbps;
 };
 
 class KillAudio : public GenericVideoFilter 
@@ -230,12 +225,18 @@ public:
 
 
 private:
-  const int left_factor, right_factor;
+  const float left_factor, right_factor;
 
   static __inline short Saturate(int n) {
     if (n <= -32768) return -32768;
     if (n >= 32767) return 32767;
     return (short)n;
+  }
+
+  static __inline int Saturate_int32(__int64 n) {
+    if (n <= MIN_INT) return MIN_INT;  
+    if (n >= MAX_INT) return MAX_INT;
+    return (int)n;
   }
 
   static __inline double dBtoScaleFactor(double dB) 
