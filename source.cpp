@@ -73,7 +73,7 @@ public:
     PClip result = new AVISource(args[0][0].AsString(), fAudio, pixel_type, mode, env);
     for (int i=1; i<args[0].ArraySize(); ++i)
       result = new_Splice(result, new AVISource(args[0][i].AsString(), fAudio, pixel_type, mode, env), false, env);
-    return result;
+    return AlignPlanar::Create(result);
   }
 };
 
@@ -266,7 +266,7 @@ AVISource::AVISource(const char filename[], bool fAudio, const char pixel_type[]
         biDst.biCompression = '21VY';
         biDst.biBitCount = 12;
         biDst.biPlanes = 1;  
-        int xwidth=(vi.width+3)&~-3;
+        int xwidth=(vi.width+3)&(~3);
         biDst.biSizeImage = xwidth * vi.height + ((xwidth>>1) * vi.height);
 
         if (fYV12 && ICERR_OK == ICDecompressQuery(hic, pbiSrc, &biDst)) {  
@@ -342,7 +342,7 @@ AVISource::AVISource(const char filename[], bool fAudio, const char pixel_type[]
   // try to decompress frame 0 if not audio only.
   if (mode!=3) {
     int keyframe = pvideo->NearestKeyFrame(0);
-    PVideoFrame frame = env->NewVideoFrame(vi, 4);
+    PVideoFrame frame = env->NewVideoFrame(vi, -4);
     LRESULT error = DecompressFrame(keyframe, true, frame->GetWritePtr());
     if (error != ICERR_OK || (!frame)||(dropped_frame)) {   // shutdown, if init not succesful.
       if (hic) {
@@ -396,7 +396,7 @@ PVideoFrame AVISource::GetFrame(int n, IScriptEnvironment* env) {
     bool not_found_yet=false;
     do {
       for (int i = keyframe; i <= n; ++i) {
-        PVideoFrame frame = env->NewVideoFrame(vi, 4);
+        PVideoFrame frame = env->NewVideoFrame(vi, -4);
         LRESULT error = DecompressFrame(i, i != n, frame->GetWritePtr());
         // we don't want dropped frames to throw an error
         // Experiment to remove ALL error reporting, so it will always return last valid frame.
@@ -1103,7 +1103,7 @@ public:
         DWORD(sample_end_time>>32), DWORD(sample_end_time));
       _RPT1(0," (%d)\n", DWORD(sample_end_time - sample_start_time));
     }
-    pvf = env->NewVideoFrame(vi, 4);
+    pvf = env->NewVideoFrame(vi, -4);
     PBYTE buf;
     pSamples->GetPointer(&buf);
     if (!vi.IsPlanar()) {
@@ -1391,7 +1391,7 @@ void DirectShowSource::CheckHresult(HRESULT hr, const char* msg, const char* msg
 AVSValue __cdecl Create_DirectShowSource(AVSValue args, void*, IScriptEnvironment* env) {
   const char* filename = args[0][0].AsString();
   int avg_time_per_frame = args[1].Defined() ? int(10000000 / args[1].AsFloat() + 0.5) : 0;
-  return new DirectShowSource(filename, avg_time_per_frame, env);
+  return AlignPlanar::Create(new DirectShowSource(filename, avg_time_per_frame, env));
 }
 
 

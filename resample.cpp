@@ -82,6 +82,10 @@ PVideoFrame __stdcall FilteredResizeH::GetFrame(int n, IScriptEnvironment* env)
   BYTE* dstp = dst->GetWritePtr();
   const int src_pitch = src->GetPitch();
   const int dst_pitch = dst->GetPitch();
+  if (vi.IsYV12()) {
+
+
+  } else 
   if (vi.IsYUY2())
   {  
     int fir_filter_size_luma = pattern_luma[0];
@@ -591,6 +595,10 @@ FilteredResizeV::FilteredResizeV( PClip _child, double subrange_top, double subr
   int sh = src->GetHeight();
   yOfs = new int[sh];
   for (int i = 0; i < sh; i++) yOfs[i] = src->GetPitch() * i;
+
+  int shUV = src->GetHeight(PLANAR_U);
+  yOfsUV = new int[shUV];
+  for (i = 0; i < shUV; i++) yOfsUV[i] = src->GetPitch(PLANAR_U) * i;
 }
 
 
@@ -599,16 +607,39 @@ PVideoFrame __stdcall FilteredResizeV::GetFrame(int n, IScriptEnvironment* env)
   static const __int64 FPround =           0x0000200000002000;  // 16384/2
   PVideoFrame src = child->GetFrame(n, env);
   PVideoFrame dst = env->NewVideoFrame(vi);
-  const int* cur = resampling_pattern;
-  const int fir_filter_size = *cur++;
-  const int src_pitch = src->GetPitch();
-  const int dst_pitch = dst->GetPitch();
-  const int xloops = src->GetRowSize() / 4;
+  int* cur = resampling_pattern;
+  int fir_filter_size = *cur++;
+  int src_pitch = src->GetPitch();
+  int dst_pitch = dst->GetPitch();
+  int xloops = src->GetRowSize() / 4;
   const BYTE* srcp = src->GetReadPtr();
   BYTE* dstp = dst->GetWritePtr();
   int y = vi.height;
+  int plane = vi.IsPlanar() ? 4:1;
   int *yOfs = this->yOfs;
-
+  while (plane-->0){
+    switch (plane) {
+      case 2:  // take V plane
+        cur = resampling_pattern;
+        fir_filter_size = *cur++;
+        src_pitch = src->GetPitch(PLANAR_V);
+        dst_pitch = dst->GetPitch(PLANAR_V);
+        xloops = src->GetRowSize(PLANAR_V) / 4;  // Means mod 8 for planar
+        dstp = dst->GetWritePtr(PLANAR_V);
+        srcp = src->GetReadPtr(PLANAR_V);
+        y = dst->GetHeight(PLANAR_V);
+        yOfs = this->yOfsUV;
+        break;
+      case 1:
+        cur = resampling_pattern;
+        fir_filter_size = *cur++;
+        dstp = dst->GetWritePtr(PLANAR_U);
+        srcp = src->GetReadPtr(PLANAR_U);
+        y = dst->GetHeight(PLANAR_U);
+        yOfs = this->yOfsUV;
+        plane--;
+        break;
+    }
   __asm {
     emms
     mov         edx, cur
@@ -782,6 +813,7 @@ out_bloop:
     jnz         yloop
     emms
   }
+  } // end while
   return dst;
 }
 

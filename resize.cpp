@@ -57,14 +57,36 @@ VerticalReduceBy2::VerticalReduceBy2(PClip _child, IScriptEnvironment* env)
 PVideoFrame VerticalReduceBy2::GetFrame(int n, IScriptEnvironment* env) {
   PVideoFrame src = child->GetFrame(n, env);
   PVideoFrame dst = env->NewVideoFrame(vi);
-  const int src_pitch = src->GetPitch();
-  const int dst_pitch = dst->GetPitch();
-  const int row_size = src->GetRowSize();
+  int src_pitch = src->GetPitch();
+  int dst_pitch = dst->GetPitch();
+  int row_size = src->GetRowSize();
   BYTE* dstp = dst->GetWritePtr();
+  const BYTE* srcp = src->GetReadPtr();
+
+  if (vi.IsPlanar()) {
+    mmx_process(srcp,src_pitch, row_size, dstp,dst_pitch,dst->GetHeight(PLANAR_Y));
+
+    src_pitch = src->GetPitch(PLANAR_V);
+    dst_pitch = dst->GetPitch(PLANAR_V);
+    row_size = src->GetRowSize(PLANAR_V_ALIGNED);
+    dstp = dst->GetWritePtr(PLANAR_V);
+    srcp = src->GetReadPtr(PLANAR_V);
+    mmx_process(srcp,src_pitch, row_size, dstp,dst_pitch,dst->GetHeight(PLANAR_V));
+
+    src_pitch = src->GetPitch(PLANAR_U);
+    dst_pitch = dst->GetPitch(PLANAR_U);
+    row_size = src->GetRowSize(PLANAR_U_ALIGNED);
+    dstp = dst->GetWritePtr(PLANAR_U);
+    srcp = src->GetReadPtr(PLANAR_U);
+    mmx_process(srcp,src_pitch, row_size, dstp,dst_pitch,dst->GetHeight(PLANAR_U));
+
+    return dst;
+
+  }
 
   if ((env->GetCPUFlags() & CPUF_MMX)) {
     if ((row_size&3)==0) {  // row width divideable with 4 (one dword per loop)
-      mmx_process(src,dstp,dst_pitch);
+      mmx_process(srcp,src_pitch, row_size, dstp,dst_pitch,vi.height);
       return dst;
     }
   } 
@@ -95,12 +117,8 @@ PVideoFrame VerticalReduceBy2::GetFrame(int n, IScriptEnvironment* env) {
 #define R_SRC_PITCH ecx
 #define R_DST_PITCH esi
 
-void VerticalReduceBy2::mmx_process(PVideoFrame src,BYTE* dstp, int dst_pitch) {
-  
-  const BYTE* srcp = src->GetReadPtr();
-  const int src_pitch = src->GetPitch();
-  int row_size = src->GetRowSize();
-  const int height = vi.height-1;
+void VerticalReduceBy2::mmx_process(const BYTE* srcp, int src_pitch, int row_size, BYTE* dstp, int dst_pitch, int height) {
+  height--;
   static const __int64 add_2=0x0002000200020002;
   __asm {
     movq mm7,[add_2];

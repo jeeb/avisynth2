@@ -665,7 +665,7 @@ STDMETHODIMP_(LONG) CAVIStreamSynth::Info(AVISTREAMINFOW *psi, LONG lSize) {
       else if (vi->IsYUY2())
         asi.fccHandler = '2YUY';
       else if (vi->IsYV12())
-        asi.fccHandler = '21VY';
+        asi.fccHandler = '21VY'; 
       else {
         _ASSERT(FALSE);
       }
@@ -719,12 +719,14 @@ void CAVIStreamSynth::ReadHelper(void* lpBuffer, int lStart, int lSamples) {
   // block!  Hence this variable and the horrible hack below...
   EXCEPTION_POINTERS* ei;
   DWORD code;
-
+#ifndef _DEBUG
   __try {
+#endif
     if (fAudio)
       parent->filter_graph->GetAudio(lpBuffer, lStart, lSamples, parent->env);
     else
       ReadFrame(lpBuffer, lStart);
+#ifndef _DEBUG
   }
   __except (ei = GetExceptionInformation(), code = GetExceptionCode(), (code >> 28) == 0xC) {
     switch (code) {
@@ -746,6 +748,7 @@ void CAVIStreamSynth::ReadHelper(void* lpBuffer, int lStart, int lSamples) {
         code, ei->ExceptionRecord->ExceptionAddress);
     }
   }
+#endif
 }
 
 STDMETHODIMP CAVIStreamSynth::Read(LONG lStart, LONG lSamples, LPVOID lpBuffer, LONG cbBuffer, LONG *plBytes, LONG *plSamples) {
@@ -774,11 +777,14 @@ STDMETHODIMP CAVIStreamSynth::Read(LONG lStart, LONG lSamples, LPVOID lpBuffer, 
     }
   }
 
+#ifndef _DEBUG
   try {
     try {
+#endif
       // VC compiler says "only one form of exception handling permitted per
       // function."  Sigh...
       ReadHelper(lpBuffer, lStart, lSamples);
+#ifndef _DEBUG
     }
     catch (AvisynthError error) {
       parent->MakeErrorStream(error.msg);
@@ -792,7 +798,7 @@ STDMETHODIMP CAVIStreamSynth::Read(LONG lStart, LONG lSamples, LPVOID lpBuffer, 
   catch (...) {
     return E_FAIL;
   }
-
+#endif
   return S_OK;
 }
 

@@ -691,7 +691,7 @@ PVideoFrame ScriptEnvironment::NewPlanarVideoFrame(int width, int height, int al
 PVideoFrame ScriptEnvironment::NewVideoFrame(int row_size, int height, int align) {
   int pitch = (row_size+align-1) / align * align;
   int size = pitch * height;
-  VideoFrameBuffer* vfb = GetFrameBuffer(size+(FRAME_ALIGN*4));
+  VideoFrameBuffer* vfb = GetFrameBuffer(size+(align*4));
 #ifdef _DEBUG
   {
     static const BYTE filler[] = { 0x0A, 0x11, 0x0C, 0xA7, 0xED };
@@ -702,15 +702,25 @@ PVideoFrame ScriptEnvironment::NewVideoFrame(int row_size, int height, int align
     }
   }
 #endif
-  int offset = (-int(vfb->GetWritePtr())) & (FRAME_ALIGN-1);  // align first line offset  (alignment is free here!)
+  int offset = (-int(vfb->GetWritePtr())) & (align-1);  // align first line offset  (alignment is free here!)
   return new VideoFrame(vfb, offset, pitch, row_size, height);
 }
 
-
 PVideoFrame __stdcall ScriptEnvironment::NewVideoFrame(const VideoInfo& vi, int align) { 
+  // If align is negative, it will be forced, if not it may be made bigger
   if (vi.IsPlanar()) { // Planar requires different math ;)
+    if (align<0) {
+      align *= -1;
+    } else {
+      align = max(align,FRAME_ALIGN);
+    }
     return ScriptEnvironment::NewPlanarVideoFrame(vi.width, vi.height, align, !vi.IsVPlaneFirst());  // If planar, maybe swap U&V
   } else {
+    if (align<0) {
+      align *= -1;
+    } else {
+      align = max(align,FRAME_ALIGN);
+    }
     return ScriptEnvironment::NewVideoFrame(vi.RowSize(), vi.height, align);
   }
 }
@@ -1092,4 +1102,31 @@ PClip ConvertAudio::Create(PClip clip, int sample_type, int prefered_type)
   }
   else 
     return new ConvertAudio(clip,prefered_type);
+}
+
+
+AlignPlanar::AlignPlanar(PClip _clip) : GenericVideoFilter(_clip) {}
+
+PVideoFrame __stdcall AlignPlanar::GetFrame(int n, IScriptEnvironment* env) {
+  PVideoFrame src = child->GetFrame(n, env);
+  if (!(src->GetPitch(PLANAR_Y_ALIGNED)&(FRAME_ALIGN-1))) return src;
+  PVideoFrame dst = env->NewVideoFrame(vi);
+  if (!(dst->GetPitch(PLANAR_Y_ALIGNED)&(FRAME_ALIGN-1))) 
+    env->ThrowError("AlignPlanar: [internal error] Returned frame was not aligned!");
+
+  const int row_size = src->GetRowSize();
+
+  BitBlt(dst->GetWritePtr(), dst->GetPitch(), src->GetReadPtr(), src->GetPitch(), src->GetRowSize(), src->GetHeight());
+  BitBlt(dst->GetWritePtr(PLANAR_V), dst->GetPitch(PLANAR_V), src->GetReadPtr(PLANAR_V), src->GetPitch(PLANAR_V), src->GetRowSize(PLANAR_V), src->GetHeight(PLANAR_V));
+  BitBlt(dst->GetWritePtr(PLANAR_U), dst->GetPitch(PLANAR_U), src->GetReadPtr(PLANAR_U), src->GetPitch(PLANAR_U), src->GetRowSize(PLANAR_U), src->GetHeight(PLANAR_U));
+  return dst;
+}
+
+PClip AlignPlanar::Create(PClip clip) 
+{
+  if (!clip->GetVideoInfo().IsPlanar()) {  // If not planar, already ok.
+    return clip;
+  }
+  else 
+    return new AlignPlanar(clip);
 }

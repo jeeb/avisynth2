@@ -48,6 +48,10 @@ enum {
    PLANAR_Y=1<<0,
    PLANAR_U=1<<1,
    PLANAR_V=1<<2,
+   PLANAR_ALIGNED=1<<3,
+   PLANAR_Y_ALIGNED=PLANAR_Y|PLANAR_ALIGNED,
+   PLANAR_U_ALIGNED=PLANAR_U|PLANAR_ALIGNED,
+   PLANAR_V_ALIGNED=PLANAR_V|PLANAR_ALIGNED,
   };
 
 struct VideoInfo {
@@ -95,7 +99,7 @@ struct VideoInfo {
   bool IsVPlaneFirst() const {return ((pixel_type & CS_YV12) == CS_YV12); }  // Don't use this 
   int BytesFromPixels(int pixels) const { return pixels * (BitsPerPixel()>>3); }   // Will not work on planar images, but will return only luma planes
   int RowSize() const { return BytesFromPixels(width); }  // Also only returns first plane on planar images
-  int BMPSize() const { if (IsPlanar()) {int p = height * ((RowSize()+3) & -4); p+=p>>1; return p;  } return height * ((RowSize()+3) & -4); }
+  int BMPSize() const { if (IsPlanar()) {int p = height * ((RowSize()+3) & ~3); p+=p>>1; return p;  } return height * ((RowSize()+3) & ~3); }
   __int64 AudioSamplesFromFrames(__int64 frames) const { return (__int64(frames) * audio_samples_per_second * fps_denominator / fps_numerator); }
   int FramesFromAudioSamples(__int64 samples) const { return (__int64(samples) * fps_numerator / fps_denominator / audio_samples_per_second); }
   __int64 AudioSamplesFromBytes(__int64 bytes) const { return bytes / BytesPerAudioSample(); }
@@ -148,6 +152,26 @@ struct VideoInfo {
     fps_denominator = denominator/x;
   }
 };
+
+enum {
+  FILTER_TYPE=1,
+  FILTER_INPUT_COLORSPACE=2,
+  FILTER_OUTPUT_TYPE=9,
+  FILTER_NAME=4,
+  FILTER_AUTHOR=5,
+  FILTER_VERSION=6,
+  FILTER_ARGS=7,
+  FILTER_ARGS_INFO=8,
+  FILTER_ARGS_DESCRIPTION=10,
+  FILTER_DESCRIPTION=11,
+};
+enum {  //SUBTYPES
+  FILTER_TYPE_AUDIO=1,
+  FILTER_TYPE_VIDEO=2,
+  FILTER_OUTPUT_TYPE_SAME=3,
+  FILTER_OUTPUT_TYPE_DIFFERENT=4,
+};
+
 
 
 // VideoFrameBuffer holds information about a memory block which is used
@@ -211,7 +235,23 @@ public:
   int GetPitch() const { return pitch; }
   int GetPitch(int plane) const { switch (plane) {case PLANAR_U: case PLANAR_V: return pitchUV;} return pitch; }
   int GetRowSize() const { return row_size; }
-  int GetRowSize(int plane) const { switch (plane) {case PLANAR_U: case PLANAR_V: if (pitchUV) return row_size>>1; return 0;} return row_size; }
+  int GetRowSize(int plane) const { 
+    switch (plane) {
+    case PLANAR_U: case PLANAR_V: if (pitchUV) return row_size>>1;
+    case PLANAR_U_ALIGNED: case PLANAR_V_ALIGNED: 
+      if (pitchUV) { 
+        int r = (row_size+FRAME_ALIGN-1)&(~(FRAME_ALIGN-1))>>1; // Aligned rowsize
+        if (r<=pitchUV) 
+          return r; 
+        return row_size>>1; 
+      } else return 0;
+    case PLANAR_Y_ALIGNED:
+      int r = (row_size+FRAME_ALIGN-1)&(~(FRAME_ALIGN-1)); // Aligned rowsize
+      if (r<=pitch) 
+        return r; 
+      return row_size;
+    }
+    return row_size; }
   int GetHeight() const { return height; }
   int GetHeight(int plane) const {  switch (plane) {case PLANAR_U: case PLANAR_V: if (pitchUV) return height>>1; return 0;} return height; }
 
@@ -481,6 +521,13 @@ void ConvertAudio::convertFromFloat(float* inbuf, void* outbuf, char sample_type
   char *tempbuffer;
   SFLOAT *floatbuffer;
   int tempbuffer_size;
+};
+
+class AlignPlanar : public GenericVideoFilter {
+public:
+  AlignPlanar(PClip _clip);
+  static PClip Create(PClip clip);
+  PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
 };
 
 class IScriptEnvironment {

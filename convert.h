@@ -128,6 +128,21 @@ private:
 
 };
 
+class ConvertToYV12 : public GenericVideoFilter 
+/**
+  * Class for conversions to YV12
+ **/
+{
+public:
+  ConvertToYV12(PClip _child, IScriptEnvironment* env);
+  PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
+
+  static AVSValue __cdecl Create(AVSValue args,void*, IScriptEnvironment* env);
+
+private:
+
+};
+
 
 class ConvertToYUY2 : public GenericVideoFilter 
 /**

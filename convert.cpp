@@ -31,6 +31,7 @@ AVSFunction Convert_filters[] = {
 { "ConvertToRGB", "c[matrix]s", ConvertToRGB::Create },       // matrix can be "rec709"
   { "ConvertToRGB24", "c[matrix]s", ConvertToRGB::Create24 },
   { "ConvertToRGB32", "c[matrix]s", ConvertToRGB::Create32 },
+  { "ConvertToYV12", "c", ConvertToYV12::Create },  
   { "ConvertToYUY2", "c", ConvertToYUY2::Create },  
   { "ConvertBackToYUY2", "c", ConvertBackToYUY2::Create },  
   { "Greyscale", "c", Greyscale::Create },
@@ -92,6 +93,124 @@ PVideoFrame __stdcall RGB32to24::GetFrame(int n, IScriptEnvironment* env)
   PVideoFrame dst = env->NewVideoFrame(vi);
   const BYTE *p = src->GetReadPtr();
   BYTE *q = dst->GetWritePtr();
+  const int src_pitch = src->GetPitch();
+  const int dst_pitch = dst->GetPitch();
+  const int h=vi.height;
+  int x_loops=vi.width; // 4 dwords/loop   read 16 bytes, write 12 bytes
+  const int x_left=vi.width%4;
+  x_loops-=x_left;
+  x_loops*=4;
+  __int64 oxooooooooooffffff=0x0000000000ffffff;
+  __int64 oxooffffffoooooooo=0x00ffffff00000000;
+
+  __asm {
+    mov esi,p
+    mov edi,q
+    mov eax,[h]
+    mov edx,[x_left];
+    movq mm6,[oxooooooooooffffff];
+    movq mm7,[oxooffffffoooooooo];
+    align 16
+yloop:
+    mov ebx,0  ; src offset
+    mov ecx,0  ; dst offset
+xloop:
+    movq mm0,[ebx+esi]    ; a1r1 g1b1 a0r0 g0b0
+    movq mm1,[ebx+esi+8]  ; a3r3 g3b3 a2r2 g2b2
+    
+    movq mm2,mm0      ; a1r1 g1b1 a0r0 g0b0
+    movq mm3,mm1      ; a3r3 g3b3 a2r2 g2b2
+    
+    pand mm0,mm6      ; 0000 0000 00r0 g0b0
+    pand mm1,mm6      ; 0000 0000 00r2 g2b2 
+
+    pand mm2,mm7      ; 00r1 g1b1 0000 0000
+    pand mm3,mm7      ; 00r3 g3b3 0000 0000
+
+    movq mm4,mm1      ; 0000 0000 00r2 g2b2 
+    psrlq mm2,8       ; 0000 r1g1 b100 0000
+    
+    psllq mm4,48      ; g2b2 0000 0000 0000
+    por mm0,mm2       ; 0000 r1g1 b1r0 g0b0
+
+    psrlq mm1,16      ; 0000 0000 0000 00r2
+    por mm0,mm4
+
+    psrlq mm3,24      ; 0000 0000 b3g3 r300
+    movq [ecx+edi],mm0
+
+    por mm3,mm1
+    movd [ecx+edi+8],mm3
+
+    add ebx,16
+    add ecx,12
+    cmp ebx,[x_loops]
+    jl xloop
+
+    
+    cmp edx,0
+    je no_copy
+    cmp edx,2
+    je copy_2
+    cmp edx,1
+    je copy_1
+//copy 3
+    add esi,ebx
+    add edi,ecx
+    movsb 
+    movsb
+    movsb
+    inc esi
+    movsb
+    movsb
+    movsb
+    inc esi
+    movsb
+    movsb
+    movsb
+    sub esi,ebx
+    sub edi,ecx
+    sub esi,11
+    sub edi,9
+    jmp no_copy
+    align 16
+copy_2:
+    add esi,ebx
+    add edi,ecx
+    movsb
+    movsb
+    movsb
+    inc esi
+    movsb
+    movsb
+    movsb
+    sub esi,ebx
+    sub edi,ecx
+    sub esi,7
+    sub edi,6
+    jmp no_copy
+    align 16
+copy_1:
+    add esi,ebx
+    add edi,ecx
+    movsb
+    movsb
+    movsb
+    sub esi,ebx
+    sub edi,ecx
+    sub esi,3
+    sub edi,3
+    align 16
+no_copy:
+    add esi,[src_pitch]
+    add edi,[dst_pitch]    
+    
+    dec eax
+    jnz yloop
+    emms
+  }
+  
+/*  
   for (int y = vi.height; y > 0; --y) {
     for (int x = 0; x < vi.width; ++x) {
       q[x*3+0] = p[x*4+0];
@@ -101,9 +220,9 @@ PVideoFrame __stdcall RGB32to24::GetFrame(int n, IScriptEnvironment* env)
     p += src->GetPitch();
     q += dst->GetPitch();
   }
+  */
   return dst;
 }
-
 
 
 
@@ -199,8 +318,65 @@ AVSValue __cdecl ConvertToRGB::Create24(AVSValue args, void*, IScriptEnvironment
     return clip;
 }
 
+/**********************************
+ *******   Convert to YV12   ******
+ *********************************/
 
+//TODO: Implement XVID colorspace conversions
 
+ConvertToYV12::ConvertToYV12(PClip _child, IScriptEnvironment* env)
+  : GenericVideoFilter(_child)
+{
+  if (vi.width & 4)
+    env->ThrowError("ConvertToYV12: image width must be multiple of 4");
+  if (vi.height & 4)
+    env->ThrowError("ConvertToYV12: image height must be multiple of 4");
+  vi.pixel_type = VideoInfo::CS_YV12;
+}
+//optme: MMX pretty obvious
+PVideoFrame __stdcall ConvertToYV12::GetFrame(int n, IScriptEnvironment* env) {
+  PVideoFrame src = child->GetFrame(n, env);
+  PVideoFrame dst = env->NewVideoFrame(vi);
+  int* srcp = (int*)src->GetReadPtr();
+  int* dstpY = (int*)dst->GetWritePtr(PLANAR_Y);
+  short* dstpV = (short*)dst->GetWritePtr(PLANAR_V);
+  short* dstpU = (short*)dst->GetWritePtr(PLANAR_U);
+  int xloops=src->GetRowSize()/8;  // One loop = four pixels = two int32
+  int yloops=src->GetHeight()/2;   // One loops = 2 lines  (should be 4 for proper chroma interpolation on fieldbased)  
+  int src_pitch=src->GetPitch()/4;
+  int dst_pitchY=dst->GetPitch(PLANAR_Y)/4;
+  int dst_pitchUV=dst->GetPitch(PLANAR_V)/2;
+
+  for (int y=0;y<yloops;y++) {
+    for (int x=0;x<xloops;x++) {
+      unsigned int s0=srcp[x*2]; // 2 pixels
+      unsigned int s1=srcp[x*2+1];
+      unsigned int s2=srcp[x*2+src_pitch];
+      unsigned int s3=srcp[x*2+src_pitch+1];
+      dstpY[x] = (s0&0xff) | ((s0>>8)&0xff00) | ((s1<<16)&0xff0000) | ((s1<<8)&0xff000000);
+      dstpY[x+dst_pitchY] = (s2&0xff) | ((s2>>8)&0xff00) | ((s3<<16)&0xff0000) | ((s3<<8)&0xff000000);
+      dstpU[x] = (unsigned short)(((s0&0xff00) + (s2&0xff00))>>9) | ((((s1&0xff00)+(s3&0xff00))>>9)<<8);
+      dstpV[x] = (unsigned short)(((s0>>24)+(s2>>24))>>1) | ((((s1>>24)+(s3>>24))>>1)<<8);
+    }
+    srcp+=(src_pitch*2);
+    dstpY+=(dst_pitchY*2);
+    dstpU+=(dst_pitchUV);
+    dstpV+=(dst_pitchUV);
+  }
+  return dst;
+}
+
+AVSValue __cdecl ConvertToYV12::Create(AVSValue args, void*, IScriptEnvironment* env) 
+{
+  PClip clip = args[0].AsClip();
+  const VideoInfo& vi = clip->GetVideoInfo();
+  if (vi.IsYUY2())
+    return new ConvertToYV12(clip,env);
+  else if (vi.IsRGB())
+    return new ConvertToYV12(new ConvertToYUY2(clip,env),env);
+  else
+    return clip;
+}
 
 
 /**********************************
@@ -657,9 +833,31 @@ PVideoFrame Greyscale::GetFrame(int n, IScriptEnvironment* env)
   PVideoFrame frame = child->GetFrame(n, env);
   env->MakeWritable(&frame);
   BYTE* srcp = frame->GetWritePtr();
-  const int pitch = frame->GetPitch();
-  const int myy = vi.height;
+  int pitch = frame->GetPitch();
+  int myy = vi.height;
   int myx = vi.width;
+  if (vi.IsYV12()) {
+    pitch = frame->GetPitch(PLANAR_U)/4;
+    int *srcpUV = (int*)frame->GetWritePtr(PLANAR_U);
+    myx = frame->GetRowSize(PLANAR_U_ALIGNED)/4;
+    myy = frame->GetHeight(PLANAR_U);
+	  for (int y=0; y<myy; y++) {
+      for (int x=0; x<myx; x++) {
+		    srcpUV[x] = 0x7f7f7f7f;  // mod 8
+      }
+		  srcpUV += pitch;
+	  }
+    pitch = frame->GetPitch(PLANAR_V)/4;
+    srcpUV = (int*)frame->GetWritePtr(PLANAR_V);
+    myx = frame->GetRowSize(PLANAR_V_ALIGNED)/4;
+    myy = frame->GetHeight(PLANAR_V);
+	  for (y=0; y<myy; ++y) {
+      for (int x=0; x<myx; x++) {
+		    srcpUV[x] = 0x7f7f7f7f;  // mod 8
+      }
+		  srcpUV += pitch;
+	  }
+  }
   if (vi.IsYUY2())
 	{
 	  for (int y=0; y<myy; ++y) {
@@ -734,7 +932,7 @@ rgb2lum_mmxloop:
         jnz		rgb2lum_mmxloop
         emms
     }
-  } else {  // RGB C
+  } else if (vi.IsRGB()) {  // RGB C
     BYTE* p_count = srcp;
     const int rgb_inc = vi.IsRGB32() ? 4 : 3;
     for (int y=0; y<vi.height; ++y) {

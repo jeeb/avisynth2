@@ -86,6 +86,7 @@ public:
          IScriptEnvironment* env );
 
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
+  AVSValue __cdecl Tweak::FilterInfo(int request);
 
   static AVSValue __cdecl Create(AVSValue args, void* user_data, IScriptEnvironment* env);
 
@@ -93,7 +94,6 @@ private:
 	double hue, sat, bright, cont;
 
 };
-
 
 
 /**** ASM Routines ****/

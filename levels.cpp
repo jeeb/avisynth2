@@ -395,7 +395,6 @@ PVideoFrame __stdcall Tweak::GetFrame(int n, IScriptEnvironment* env)
   return src;
 }
 
-
 AVSValue __cdecl Tweak::Create(AVSValue args, void* user_data, IScriptEnvironment* env)
 {
     return new Tweak(args[0].AsClip(),
@@ -465,3 +464,31 @@ x_loop:
 	};
 }
 
+AVSValue __cdecl Tweak::FilterInfo(int request) {
+  switch (request) {
+    case FILTER_INPUT_COLORSPACE:
+      return AVSValue(VideoInfo::CS_YUY2|VideoInfo::CS_YV12);
+
+    case FILTER_NAME:
+      return AVSValue("Tweak Filter");
+
+    case FILTER_AUTHOR:
+      return AVSValue("Donald Graft");
+
+    case FILTER_VERSION:
+      return AVSValue("1.1");
+
+    case FILTER_ARGS:
+      return AVSValue("c[hue]f[sat]f[bright]f[cont]f");
+
+    case FILTER_ARGS_INFO:
+      return AVSValue(";0.0,1.0,0.0;0.0,2.0,1.0;0.0,1.0,0.0;0.0,2.0,1.0");  // For floats and integers, use "Min, max, default" ';'delimits parameters
+
+    case FILTER_ARGS_DESCRIPTION:
+      return AVSValue("Input clip;Hue offset;Saturation;Brightness;Contrast");  // Description. Use ';' to delimit.
+
+    case FILTER_DESCRIPTION:
+      return AVSValue("Adjusts color and light levels of your picture depending on your parameters."); 
+  }
+  return AVSValue(-1);
+}
