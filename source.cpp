@@ -64,7 +64,7 @@ public:
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
   void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) ;
   bool __stdcall GetParity(int n);
-  void __stdcall SetCacheHints(int cachehints,int framesahead, int framesback) { };
+  void __stdcall SetCacheHints(int cachehints,int frame_range) { };
 
   static AVSValue __cdecl Create(AVSValue args, void* user_data, IScriptEnvironment* env) {
     const int mode = int(user_data);
@@ -466,7 +466,7 @@ public:
   }
   const VideoInfo& __stdcall GetVideoInfo() { return vi; }
   bool __stdcall GetParity(int n) { return vi.IsFieldBased() ? (n&1) : false; }
-  void __stdcall SetCacheHints(int cachehints,int framesahead, int framesback) { };
+  void __stdcall SetCacheHints(int cachehints,int frame_range) { };
 };
 
 
@@ -654,7 +654,7 @@ public:
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env) { return frame; }
   bool __stdcall GetParity(int n) { return false; }
   const VideoInfo& __stdcall GetVideoInfo() { return vi; }
-  void __stdcall SetCacheHints(int cachehints,int framesahead, int framesback) { };
+  void __stdcall SetCacheHints(int cachehints,int frame_range) { };
 
   void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) {
     double Hz=440;
@@ -1366,7 +1366,7 @@ public:
     return v;
   }
   bool __stdcall GetParity(int n) { return vi.IsFieldBased() ? (n&1) : false; }
-  void __stdcall SetCacheHints(int cachehints,int framesahead, int framesback) { };
+  void __stdcall SetCacheHints(int cachehints,int frame_range) { };
   void __stdcall GetAudio(void*, __int64, __int64, IScriptEnvironment*) {}
 };
 

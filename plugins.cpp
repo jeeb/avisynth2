@@ -272,7 +272,7 @@ public:
   }
 
   bool __stdcall GetParity(int n) { return false; }
-  void __stdcall SetCacheHints(int cachehints,int framesahead, int framesback) { };
+  void __stdcall SetCacheHints(int cachehints,int frame_range) { };
 
   static AVSValue __cdecl Create(AVSValue args, void* user_data, IScriptEnvironment* env) {
     args = args[0];

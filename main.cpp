@@ -659,7 +659,17 @@ STDMETHODIMP_(LONG) CAVIStreamSynth::Info(AVISTREAMINFOW *psi, LONG lSize) {
       wcscpy(asi.szName, L"Avisynth audio #1");
     } else {
       const int image_size = vi->BMPSize();
-      asi.fccHandler = vi->IsYUY2() ? '2YUY' : ' BID';
+      asi.fccHandler = 'UNKN';
+      if (vi->IsRGB()) 
+        asi.fccHandler = ' BID';
+      else if (vi->IsYUY2())
+        asi.fccHandler = '2YUY';
+      else if (vi->IsYV12())
+        asi.fccHandler = 'YV12';
+      else {
+        _ASSERT(FALSE);
+      }
+      //      asi.fccHandler = vi->IsYUY2() ? '2YUY' : ' BID';
       asi.dwScale = vi->fps_denominator;
       asi.dwRate = vi->fps_numerator;
       asi.dwLength = vi->num_frames;
@@ -800,7 +810,6 @@ STDMETHODIMP CAVIStreamSynth::ReadFormat(LONG lPos, LPVOID lpFormat, LONG *lpcbF
     WAVEFORMATEX wfx;
     memset(&wfx, 0, sizeof(wfx));
     wfx.wFormatTag = 1;
-//    wfx.nChannels = vi->stereo ? 2 : 1;
     wfx.nChannels = vi->AudioChannels();  // Perhaps max out at 2?
     wfx.nSamplesPerSec = vi->SamplesPerSecond();
     wfx.wBitsPerSample = vi->BytesPerChannelSample() * 8;
@@ -815,7 +824,16 @@ STDMETHODIMP CAVIStreamSynth::ReadFormat(LONG lPos, LPVOID lpFormat, LONG *lpcbF
     bi.biHeight = vi->height;
     bi.biPlanes = 1;
     bi.biBitCount = vi->BitsPerPixel();
-    bi.biCompression = vi->IsYUY2() ? '2YUY' : BI_RGB;
+      if (vi->IsRGB()) 
+        bi.biCompression = BI_RGB;
+      else if (vi->IsYUY2())
+        bi.biCompression = '2YUY';
+      else if (vi->IsYV12())
+        bi.biCompression = 'YV12';
+      else {
+        _ASSERT(FALSE);
+      }
+//    bi.biCompression = vi->IsYUY2() ? '2YUY' : BI_RGB;
     bi.biSizeImage = bi.biWidth * bi.biHeight * bi.biBitCount / 8;
     memcpy(lpFormat, &bi, min(size_t(*lpcbFormat), sizeof(bi)));
   }

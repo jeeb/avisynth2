@@ -44,11 +44,19 @@ enum {SAMPLE_INT8  = 1<<0,
         SAMPLE_INT32 = 1<<3,
         SAMPLE_FLOAT = 1<<4};
 
+enum {
+   PLANAR_Y=1<<0,
+   PLANAR_U=1<<1,
+   PLANAR_V=1<<2,
+  };
+
 struct VideoInfo {
   int width, height;    // width=0 means no video
   unsigned fps_numerator, fps_denominator;
   int num_frames;
   // This is more extensible than previous versions. More properties can be added seeminglesly.
+
+  // Colorspace properties.
   enum {
     CS_FIELDBASED = 1<<27,
     CS_BGR = 1<<28,  
@@ -57,13 +65,14 @@ struct VideoInfo {
     CS_PLANAR = 1<<31
   };
 
+  // Specific colorformats
   enum { CS_UNKNOWN = 0,
          CS_BGR24 = 1<<0 | CS_BGR | CS_INTERLEAVED,
          CS_BGR32 = 1<<1 | CS_BGR | CS_INTERLEAVED,
          CS_YUY2 = 1<<2 | CS_YUV | CS_INTERLEAVED,
          CS_YV12 = 1<<3 | CS_YUV | CS_PLANAR,  // y-v-u, planar
          CS_I420 = 1<<4 | CS_YUV | CS_PLANAR,  // y-u-v, planar
-         CS_IYUV = 1<<4 | CS_YUV | CS_PLANAR  // as above
+         CS_IYUV = 1<<4 | CS_YUV | CS_PLANAR  // same as above
          };
   int pixel_type;                // changed to int as of 2.5
 
@@ -83,6 +92,7 @@ struct VideoInfo {
   bool IsYUY2() const { return (pixel_type & CS_YUY2) == CS_YUY2; }  
   bool IsYV12() const { return (pixel_type & CS_YV12) == CS_YV12; }
   bool IsFieldBased() const { return !!(pixel_type & CS_FIELDBASED); }
+  int VideoPlanes() {return (pixel_type&CS_PLANAR) ? 3 : 1;}
   int BytesFromPixels(int pixels) const { return pixels * (BitsPerPixel()>>3); }   // Will not work on planar images, but will return only luma planes
   int RowSize() const { return BytesFromPixels(width); }
   int BMPSize() const { return height * ((RowSize()+3) & -4); }
@@ -220,10 +230,7 @@ public:
 
 enum {
   CACHE_NOTHING=0,
-  CACHE_ALL=1,
-  CACHE_AHEAD=2,
-  CACHE_BACK=3,
-  CACHE_AHEAD_BACK=4 };
+  CACHE_RANGE=1 };
 
 // Base class for all filters.
 class IClip {
@@ -240,7 +247,7 @@ public:
   virtual PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env) = 0;
   virtual bool __stdcall GetParity(int n) = 0;  // return field parity if field_based, else parity of first field in frame
   virtual void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) = 0;  // start and count are in samples
-  virtual void __stdcall SetCacheHints(int cachehints,int framesahead, int framesback) = 0 ;  // We do not pass cache requests upwards, only to the next filter.
+  virtual void __stdcall SetCacheHints(int cachehints,int frame_range) = 0 ;  // We do not pass cache requests upwards, only to the next filter.
   virtual const VideoInfo& __stdcall GetVideoInfo() = 0;
   virtual __stdcall ~IClip() {}
 };
@@ -399,7 +406,7 @@ public:
   void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) { child->GetAudio(buf, start, count, env); }
   const VideoInfo& __stdcall GetVideoInfo() { return vi; }
   bool __stdcall GetParity(int n) { return child->GetParity(n); }
-  void __stdcall SetCacheHints(int cachehints,int framesahead, int framesback) { } ;  // We do not pass cache requests upwards, only to the next filter.
+  void __stdcall SetCacheHints(int cachehints,int frame_range) { } ;  // We do not pass cache requests upwards, only to the next filter.
 };
 
 
@@ -431,7 +438,7 @@ enum {
 
 class ConvertAudio : public GenericVideoFilter 
 /**
-  * Class to convert audio to any format
+  * Helper class to convert audio to any format
  **/
 {
 public:
@@ -449,24 +456,10 @@ private:
 void ConvertAudio::convertToFloat(char* inbuf, float* outbuf, char sample_type, int count);
 void ConvertAudio::convertFromFloat(float* inbuf, void* outbuf, char sample_type, int count);
 
-  static __inline signed char Saturate_int8(float n) {
-    if (n <= -128.0f) return -128;
-    if (n >= 127.0f) return 127;
-    return (signed char)(int)n;
-  }
-
-
-  static __inline short Saturate_int16(float n) {
-    if (n <= -32768.0f) return -32768;
-    if (n >= 32767.0f) return 32767;
-    return (short)n;
-  }
-
-  static __inline int Saturate_int32(float n) {
-    if (n <= (float)MIN_INT) return MIN_INT;  
-    if (n >= (float)MAX_INT) return MAX_INT;
-    return (int)n;
-  }
+  __inline int Saturate_int8(float n);
+  __inline short Saturate_int16(float n);
+  __inline int Saturate_int24(float n);
+  __inline int Saturate_int32(float n);
 
   char src_format;
   char dst_format;

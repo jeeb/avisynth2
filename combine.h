@@ -41,7 +41,7 @@ public:
     { return vi; }
   inline bool __stdcall GetParity(int n) 
     { return child1->GetParity(n); }
-  void __stdcall SetCacheHints(int cachehints,int framesahead, int framesback) { };
+  void __stdcall SetCacheHints(int cachehints,int frame_range) { };
 
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
 
@@ -69,7 +69,7 @@ public:
   inline bool __stdcall GetParity(int n) 
     { return child1->GetParity(n); }
 
-  void __stdcall SetCacheHints(int cachehints,int framesahead, int framesback) { };
+  void __stdcall SetCacheHints(int cachehints,int frame_range) { };
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
 
 private:
@@ -96,7 +96,7 @@ public:
     { return vi; }
   inline bool __stdcall GetParity(int n) 
     { return child[0]->GetParity(n); }
-  void __stdcall SetCacheHints(int cachehints,int framesahead, int framesback) { };
+  void __stdcall SetCacheHints(int cachehints,int frame_range) { };
 
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
 
@@ -133,7 +133,7 @@ public:
     { return cache[0]->GetVideoInfo(); }
   inline bool __stdcall GetParity(int n) 
     { return cache[0]->GetParity(n); }
-  void __stdcall SetCacheHints(int cachehints,int framesahead, int framesback) { };
+  void __stdcall SetCacheHints(int cachehints,int frame_range) { };
 
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
 };
