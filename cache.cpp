@@ -25,11 +25,56 @@
  ******************************/
 
 Cache::Cache(PClip _child) 
-  : GenericVideoFilter(_child) {}
+: GenericVideoFilter(_child) { use_hints=false;}
 
 
 PVideoFrame __stdcall Cache::GetFrame(int n, IScriptEnvironment* env) 
-{
+{ 
+  n = min(vi.num_frames-1, max(0,n));  // Inserted to avoid requests beyond framerange.
+  if (use_hints) {
+    PVideoFrame result;
+    bool foundframe = false;
+    for (int i = 0; i<h_total_frames; i++) {
+      // Check if we already have the frame
+      if ((h_status[i] & CACHE_ST_USED) && (h_frame_nums[i] ==n)) {
+        result = new VideoFrame(h_vfb[i], h_video_frames[i]->offset, h_video_frames[i]->pitch, h_video_frames[i]->row_size, h_video_frames[i]->height, h_video_frames[i]->offsetU, h_video_frames[i]->offsetV, h_video_frames[i]->pitchUV);
+        foundframe = true;
+      }
+      // Check if if can be used for deletion
+      if ((h_status[i] & CACHE_ST_USED) && (abs(h_frame_nums[i]-n)>h_radius) ) {
+        h_status[i] |= CACHE_ST_DELETEME;
+      }
+    }
+    if (!foundframe) {
+      result = child->GetFrame(n, env);
+      // Find a place to store it.
+      bool notfound = true;
+      i = -1;
+      while (notfound) {
+        i++;
+        if (i == h_total_frames)
+          env->ThrowError("Internal cache error! Report this!");
+        if (h_status[i] & CACHE_ST_DELETEME) {  // Frame can be deleted
+          notfound = false;
+        }
+        if (!(h_status[i] & CACHE_ST_USED)) { // Frame has not yet been used.
+          notfound = false;
+        }
+      }  // Store it
+
+      h_vfb[i] = result->vfb;
+      h_frame_nums[i] = n;
+      h_video_frames[i]->offset = result->offset;
+      h_video_frames[i]->offsetU = result->offsetU;
+      h_video_frames[i]->offsetV = result->offsetV;
+      h_video_frames[i]->pitch = result->pitch;
+      h_video_frames[i]->pitchUV = result->pitchUV;
+      h_video_frames[i]->row_size = result->row_size;
+      h_video_frames[i]->height = result->height;
+      h_status[i] = CACHE_ST_USED;
+    }
+    return result;
+  }
   // look for a cached copy of the frame
   int c=0;
   for (CachedVideoFrame* i = video_frames.next; i != &video_frames; i = i->next) {
@@ -56,7 +101,28 @@ PVideoFrame __stdcall Cache::GetFrame(int n, IScriptEnvironment* env)
 
 void __stdcall Cache::SetCacheHints(int cachehints,int frame_range) {   //TODO: Implement me!
   _RPT2(0, "Cache: Setting cache hints (hints:%d, range:%d )\n", cachehints, frame_range);
+  h_radius = frame_range;
+  h_total_frames = frame_range*2+1;
+  h_video_frames = (CachedVideoFrame **)malloc(sizeof(CachedVideoFrame*)*h_total_frames);
+  h_vfb = (VideoFrameBuffer**)malloc(sizeof(VideoFrameBuffer*)*h_total_frames);
+  h_frame_nums = new int[h_total_frames];
+  h_status = new int[h_total_frames];
+  for (int i = 0; i<h_total_frames; i++) {
+    h_video_frames[i]=new CachedVideoFrame;
+    h_frame_nums[i]=-1;
+    h_status[i]=0;
+  }
+  use_hints=true;
 } 
+
+Cache::~Cache() {
+  if (use_hints) {
+    for (int i = 0; i<h_total_frames; i++) free(h_video_frames[i]);
+    free(h_vfb);
+    delete[] h_frame_nums;
+    delete[] h_status;
+  }
+}
 
 AVSValue __cdecl Cache::Create_Cache(AVSValue args, void*, IScriptEnvironment* env) 
 {

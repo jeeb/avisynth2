@@ -33,6 +33,7 @@ class Cache : public GenericVideoFilter
 {
 public:
   Cache(PClip _child);
+  ~Cache();
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
   void __stdcall SetCacheHints(int cachehints,int frame_range);
   static AVSValue __cdecl Create_Cache(AVSValue args, void*, IScriptEnvironment* env);
@@ -49,8 +50,21 @@ private:
     int frame_number;
     CachedVideoFrame() { next=prev=this; }
   };
-
   CachedVideoFrame video_frames;
+// hint vars:
+  CachedVideoFrame** h_video_frames;
+  VideoFrameBuffer** h_vfb;
+  int* h_frame_nums;
+  int* h_status;
+  int h_total_frames;
+  bool use_hints;
+  int h_radius;
+  enum {CACHE_ST_USED = 1<<0,
+        CACHE_ST_DELETEME = 1<<1,
+        CACHE_ST_BEING_GENERATED = 1<<2
+  };
+
+
 };
 
 

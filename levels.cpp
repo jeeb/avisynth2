@@ -507,7 +507,12 @@ Limiter::Limiter(PClip _child, int _min_luma, int _max_luma, int _min_chroma, in
 
   if ((min_luma<0)||(min_luma>255))
       env->ThrowError("Limiter: Invalid minimum luma");
-  // TODO: 3 more
+  if ((max_luma<0)||(max_luma>255))
+      env->ThrowError("Limiter: Invalid maximum luma");
+  if ((min_chroma<0)||(min_chroma>255))
+      env->ThrowError("Limiter: Invalid minimum chroma");
+  if ((max_chroma<0)||(max_chroma>255))
+      env->ThrowError("Limiter: Invalid maximum chroma");
 }
 
 PVideoFrame __stdcall Limiter::GetFrame(int n, IScriptEnvironment* env) {
@@ -614,5 +619,5 @@ xloop:
 
 AVSValue __cdecl Limiter::Create(AVSValue args, void* user_data, IScriptEnvironment* env)
 {
-	return new Limiter(args[0].AsClip(), args[1].AsInt(16), args[2].AsInt(235), args[3].AsInt(16), args[4].AsInt(240), env);
+	return new Limiter(args[0].AsClip(), args[1].AsInt(16), args[2].AsInt(236), args[3].AsInt(16), args[4].AsInt(240), env);
 }

@@ -42,8 +42,8 @@ AVSFunction Histogram_filters[] = {
 Histogram::Histogram(PClip _child, IScriptEnvironment* env) 
   : GenericVideoFilter(_child)
 {
-  if (!vi.IsYUY2())
-    env->ThrowError("Histogram: YUY2 data only");
+  if (!vi.IsYUV())
+    env->ThrowError("Histogram: YUV data only");
   vi.width += 256;
 }
 
@@ -54,6 +54,46 @@ PVideoFrame __stdcall Histogram::GetFrame(int n, IScriptEnvironment* env)
   BYTE* p = dst->GetWritePtr();
   PVideoFrame src = child->GetFrame(n, env);
   BitBlt(p, dst->GetPitch(), src->GetReadPtr(), src->GetPitch(), src->GetRowSize(), src->GetHeight());
+  if (vi.IsPlanar()) {
+    BitBlt(dst->GetWritePtr(PLANAR_U), dst->GetPitch(PLANAR_U), src->GetReadPtr(PLANAR_U), src->GetPitch(PLANAR_U), src->GetRowSize(PLANAR_U), src->GetHeight(PLANAR_U));
+    BitBlt(dst->GetWritePtr(PLANAR_V), dst->GetPitch(PLANAR_V), src->GetReadPtr(PLANAR_V), src->GetPitch(PLANAR_V), src->GetRowSize(PLANAR_V), src->GetHeight(PLANAR_V));
+    BYTE* p2 = dst->GetWritePtr(PLANAR_U);
+    BYTE* p3 = dst->GetWritePtr(PLANAR_V);
+    for (int y=0; y<src->GetHeight(PLANAR_Y); ++y) {
+      int hist[256] = {0};
+      int x;
+      for (x=0; x<vi.width-256; ++x) {
+        hist[p[x]]++;
+      }
+      if (y&1) {
+        for (x=0; x<128; ++x) {
+          p[x*2+vi.width-256] = min(255, hist[x*2]*4);
+          p[x*2+vi.width-256+1] = min(255, hist[x*2+1]*4);
+          if (x<8) {
+            p2[x+(vi.width>>1)-128]  = 0;
+            p3[x+(vi.width>>1)-128]  = 160; 
+          } else if (x>118) {
+            p2[x+(vi.width>>1)-128]  = 0;
+            p3[x+(vi.width>>1)-128]  = 160;
+          } else if (x==62) {
+            p2[x+(vi.width>>1)-128]  = 160;
+            p3[x+(vi.width>>1)-128]  = 0;
+          } else {
+            p2[x+(vi.width>>1)-128]  = 128;
+            p3[x+(vi.width>>1)-128]  = 128;
+          }
+        }
+        p2+= dst->GetPitch(PLANAR_U);
+        p3+= dst->GetPitch(PLANAR_U);
+      } else {
+        for (x=0; x<256; ++x) {
+          p[x+vi.width-256] = min(255, hist[x]*4);
+        }
+      }
+      p += dst->GetPitch();
+    }
+    return dst;
+  }
   for (int y=0; y<src->GetHeight(); ++y) {
     int hist[256] = {0};
     int x;
@@ -72,5 +112,5 @@ PVideoFrame __stdcall Histogram::GetFrame(int n, IScriptEnvironment* env)
 
 AVSValue __cdecl Histogram::Create(AVSValue args, void*, IScriptEnvironment* env) 
 {
-  return new Histogram(env->Invoke("ConvertToYUY2", args[0]).AsClip(), env);
+  return new Histogram(args[0].AsClip(), env);
 }

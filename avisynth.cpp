@@ -795,6 +795,7 @@ LinkedVideoFrameBuffer* ScriptEnvironment::GetFrameBuffer2(int size) {
     if (i->GetRefcount() == 0 && i->GetDataSize() == size)
       return i;
   }
+
   // Plan C: allocate a new buffer, regardless of current memory usage  
   // FIXME: Could lead to massive allocation on memory thrashing, perhaps a plan D which deallocates all unused frames and reallocates memory would be better, if more than 2*allowed memory is used.
   return NewFrameBuffer(size);

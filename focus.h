@@ -93,13 +93,21 @@ class TemporalSoften : public GenericVideoFilter
  **/
 {
 public:
-  TemporalSoften( PClip _child, unsigned radius, unsigned luma_thresh, unsigned chroma_thresh,
-                  IScriptEnvironment* env );
+  TemporalSoften( PClip _child, unsigned radius, unsigned luma_thresh, unsigned chroma_thresh, IScriptEnvironment* env );
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
   virtual ~TemporalSoften(void);
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
 
 private:
+// YV12:
+    int* planes;
+    int* divtab;
+    const BYTE** planeP;
+    int* accum_line;
+    int* div_line;
+  void TemporalSoften::mmx_accumulate_line(BYTE* c_plane, const BYTE** planeP, int planes, int rowsize, __int64* t);
+  void TemporalSoften::isse_accumulate_line(BYTE* c_plane, const BYTE** planeP, int planes, int rowsize, __int64* t);
+// YUY2:
   const unsigned luma_threshold, chroma_threshold;
   DWORD* accu;
   const int kernel;

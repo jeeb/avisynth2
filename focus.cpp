@@ -680,6 +680,17 @@ AVSValue __cdecl Create_Blur(AVSValue args, void*, IScriptEnvironment* env)
  ****  TemporalSoften  *****
  **************************/
 
+ /**
+ * YV12 code (c) by Klaus Post // sh0dan 2002
+ *
+ * - All frames are loaded (we rely on the cache for this, which is why it has to be rewritten)
+ * - Pointer array is given to the mmx function for planes.
+ * - One line of each planes is one after one compared to the current frame. 
+ * - Accumulated values are stored in two separate arrays. (as shorts)
+ * - The accumulated line is looked up.
+ * - Result is stored (in original image plane).
+ **/
+
 
 #define SCALE(i)    (int)((double)32768.0/(i)+0.5)
 const short TemporalSoften::scaletab[] = {
@@ -710,10 +721,27 @@ TemporalSoften::TemporalSoften( PClip _child, unsigned radius, unsigned luma_thr
     chroma_threshold    (min(chroma_thresh,255)),
     luma_threshold      (min(luma_thresh,255)),
     kernel              (2*min(radius,MAX_RADIUS)+1),
-    scaletab_MMX        (NULL)
+    scaletab_MMX        (NULL)    
 {
-  if (!vi.IsYUY2())
-    env->ThrowError("TemporalSoften: requires YUY2 input");
+  if (!vi.IsYUV())
+    env->ThrowError("TemporalSoften: requires YUV input");
+
+  child->SetCacheHints(CACHE_RANGE,kernel);
+
+  if (vi.IsYV12()) {
+    planes = new int[8];
+    planeP = new const BYTE*[16];
+    divtab = new int[16]; // First index = x/1
+    for (int i = 0; i<16;i++)
+      divtab[i] = 32768/(i+1);
+    int c = 0;
+    if (luma_thresh>0) {planes[c++] = PLANAR_Y; planes[c++] = luma_thresh;}
+    if (chroma_thresh>0) { planes[c++] = PLANAR_V;planes[c++] =chroma_thresh;planes[c++] = PLANAR_U;planes[c++] =chroma_thresh;}
+    planes[c]=0;
+    accum_line=(int*)_aligned_malloc(((vi.width+FRAME_ALIGN-1)/8)*16,8);
+    div_line=(int*)_aligned_malloc(((vi.width+FRAME_ALIGN-1)/8)*16,8);
+    return;
+  }
 
   accu = (DWORD*)new DWORD[(vi.width * vi.height * kernel * vi.BytesFromPixels(1)) >> 2];
   if (!accu)
@@ -734,21 +762,78 @@ TemporalSoften::TemporalSoften( PClip _child, unsigned radius, unsigned luma_thr
                         (((__int64) scaletab[(i >> 8) & 15]) << 32 ) |
                         (((__int64) scaletab[(i >>12) & 15]) << 48 );
   }
-  child->SetCacheHints(CACHE_RANGE,kernel*2+1);
 }
 
 
 
 TemporalSoften::~TemporalSoften(void) 
 {
-  delete[] accu;
-  delete[] scaletab_MMX;
+  if (vi.IsYUY2()) {
+    delete[] accu;
+    delete[] scaletab_MMX;
+  } else {
+    delete[] planes;
+    delete[] divtab;
+    delete[] planeP;
+    _aligned_free(accum_line);
+    _aligned_free(div_line);
+  }
 }
 
 
 
 PVideoFrame TemporalSoften::GetFrame(int n, IScriptEnvironment* env) 
 {
+  __declspec(align(8)) static __int64 i64_thresholds = 0x1000010000100001i64;
+  if (vi.IsYV12()) {
+    PVideoFrame frame;
+    int radius = (kernel-1) / 2 ;
+    int c=0;
+    do {
+      int c_thresh = planes[c+1];  // Threshold for current plane.
+      int d=0;
+      for (int i = radius;i>=1;i--) { // Fetch all planes sequencially
+	      PVideoFrame tframe = child->GetFrame(min(vi.num_frames-1,max(n-i,1)), env);
+//        _RPT1(0,"f:%i\n",n-i);
+        planeP[d++] = tframe->GetReadPtr(planes[c]);
+      }
+  	  frame = child->GetFrame(n, env);          // get the new frame
+//        _RPT1(0,"f:%i\n",n);
+	    env->MakeWritable(&frame);
+      BYTE* c_plane= frame->GetWritePtr(planes[c]);
+      for (i = 1;i<=radius;i++) { // Fetch all planes sequencially
+//        _RPT1(0,"f:%i\n",n+i);
+	      PVideoFrame tframe = child->GetFrame(min(vi.num_frames-1,max(n+i,1)), env);
+        planeP[d++] = tframe->GetReadPtr(planes[c]);
+      }
+
+      int rowsize=frame->GetRowSize(planes[c]|PLANAR_ALIGNED);
+      int h = frame->GetHeight(planes[c]);
+      int w=frame->GetRowSize(planes[c]); // Non-aligned
+      int pitch = frame->GetPitch(planes[c]);
+      i64_thresholds = (__int64)c_thresh | (__int64)(c_thresh<<16) | (((__int64)c_thresh)<<32) | (((__int64)c_thresh)<<48);
+      i64_thresholds |= (i64_thresholds<<8);
+      for (int y=0;y<h;y++) { // One line at the time
+        if ((env->GetCPUFlags() & CPUF_INTEGER_SSE)) {
+          isse_accumulate_line(c_plane, planeP, d-1, rowsize,&i64_thresholds);
+        } else {
+          mmx_accumulate_line(c_plane, planeP, d-1, rowsize,&i64_thresholds);
+        }
+        short* s_accum_line = (short*)accum_line;
+        BYTE* b_div_line = (BYTE*)div_line;
+        for (int i=0;i<w;i++) {
+          int div=divtab[b_div_line[i]];
+          c_plane[i]=(div*(int)s_accum_line[i]+(div>>1))>>15; //Todo: Attempt asm/mmx mix - maybe faster
+        }
+        for (int p=0;p<d;p++)
+          planeP[p] += pitch;
+        c_plane += pitch;
+      }
+      c+=2;
+    } while (planes[c]);
+    return frame;
+  }
+ 
   int noffset = n % kernel;                             // offset of the frame not yet in the buffer
   int coffset = (noffset + (kernel / 2) + 1) % kernel;  // center offset, offset of the frame to be returned 
   
@@ -773,6 +858,156 @@ PVideoFrame TemporalSoften::GetFrame(int n, IScriptEnvironment* env)
   return frame;
 }
 
+
+void TemporalSoften::mmx_accumulate_line(BYTE* c_plane, const BYTE** planeP, int planes, int rowsize, __int64* t) {
+  __declspec(align(8)) static const __int64 indexer = 0x0101010101010101i64;
+  __declspec(align(8)) static const __int64 t2 = *t;
+  int* _accum_line=accum_line;
+  int* _div_line=div_line;
+
+  __asm {
+    mov esi,c_plane;
+    mov eax,0          // EAX will be plane offset (all planes).
+    mov ecx,[_accum_line]
+testplane:
+    mov ebx,[rowsize]
+    cmp ebx, eax
+    jl outloop
+
+    movq mm0,[esi+eax]  // Load current frame pixels
+     pxor mm2,mm2        // Clear mm2
+    movq mm1,mm0
+     movq mm3,mm0
+    PUNPCKlbw mm3,mm2    // mm0 = lower 4 pixels  (exhanging h/l in these two give funny results)
+     PUNPCKhbw mm1,mm2     // mm1 = upper 4 pixels
+
+    mov edi,[planeP];  // Adress of planeP array is now in edi
+    mov ebx,[planes]   // How many planes (this will be our counter)
+    movq [ecx],mm3
+     pxor mm7,mm7        // Clear divisor table
+    lea edi,[edi+ebx*4]
+    movq [ecx+8],mm1
+kernel_loop:
+    mov edx,[edi]
+    movq mm1,[edx+eax]      // Load 8 pixels from test plane
+     movq mm2,mm0
+    movq mm5, mm1           // Save test plane pixels (twice for unpack)
+     pxor mm4,mm4
+
+    movq mm3,mm1            // Calc abs difference
+     psubusb   mm1, mm2
+    psubusb   mm2, mm3
+    por       mm2, mm1               
+     movq mm3,[t2]          // Using t also gives funny results
+    PSUBUSB mm2,mm3
+     movq mm1,mm5
+    PCMPEQB mm2,mm4
+    movq mm3,mm2
+     movq mm6,mm2           // Store mask for accumulation
+    punpckhbw mm3,mm4       // mm3 = upper 4 pixels mask
+     punpcklbw mm2,mm4      // mm2 = lower 4 pixels mask
+    pand mm6,[indexer]
+     punpckhbw mm1,mm4       // mm1 = upper 4 pixels
+    punpcklbw mm5,mm4      // mm5 = lower 4 pixels  // mm4, 
+     paddb mm7,mm6
+    pand  mm1,mm3
+     pand  mm5,mm2          // mm2,mm3,mm6 also free
+    movq mm2,[ecx]          // mm2 = lower accumulated 
+     movq mm3,[ecx+8]
+    paddusw mm2,mm5         // Add lower pixel values
+     paddusw mm3,mm1        // Add upper pixel values
+    movq [ecx],mm2
+     movq [ecx+8],mm3
+
+    sub edi,4
+    dec ebx
+    jnz kernel_loop
+    mov edx,[_div_line]
+    add eax,8   // Next 8 pixels
+    movq [edx],mm7
+    add ecx,16  // Next 8 accumulated pixels
+    add edx,8   // Next 8 divisor pixels
+    mov [_div_line],edx
+    jmp testplane
+outloop:
+    emms
+  }
+}
+
+
+void TemporalSoften::isse_accumulate_line(BYTE* c_plane, const BYTE** planeP, int planes, int rowsize, __int64* t) {
+  __declspec(align(8)) static const __int64 indexer = 0x0101010101010101i64;
+  __declspec(align(8)) static const __int64 t2 = *t;
+  int* _accum_line=accum_line;
+  int* _div_line=div_line;
+
+  __asm {
+    mov esi,c_plane;
+    mov eax,0          // EAX will be plane offset (all planes).
+    mov ecx,[_accum_line]
+testplane:
+    mov ebx,[rowsize]
+    cmp ebx, eax
+    jl outloop
+
+    movq mm0,[esi+eax]  // Load current frame pixels
+     pxor mm2,mm2        // Clear mm2
+    movq mm1,mm0
+     movq mm3,mm0
+    PUNPCKlbw mm3,mm2    // mm0 = lower 4 pixels  (exhanging h/l in these two give funny results)
+     PUNPCKhbw mm1,mm2     // mm1 = upper 4 pixels
+
+    mov edi,[planeP];  // Adress of planeP array is now in edi
+    mov ebx,[planes]   // How many planes (this will be our counter)
+    movq [ecx],mm3
+     pxor mm7,mm7        // Clear divisor table
+    lea edi,[edi+ebx*4]
+    movq [ecx+8],mm1
+kernel_loop:
+    mov edx,[edi]
+    movq mm1,[edx+eax]      // Load 8 pixels from test plane
+     movq mm2,mm0
+    movq mm5, mm1           // Save test plane pixels (twice for unpack)
+     pxor mm4,mm4
+    pmaxub mm2,mm1          // Calc abs difference
+     pminub mm1,mm0
+    psubusb mm2,mm1
+     movq mm3,[t2]          // Using t also gives funny results
+    PSUBUSB mm2,mm3
+     movq mm1,mm5
+    PCMPEQB mm2,mm4
+     prefetchnta [edx+eax+64]
+    movq mm3,mm2
+     movq mm6,mm2           // Store mask for accumulation
+    punpckhbw mm3,mm4       // mm3 = upper 4 pixels mask
+     punpcklbw mm2,mm4      // mm2 = lower 4 pixels mask
+    pand mm6,[indexer]
+     punpckhbw mm1,mm4       // mm1 = upper 4 pixels
+    punpcklbw mm5,mm4      // mm5 = lower 4 pixels  // mm4, 
+     paddb mm7,mm6
+    pand  mm1,mm3
+     pand  mm5,mm2          // mm2,mm3,mm6 also free
+    movq mm2,[ecx]          // mm2 = lower accumulated 
+     movq mm3,[ecx+8]
+    paddusw mm2,mm5         // Add lower pixel values
+     paddusw mm3,mm1        // Add upper pixel values
+    movq [ecx],mm2
+     movq [ecx+8],mm3
+
+    sub edi,4
+    dec ebx
+    jnz kernel_loop
+    mov edx,[_div_line]
+    add eax,8   // Next 8 pixels
+    movq [edx],mm7
+    add ecx,16  // Next 8 accumulated pixels
+    add edx,8   // Next 8 divisor pixels
+    mov [_div_line],edx
+    jmp testplane
+outloop:
+    emms
+  }
+}
 
 
 void TemporalSoften::run_C(DWORD *pframe, int rowsize, int height, int modulo, int noffset, int coffset)
