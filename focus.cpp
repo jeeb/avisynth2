@@ -773,6 +773,9 @@ PVideoFrame TemporalSoften::GetFrame(int n, IScriptEnvironment* env)
   for (int p=0;p<16;p++)
     planeDisabled[p]=false;
 
+  frame = child->GetFrame(n, env);          // get the new frame
+  env->MakeWritable(&frame);
+
   do {
     int c_thresh = planes[c+1];  // Threshold for current plane.
     int d=0;
@@ -781,8 +784,10 @@ PVideoFrame TemporalSoften::GetFrame(int n, IScriptEnvironment* env)
       planePitch[d] = tframe->GetPitch(planes[c]);
       planeP[d++] = tframe->GetReadPtr(planes[c]);
     }
-    frame = child->GetFrame(n, env);          // get the new frame
-    env->MakeWritable(&frame);
+
+//    if (planes[c] == PLANAR_Y)
+//      env->MakeWritable(&frame);
+
     BYTE* c_plane= frame->GetWritePtr(planes[c]);
 
     for (i = 1;i<=radius;i++) { // Fetch all planes sequencially

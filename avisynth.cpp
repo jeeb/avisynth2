@@ -750,10 +750,10 @@ PVideoFrame __stdcall ScriptEnvironment::NewVideoFrame(const VideoInfo& vi, int 
 bool ScriptEnvironment::MakeWritable(PVideoFrame* pvf) {
   const PVideoFrame& vf = *pvf;
   // If the frame is already writable, do nothing.
-/*  if (vf->IsWritable()) {
-    return false;
-  }
-*/
+//  if (vf->IsWritable()) {
+//    return false;
+//  }
+
   // Otherwise, allocate a new frame (using NewVideoFrame) and
   // copy the data into it.  Then modify the passed PVideoFrame
   // to point to the new buffer.
@@ -940,8 +940,189 @@ void BitBlt(BYTE* dstp, int dst_pitch, const BYTE* srcp, int src_pitch, int row_
   }
 }
 
-//Todo: Align reads to mod8 boundaries. Perhaps only prefecth at new cacheline, now prefetches at every 16'th byte.
+void asm_BitBlt(BYTE* dstp, int dst_pitch, const BYTE* srcp, int src_pitch, int row_size, int height) {
 
+	if(row_size==0 || height==0) return; //abort on goofs
+	//move backwards for easier looping and to disable hardware prefetch
+	const BYTE* srcStart=srcp+src_pitch*(height-1);
+	BYTE* dstStart=dstp+dst_pitch*(height-1);
+
+	if(row_size < 32) {//to small to optimize
+		_asm {
+			mov 	esi,srcStart	//move rows from bottom up
+			mov 	edi,dstStart
+			mov 	edx,row_size
+			dec		edx
+			mov 	ebx,height
+			align 16
+memoptS_rowloop:
+			mov 	ecx,edx
+//			rep movsb
+memoptS_byteloop:
+			mov		AL,[esi+ecx]
+			mov		[edi+ecx],AL
+			sub		ecx,1
+			jnc		memoptS_byteloop
+			sub 	esi,src_pitch
+			sub 	edi,dst_pitch
+			dec 	ebx
+			jne 	memoptS_rowloop
+		};
+		return;
+	}//end small version
+
+	else if( (int(dstp) | row_size) & 7) {//not QW aligned
+		//unaligned version makes no assumptions on alignment
+		//other than pitch is QW aligned
+		int preBytes;// 0-7 bytes before first QW
+		int prevLineSrc,prevLineDst;
+		_asm {
+//****** initialize
+			cld		//just in case
+			mov		esi,srcStart	//bottom row
+			mov		edi,dstStart
+			mov		edx,row_size
+			mov		ecx,edi
+			neg		ecx
+			and		ecx,7		//bytes before first QWord in dest
+			mov		preBytes,ecx
+			mov		eax,src_pitch
+			mov		ebx,dst_pitch
+			add		eax,edx
+			add		ebx,edx
+			mov		prevLineSrc,eax		//=pitch + row_size
+			mov		prevLineDst,ebx
+			mov		ebx,height
+//***** loop starts here
+			align 16
+memoptU_rowloop:
+//***** prefetch
+//			mov		AL,[esi]
+			mov		ecx,edx	//row_size
+			dec		ecx			//offset to last byte in row
+memoptU_prefetchloop:
+			mov		AL,[esi+ecx]	//read one address per cache line
+			sub		ecx,64
+			jnc		memoptU_prefetchloop
+
+//***** write
+			mov		ecx,preBytes
+			rep movsb			//ecx=0 after
+			align	16
+memoptU_write64loop:
+			add		ecx,64
+			cmp		ecx,edx		//while(offset <= row_size) do {...
+			ja		memoptU_done64
+			movq		mm0,[esi+ecx-64]
+			movq		mm1,[esi+ecx-56]
+			movq		mm2,[esi+ecx-48]
+			movq		mm3,[esi+ecx-40]
+			movq		mm4,[esi+ecx-32]
+			movq		mm5,[esi+ecx-24]
+			movq		mm6,[esi+ecx-16]
+			movq		mm7,[esi+ecx- 8]
+			movntq	[edi+ecx-64],mm0
+			movntq	[edi+ecx-56],mm1
+			movntq	[edi+ecx-48],mm2
+			movntq	[edi+ecx-40],mm3
+			movntq	[edi+ecx-32],mm4
+			movntq	[edi+ecx-24],mm5
+			movntq	[edi+ecx-16],mm6
+			movntq	[edi+ecx- 8],mm7
+			jmp		memoptU_write64loop
+memoptU_done64:
+			sub			ecx,64		//went to far
+memoptU_write8loop:
+			add			ecx,8		//next QW
+			cmp			ecx,edx	//any QW's left in row ?
+			ja			memoptU_done8
+			movq		mm0,[esi+ecx-8]
+			movntq	[edi+ecx-8],mm0
+			jmp		memoptU_write8loop
+memoptU_done8:
+			and			ecx,7		//any leftover bytes ?
+			rep movsb				//if so, move them also
+
+			sub		esi,prevLineSrc	//point to start of previous row
+			sub		edi,prevLineDst
+			dec		ebx							//row counter (=height at start)
+			jne		memoptU_rowloop
+
+			sfence
+			emms
+		};
+		return;
+	}//end unaligned version
+
+	else {//QW aligned version (fastest)
+	//else dstp and row_size QW aligned - hope for the best from srcp
+	//QW aligned version should generally be true when copying full rows
+		_asm {
+			mov		esi,srcStart	//start of bottom row
+			mov		edi,dstStart
+			mov		ebx,height
+			mov		edx,row_size
+
+	//first read from memory to cache
+			align	16
+memoptA_rowloop:
+			mov		ecx,edx		//row index
+			sub		ecx,8		//point to last QW
+memoptA_readloop:		//burst memory to cache, 1 address per cache line
+			mov		AL,[esi+ecx]
+			sub		ecx,64						//should be 32 for Pentium3 ?
+			jnc		memoptA_readloop  //while more cache lines left
+
+	//now write from cache to memory (movq actually reads from cache)
+	//write 64 bytes at a time while we can
+			mov		ecx,edx		//bytes in each row
+			align	16				//avoid 2 jumps in same 16 byte code window
+memoptA_write64loop:
+			sub		ecx,64
+			jc		memoptA_done64  //less than 64 bytes left
+			movq		mm0,[esi+ecx+56]
+			movq		mm1,[esi+ecx+48]
+			movq		mm2,[esi+ecx+40]
+			movq		mm3,[esi+ecx+32]
+			movq		mm4,[esi+ecx+24]
+			movq		mm5,[esi+ecx+16]
+			movq		mm6,[esi+ecx+8]
+			movq		mm7,[esi+ecx]
+//note: execution will stall on one of the movntq's (whichever one
+//fills up the WC buffer)
+			movntq	[edi+ecx+56],mm0
+			movntq	[edi+ecx+48],mm1
+			movntq	[edi+ecx+40],mm2
+			movntq	[edi+ecx+32],mm3
+			movntq	[edi+ecx+24],mm4
+			movntq	[edi+ecx+16],mm5
+			movntq	[edi+ecx+ 8],mm6
+			movntq	[edi+ecx]   ,mm7
+			jmp		memoptA_write64loop
+
+memoptA_done64:
+			add		ecx,64
+	//		align	8
+memoptA_write8loop:		//less than 8 QW's left
+			sub		ecx,8
+			jc		memoptA_done8	//no QW's left
+			movq		mm7,[esi+ecx]
+			movntq	[edi+ecx],mm7
+			jmp		memoptA_write8loop
+
+memoptA_done8:
+			sub		esi,src_pitch
+			sub		edi,dst_pitch
+			dec		ebx		//row counter (height)
+			jne		memoptA_rowloop
+
+			sfence
+			emms
+		};
+		return;
+	}//end aligned version
+}//end BitBlt_memopt()
+/*
 void asm_BitBlt(BYTE* dstp, int dst_pitch, const BYTE* srcp, int src_pitch, int row_size, int height) {
   int bytesleft=0;
   if (row_size&15) {
@@ -1035,7 +1216,7 @@ do_next_line_mmx:
   }
   __asm {emms};
 }
-
+*/
 void asm_BitBltNC(BYTE* dstp, int dst_pitch, const BYTE* srcp, int src_pitch, int row_size, int height) {
 }
 
