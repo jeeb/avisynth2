@@ -154,24 +154,25 @@ private:
   int last_end;
 };
 
-class MonoToStereo : public GenericVideoFilter 
+class MergeChannels : public GenericVideoFilter 
 /**
   * Class to convert two mono sources to stereo
  **/
 {
 public:
-  MonoToStereo(PClip _child,PClip _clip, IScriptEnvironment* env);
-  virtual ~MonoToStereo()
-  {if (tempbuffer_size) {delete[] tempbuffer;tempbuffer_size=0;}}
+  MergeChannels(PClip _child,PClip _clip, IScriptEnvironment* env);
+  virtual ~MergeChannels()
+   {if (tempbuffer_size) {delete[] tempbuffer;tempbuffer_size=0;delete[] tempbuffer2;}}
 
   void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env);
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment*);
 
 private:
-	PClip right;
-  signed short *tempbuffer;
+	PClip clip2;
+  signed char *tempbuffer, *tempbuffer2;
   int tempbuffer_size;
-	bool left_stereo,right_stereo;
+	int clip1_channels,clip2_channels;
+  VideoInfo vi2;
 };
 
 

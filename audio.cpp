@@ -40,7 +40,7 @@ AVSFunction Audio_filters[] = {
   { "ConvertAudioToFloat", "c", ConvertAudio::Create_float },
   { "ConvertToMono", "c", ConvertToMono::Create },
   { "EnsureVBRMP3Sync", "c", EnsureVBRMP3Sync::Create },
-  { "MonoToStereo", "cc", MonoToStereo::Create },
+  { "MergeChannels", "cc", MergeChannels::Create },
   { "GetLeftChannel", "c", GetChannel::Create_left },
   { "GetRightChannel", "c", GetChannel::Create_right },
   { "GetChannel", "ci", GetChannel::Create_n },
@@ -309,80 +309,70 @@ AVSValue __cdecl EnsureVBRMP3Sync::Create(AVSValue args, void*, IScriptEnvironme
 
 
 /*******************************************
- *******   Mux 2 mono sources -> stereo ****
+ *******   Mux two sources, so the      ****
+ *******   total channels  is the same  ****
+ *******   as the two clip              ****
  *******************************************/
 
-MonoToStereo::MonoToStereo(PClip _child, PClip _clip, IScriptEnvironment* env) 
-  : GenericVideoFilter(ConvertAudio::Create(_child,SAMPLE_INT16|SAMPLE_INT32|SAMPLE_FLOAT,SAMPLE_FLOAT)),
-	right(ConvertAudio::Create(_clip,SAMPLE_INT16|SAMPLE_INT32|SAMPLE_FLOAT,SAMPLE_FLOAT))
+MergeChannels::MergeChannels(PClip _child, PClip _clip, IScriptEnvironment* env) 
+  : GenericVideoFilter(ConvertAudio::Create(_child,SAMPLE_INT16|SAMPLE_FLOAT|SAMPLE_INT32|SAMPLE_INT24|SAMPLE_INT8,SAMPLE_FLOAT)),
+	clip2(ConvertAudio::Create(_clip,SAMPLE_INT16|SAMPLE_FLOAT|SAMPLE_INT32|SAMPLE_INT24|SAMPLE_INT8,SAMPLE_FLOAT))
 {
-/*	const VideoInfo& vi2 = right->GetVideoInfo();
+
+  vi2 = clip2->GetVideoInfo();
 
 	if (vi.audio_samples_per_second!=vi2.audio_samples_per_second) 
-		env->ThrowError("MixAudio: Clips must have same sample rate! Use ResampleAudio()!");  // Could be removed for fun :)
+		env->ThrowError("MergeChannels: Clips must have same sample rate! Use ResampleAudio()!");  // Could be removed for fun :)
 
-	left_stereo=vi.stereo;
-	right_stereo=vi2.stereo;
+	if (vi.SampleType()!=vi2.SampleType()) 
+		env->ThrowError("MergeChannels: Clips must have same sample type! Use ConvertAudio()!");  
 
-  vi.stereo = true;
+  clip1_channels=vi.AudioChannels();
+	clip2_channels=vi2.AudioChannels();
+
+  vi.nchannels = clip1_channels+clip2_channels;
   tempbuffer_size=0;
-  */
 }
 
 
-void __stdcall MonoToStereo::GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) 
+void __stdcall MergeChannels::GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) 
 {
-/*  if (tempbuffer_size) {
-    if (tempbuffer_size<(count*4)) {
+  if (tempbuffer_size) {
+    if (tempbuffer_size<count) {
       delete[] tempbuffer;
-      tempbuffer=new signed short[count*4];
+      tempbuffer=new signed char[vi.BytesPerChannelSample()*clip1_channels];
+      tempbuffer2=new signed char[vi2.BytesPerAudioSample()];
       tempbuffer_size=count;
     }
   } else {
-    tempbuffer=new signed short[count*4];
-    tempbuffer_size=count;
+      tempbuffer=new signed char[vi.BytesPerChannelSample()*clip1_channels];
+      tempbuffer2=new signed char[vi2.BytesPerAudioSample()];
+      tempbuffer_size=count;
   }
-	int t_offset=(tempbuffer_size*2);
+
 
   child->GetAudio(tempbuffer, start, count, env);
-  right->GetAudio((tempbuffer+t_offset), start, count, env);
-	
-  signed short* samples = (signed short*)buf;
-  signed short* left_samples = (signed short*)tempbuffer;
-  signed short* right_samples = (signed short*)(tempbuffer+t_offset);
+  clip2->GetAudio(tempbuffer2, start, count, env);
+  char *samples=(char*) buf;
+  int cs=0;
+  int ct1=0;
+  int ct2=0;
 
-	if (left_stereo) {
-		if (right_stereo) { //Ls Rs
-			for (int i=0; i<count; i++) {
-				samples[i*2] = (left_samples[i*2]);
-				samples[i*2+1] = (right_samples[i*2+1]);
-			}
-		} else { // Ls Rm
-			for (int i=0; i<count; i++) {
-				samples[i*2] = (left_samples[i*2]);
-				samples[i*2+1] = (right_samples[i]);
-			}
-		}
-	} else { // Lm
-		if (right_stereo) { //Lm Rs
-			for (int i=0; i<count; i++) {
-				samples[i*2] = (left_samples[i]);
-				samples[i*2+1] = (right_samples[i*2+1]);
-			}
-		} else { // Lm Rm
-			for (int i=0; i<count; i++) {
-				samples[i*2] = (left_samples[i]);
-				samples[i*2+1] = (right_samples[i]);
-			}
-		}
-	}
-  */
+  for (int i=0;i<count;i++) {
+    for (int j=0;j<clip1_channels;j++) 
+      for (int k=0;k<vi.BytesPerChannelSample();k++) 
+        samples[cs++] = tempbuffer[ct1++];
+    for (j=0;j<clip1_channels;j++) 
+      for (int k=0;k<vi2.BytesPerChannelSample();k++) 
+        samples[cs++] = tempbuffer2[ct2++];
+  }
+    
 }
 
 
-AVSValue __cdecl MonoToStereo::Create(AVSValue args, void*, IScriptEnvironment* env) 
+AVSValue __cdecl MergeChannels::Create(AVSValue args, void*, IScriptEnvironment* env) 
 {
-  return new MonoToStereo(args[0].AsClip(),args[1].AsClip(),env);
+  return new MergeChannels(args[0].AsClip(),args[1].AsClip(),env);
 }
 
 
@@ -657,9 +647,7 @@ void __stdcall Normalize::GetAudio(void* buf, __int64 start, __int64 count, IScr
         samples[i*channels+j] = samples[i*channels+j]*max_factor;
       }
     } 
-
   }
-  // Do float here
 }
 
 
@@ -687,7 +675,7 @@ MixAudio::MixAudio(PClip _child, PClip _clip, double _track1_factor, double _tra
 			env->ThrowError("MixAudio: Clips must have same sample rate! Use ResampleAudio()!");  // Could be removed for fun :)
 
 		if (vi.AudioChannels()!=vi2.AudioChannels()) 
-			env->ThrowError("MixAudio: Clips must have same number of channels! Use ConvertToMono() or MonoToStereo()!");
+			env->ThrowError("MixAudio: Clips must have same number of channels! Use ConvertToMono() or MergeChannels()!");
 
 		tempbuffer_size=0;
 	}
