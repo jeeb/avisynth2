@@ -249,7 +249,7 @@ ConvertToRGB::ConvertToRGB( PClip _child, bool rgb24, const char* matrix,
     env->ThrowError("ConvertToRGB: 24-bit RGB and Rec.709 support require MMX and horizontal width a multiple of 4");
   if (vi.IsYV12()) {
     is_yv12=true;
-    vi.pixel_type = VideoInfo::CS_BGR32;  // TODO: rgb24
+    vi.pixel_type = rgb24 ? VideoInfo::CS_BGR24 : VideoInfo::CS_BGR32;
     return;
   }
   vi.pixel_type = rgb24 ? VideoInfo::CS_BGR24 : VideoInfo::CS_BGR32;
@@ -266,7 +266,7 @@ PVideoFrame __stdcall ConvertToRGB::GetFrame(int n, IScriptEnvironment* env)
   BYTE* dstp = dst->GetWritePtr();
   if (is_yv12) {
     if (vi.IsRGB24()) {
-      yv12_to_rgb24_mmx(dstp, dst_pitch/4,src->GetReadPtr(PLANAR_Y),src->GetReadPtr(PLANAR_U),src->GetReadPtr(PLANAR_V),src->GetPitch(PLANAR_Y),src->GetPitch(PLANAR_U),src->GetRowSize(PLANAR_Y),-src->GetHeight(PLANAR_Y));
+      yv12_to_rgb24_mmx(dstp, dst_pitch/3,src->GetReadPtr(PLANAR_Y),src->GetReadPtr(PLANAR_U),src->GetReadPtr(PLANAR_V),src->GetPitch(PLANAR_Y),src->GetPitch(PLANAR_U),src->GetRowSize(PLANAR_Y),-src->GetHeight(PLANAR_Y));
     } else {
       yv12_to_rgb32_mmx(dstp, dst_pitch/4,src->GetReadPtr(PLANAR_Y),src->GetReadPtr(PLANAR_U),src->GetReadPtr(PLANAR_V),src->GetPitch(PLANAR_Y),src->GetPitch(PLANAR_U),src->GetRowSize(PLANAR_Y),-src->GetHeight(PLANAR_Y));
     }
@@ -345,15 +345,26 @@ ConvertToYV12::ConvertToYV12(PClip _child, IScriptEnvironment* env)
     env->ThrowError("ConvertToYV12: Interlaced image height must be multiple of 4");
   if ((!vi.IsFieldBased()) && (vi.height & 1))
     env->ThrowError("ConvertToYV12: image height must be multiple of 2");
-  if (!vi.IsYUY2())
-    env->ThrowError("ConvertToYV12: Only YUY2 input is allowed.");
-
+  isYUY2=isRGB32=isRGB24=false;
+  if (vi.IsYUY2()) isYUY2 = true;
+  if (vi.IsRGB32()) isRGB32 = true;
+  if (vi.IsRGB24()) isRGB24 = true;
+ 
   vi.pixel_type = VideoInfo::CS_YV12;
 
 }
 //optme: MMX pretty obvious
 PVideoFrame __stdcall ConvertToYV12::GetFrame(int n, IScriptEnvironment* env) {
   PVideoFrame src = child->GetFrame(n, env);
+  if (isRGB32) {
+    PVideoFrame dst = env->NewVideoFrame(vi,-4);
+    rgb32_to_yv12_mmx(dst->GetWritePtr(PLANAR_Y),dst->GetWritePtr(PLANAR_U),dst->GetWritePtr(PLANAR_V),src->GetReadPtr(),src->GetRowSize()/4,src->GetHeight(),src->GetPitch()/4);
+    return dst;
+  } else if (isRGB24) {
+    PVideoFrame dst = env->NewVideoFrame(vi,-4);
+    rgb24_to_yv12_mmx(dst->GetWritePtr(PLANAR_Y),dst->GetWritePtr(PLANAR_U),dst->GetWritePtr(PLANAR_V),src->GetReadPtr(),src->GetRowSize()/3,src->GetHeight(),src->GetPitch()/3);
+    return dst;
+  }
   PVideoFrame dst = env->NewVideoFrame(vi);
   int* srcp = (int*)src->GetReadPtr();
   int* dstpY = (int*)dst->GetWritePtr(PLANAR_Y);
@@ -388,10 +399,8 @@ AVSValue __cdecl ConvertToYV12::Create(AVSValue args, void*, IScriptEnvironment*
 {
   PClip clip = args[0].AsClip();
   const VideoInfo& vi = clip->GetVideoInfo();
-  if (vi.IsYUY2())
-    return new ConvertToYV12(clip,env);
-  else if (vi.IsRGB())
-    return new ConvertToYV12(new ConvertToYUY2(clip,env),env);
+  if (!vi.IsYV12())
+    return AlignPlanar::Create(new ConvertToYV12(clip,env));
   else
     return clip;
 }
