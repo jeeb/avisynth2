@@ -343,7 +343,6 @@ out_yv_aloopY:
         align 16
 
       yv_deintloop_mmx:
-        prefetchnta [esi+256]
         movd        mm1, [esi]          ;mm1 = 00 00 YY YY
         inc         eax
         punpcklbw   mm1, mm0            ;mm1 = 0Y 0Y 0Y 0Y
