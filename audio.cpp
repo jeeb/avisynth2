@@ -60,7 +60,7 @@ ConvertAudioTo16bit::ConvertAudioTo16bit(PClip _clip)
 }
 
 
-void __stdcall ConvertAudioTo16bit::GetAudio(void* buf, int start, int count, IScriptEnvironment* env) 
+void __stdcall ConvertAudioTo16bit::GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) 
 {
   int n = vi.BytesFromAudioSamples(count)/2;
   signed short* p16 = (signed short*)buf;
@@ -84,6 +84,134 @@ AVSValue __cdecl ConvertAudioTo16bit::Create(AVSValue args, void*, IScriptEnviro
 {
   return Create(args[0].AsClip());
 }
+
+
+/*******************************************
+ *******   Convert Audio -> Arbitrary ******
+ ******************************************/
+
+// Fixme: Implement 24 bit samples
+
+ConvertAudio::ConvertAudio(PClip _clip, int _sample_type) 
+  : GenericVideoFilter(_clip)
+{
+  dst_format=_sample_type;
+  src_format=vi.SampleType();
+  // Set up convertion matrix
+  src_bps=vi.BytesPerChannelSample();  // Store old size
+  vi.sample_type=dst_format;
+  tempbuffer_size=0;
+}
+
+
+void __stdcall ConvertAudio::GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) 
+{
+  int channels=vi.AudioChannels();
+  if (tempbuffer_size) {
+    if (tempbuffer_size<count) {
+      delete[] tempbuffer;
+      delete[] floatbuffer;
+      tempbuffer=new char[count*src_bps*channels];
+      floatbuffer=new float[count*channels];
+      tempbuffer_size=count;
+    }
+  } else {
+    tempbuffer=new char[count*src_bps*channels];
+    floatbuffer=new float[count*channels];
+    tempbuffer_size=count;
+  }
+  child->GetAudio(tempbuffer, start, count, env);
+  convertToFloat(tempbuffer, floatbuffer, src_format, count*channels);
+  convertFromFloat(floatbuffer, buf, dst_format, count*channels);
+
+}
+
+
+void ConvertAudio::convertToFloat(char* inbuf, float* outbuf, char sample_type, int count) {
+  int i;
+  switch (sample_type) {
+    case SAMPLE_INT8: {
+      signed char* samples = (signed char*)inbuf;
+      for (i=0;i<count;i++) 
+        outbuf[i]=(float)samples[i] / 128.0f;
+      break;
+      }
+    case SAMPLE_INT16: {
+      signed short* samples = (signed short*)inbuf;
+      for (i=0;i<count;i++) 
+        outbuf[i]=(float)samples[i] / 32768.0f;
+      break;
+      }
+
+    case SAMPLE_INT32: {
+      signed int* samples = (signed int*)inbuf;
+      for (i=0;i<count;i++) 
+        outbuf[i]=(float)samples[i] / (float)(1<<31);
+      break;     
+    }
+    case SAMPLE_FLOAT: {
+      SFLOAT* samples = (SFLOAT*)inbuf;
+      for (i=0;i<count;i++) 
+        outbuf[i]=samples[i];
+      break;     
+    }
+    default: { 
+      for (i=0;i<count;i++) 
+        outbuf[i]=0.0f;
+      break;     
+    }
+  }
+}
+
+void ConvertAudio::convertFromFloat(float* inbuf,void* outbuf, char sample_type, int count) {
+  int i;
+  switch (sample_type) {
+    case SAMPLE_INT8: {
+      signed char* samples = (signed char*)outbuf;
+      for (i=0;i<count;i++) 
+        samples[i]=(signed char)(inbuf[i] * 128.0f);
+      break;
+      }
+    case SAMPLE_INT16: {
+      signed short* samples = (signed short*)outbuf;
+      for (i=0;i<count;i++) 
+        samples[i]=(signed short)(inbuf[i] * 32768.0f);
+      break;
+      }
+
+    case SAMPLE_INT32: {
+      signed int* samples = (signed int*)outbuf;
+      for (i=0;i<count;i++) 
+        samples[i]=(int)(inbuf[i] * (float)(1<<31));
+      break;     
+    }
+    case SAMPLE_FLOAT: {
+      SFLOAT* samples = (SFLOAT*)outbuf;
+      for (i=0;i<count;i++) 
+        samples[i]=inbuf[i];
+      break;     
+    }
+    default: { 
+    }
+  }
+}
+
+
+PClip ConvertAudio::Create(PClip clip, int sample_type, int prefered_type) 
+{
+  if (clip->GetVideoInfo().SampleType()&sample_type) {  // Sample type is already ok!
+    return clip;
+  }
+  else 
+    return new ConvertAudio(clip,prefered_type);
+}
+
+/*
+AVSValue __cdecl ConvertAudio::Create(AVSValue args, void*, IScriptEnvironment*) 
+{
+  return Create(args[0].AsClip());
+}
+*/
 
 
 
@@ -119,7 +247,7 @@ void __stdcall ConvertToMono::GetAudio(void* buf, int start, int count, IScriptE
     int tsample=0;    
     for (int j=0;j<channels;j++) 
       tsample+=tempbuffer[i*channels+j]; // Accumulate samples
-    samples[i] =(short)(tsample/channels);
+    samples[i] =(short)((tsample+(channels>>1))/channels);
   }
 }
 
