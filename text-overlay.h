@@ -122,6 +122,24 @@ private:
 };
 
 
+class FilterInfo : public GenericVideoFilter 
+/**
+  * FilterInfo creation class
+ **/
+{
+public:
+  FilterInfo( PClip _child);
+  virtual ~FilterInfo(void);
+  PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
+  
+  static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);  
+
+private:
+  HDC hdcAntialias;
+  Antialiaser antialiaser;  
+};
+
+
 class Compare : public GenericVideoFilter
 /**
   * Compare two clips frame by frame and display fidelity measurements (with optionnal logging to file)

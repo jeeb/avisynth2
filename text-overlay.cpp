@@ -30,6 +30,7 @@
 AVSFunction Text_filters[] = {
   { "ShowFrameNumber", "c[scroll]b", ShowFrameNumber::Create }, // clip, scroll?
   { "ShowSMPTE", "cf", ShowSMPTE::Create },                     // clip, fps
+  { "Info", "c", FilterInfo::Create },                     // clip
   { "Subtitle", "cs[x]i[y]i[first_frame]i[last_frame]i[font]s[size]i[text_color]i[halo_color]i[align]i[spc]i", 
     Subtitle::Create },       // see docs!
   { "Compare", "cc[channels]s[logfile]s[show_graph]b", Compare::Create },
@@ -618,6 +619,106 @@ void Subtitle::InitAntialiaser()
   GdiFlush();
 }
 
+
+
+
+
+
+/***********************************
+ *******   FilterInfo Filter    ******
+ **********************************/
+
+
+FilterInfo::FilterInfo( PClip _child)
+: GenericVideoFilter(_child),
+antialiaser(vi.width, vi.height, "Courier New", 128) {
+}
+
+
+
+FilterInfo::~FilterInfo(void) 
+{
+}
+
+const char* t_YV12="YV12";
+const char* t_YUY2="YUY2";
+const char* t_RGB32="RGB32";
+const char* t_RGB24="RGB24";
+const char* t_INT8="Integer 8 bit";
+const char* t_INT16="Integer 16 bit";
+const char* t_INT24="Integer 24 bit";
+const char* t_INT32="Integer 32 bit";
+const char* t_FLOAT32="Float 32 bit";
+const char* t_YES="YES";
+const char* t_NO="NO";
+const char* t_PUNKNOWN="Parity unknown";
+const char* t_TFF="Top Field First";
+const char* t_BFF="Bottom Field First";
+
+
+PVideoFrame FilterInfo::GetFrame(int n, IScriptEnvironment* env) 
+{
+  PVideoFrame frame = child->GetFrame(n, env);
+  env->MakeWritable(&frame);
+  hdcAntialias = antialiaser.GetDC();
+    const char* c_space;
+    const char* s_type;
+    const char* s_parity;
+    if (vi.IsRGB24()) c_space=t_RGB24;
+    if (vi.IsRGB32()) c_space=t_RGB32;
+    if (vi.IsYV12()) c_space=t_YV12;
+    if (vi.IsYUY2()) c_space=t_YUY2;
+    if (vi.SampleType()==SAMPLE_INT8) s_type=t_INT8;
+    if (vi.SampleType()==SAMPLE_INT16) s_type=t_INT16;
+    if (vi.SampleType()==SAMPLE_INT24) s_type=t_INT24;
+    if (vi.SampleType()==SAMPLE_INT32) s_type=t_INT32;
+    if (vi.SampleType()==SAMPLE_FLOAT) s_type=t_FLOAT32;
+    if (vi.IsParityKnown()) {
+      s_parity = vi.IsBFF() ? t_BFF : t_TFF;
+    } else {s_parity=t_PUNKNOWN;}
+    char text[400];
+    RECT r= { 32, 16, min(3440,vi.width*8), 768*2 };
+    sprintf(text,
+      "Frame: %-8u\n"
+      "ColorSpace: %s\n"
+      "Width:%4u pixels, Height:%4u pixels.\n"
+      "Frames per second: %7.4f\n"
+      "FieldBased Video: %s\n"
+      "Parity: %s\n"
+      "Video Pitch: %4u bytes.\n"
+      "Has Audio: %s\n"
+      "Audio Channels: %-8u\n"
+      "Sample Type: %s\n"
+      "Samples Per Second: %4d\n"
+      ,n
+      ,c_space
+      ,vi.width,vi.height
+      ,(float)vi.fps_numerator/(float)vi.fps_denominator
+      ,vi.IsFieldBased() ? t_YES : t_NO
+      ,s_parity
+      ,frame->GetPitch()
+      ,vi.HasAudio() ? t_YES : t_NO
+      ,vi.AudioChannels()
+      ,s_type
+      ,vi.audio_samples_per_second
+    );
+
+    DrawText(hdcAntialias, text, -1, &r, 0);
+    GdiFlush();
+
+    env->MakeWritable(&frame);
+    BYTE* dstp = frame->GetWritePtr();
+    int dst_pitch = frame->GetPitch();
+    antialiaser.Apply(vi, &frame, dst_pitch, vi.IsYUV() ? 0xD21092 : 0xFFFF00, vi.IsYUV() ? 0x108080 : 0 );
+
+  return frame;
+}
+
+AVSValue __cdecl FilterInfo::Create(AVSValue args, void*, IScriptEnvironment* env) 
+{
+    PClip clip = args[0].AsClip();
+    return new FilterInfo(clip);
+}
 
 
 
