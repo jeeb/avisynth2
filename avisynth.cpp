@@ -110,7 +110,7 @@ VideoFrameBuffer::VideoFrameBuffer(int size)
 VideoFrameBuffer::VideoFrameBuffer() : refcount(0), data(0), data_size(0) {}
 
 VideoFrameBuffer::~VideoFrameBuffer() {
-  _ASSERTE(refcount == 0);
+//  _ASSERTE(refcount == 0);
   delete[] data;
 }
 
@@ -666,7 +666,7 @@ PVideoFrame ScriptEnvironment::NewPlanarVideoFrame(int width, int height, int al
   int size = pitch * height + UVpitch * height;
   VideoFrameBuffer* vfb = GetFrameBuffer(size+(FRAME_ALIGN*4));
   if (!vfb)
-    ThrowError("NewPlanarVideoFrame: Returned 0 size image!");
+    ThrowError("NewPlanarVideoFrame: Returned 0 size image!"); 
 #ifdef _DEBUG
   {
     static const BYTE filler[] = { 0x0A, 0x11, 0x0C, 0xA7, 0xED };

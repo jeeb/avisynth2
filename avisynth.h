@@ -62,9 +62,6 @@ struct VideoInfo {
 
   // Colorspace properties.
   enum {
-    CS_BFF = 1<<25,
-    CS_TFF = 1<<26,
-    CS_FIELDBASED = 1<<27,
     CS_BGR = 1<<28,  
     CS_YUV = 1<<29,
     CS_INTERLEAVED = 1<<30,
@@ -81,12 +78,23 @@ struct VideoInfo {
          CS_IYUV = 1<<4 | CS_YUV | CS_PLANAR  // same as above
          };
   int pixel_type;                // changed to int as of 2.5
-
+  
 
   int audio_samples_per_second;   // 0 means no audio
   int sample_type;                // as of 2.5
   __int64 num_audio_samples;      // changed as of 2.5
   int nchannels;                  // as of 2.5
+
+  // Imagetype properties
+
+  int image_type;
+
+  enum {
+    IT_BFF = 1<<0,
+    IT_TFF = 1<<1,
+    IT_FIELDBASED = 1<<2
+  };
+
   // useful functions of the above
   bool HasVideo() const { return (width!=0); }
   bool HasAudio() const { return (audio_samples_per_second!=0); }
@@ -99,10 +107,10 @@ struct VideoInfo {
   bool IsColorSpace(int c_space) const { return ((pixel_type & c_space) == c_space); }
   bool Is(int property) const { return ((pixel_type & property)==property ); }
   bool IsPlanar() const { return !!(pixel_type & CS_PLANAR); }
-  bool IsFieldBased() const { return !!(pixel_type & CS_FIELDBASED); }
-  bool IsParityKnown() const { return ((pixel_type & CS_FIELDBASED)&&(pixel_type & (CS_BFF||CS_TFF))); }
-  bool IsBFF() const { return !!(pixel_type & CS_BFF); }
-  bool IsTFF() const { return !!(pixel_type & CS_TFF); }
+  bool IsFieldBased() const { return !!(image_type & IT_FIELDBASED); }
+  bool IsParityKnown() const { return ((image_type & IT_FIELDBASED)&&(image_type & (IT_BFF||IT_TFF))); }
+  bool IsBFF() const { return !!(pixel_type & IT_BFF); }
+  bool IsTFF() const { return !!(pixel_type & IT_TFF); }
   
   bool IsVPlaneFirst() const {return ((pixel_type & CS_YV12) == CS_YV12); }  // Don't use this 
   int BytesFromPixels(int pixels) const { return pixels * (BitsPerPixel()>>3); }   // Will not work on planar images, but will return only luma planes
@@ -116,9 +124,9 @@ struct VideoInfo {
   int SampleType() const{ return sample_type;}
   int SamplesPerSecond() const { return audio_samples_per_second; }
   int BytesPerAudioSample() const { return nchannels*BytesPerChannelSample();}
-  void SetFieldBased(bool isfieldbased)  { if (isfieldbased) pixel_type|=CS_FIELDBASED; else  pixel_type&=~CS_FIELDBASED; }
-  void Set(int property)  { pixel_type|=property; }
-  void Clear(int property)  { pixel_type&=~property; }
+  void SetFieldBased(bool isfieldbased)  { if (isfieldbased) image_type|=IT_FIELDBASED; else  image_type&=~IT_FIELDBASED; }
+  void Set(int property)  { image_type|=property; }
+  void Clear(int property)  { image_type&=~property; }
 
   int BitsPerPixel() const { 
     switch (pixel_type) {

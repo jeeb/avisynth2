@@ -65,7 +65,7 @@ class AssumeFieldBased : public GenericVideoFilter
 {
 public:
   AssumeFieldBased(PClip _child) : GenericVideoFilter(_child) 
-  { vi.pixel_type |= VideoInfo::CS_FIELDBASED; }
+  { vi.SetFieldBased(true); }
   inline bool __stdcall GetParity(int n) 
     { return n&1; }
 
@@ -81,7 +81,7 @@ class AssumeFrameBased : public GenericVideoFilter
 {
 public:
   AssumeFrameBased(PClip _child) : GenericVideoFilter(_child) 
-  { vi.pixel_type &= ~VideoInfo::CS_FIELDBASED; }
+  { vi.SetFieldBased(false); }
   inline bool __stdcall GetParity(int n) 
     { return false; }
 

@@ -26,24 +26,22 @@
 
 AVSFunction Audio_filters[] = {
   { "DelayAudio", "cf", DelayAudio::Create },
-  { "AmplifydB", "cf[]f", Amplify::Create_dB },
-  { "Amplify", "cf[]f", Amplify::Create },
+  { "AmplifydB", "cf[]f+", Amplify::Create_dB },
+  { "Amplify", "cf[]f+", Amplify::Create },
   { "Normalize", "c[left]f", Normalize::Create },
   { "MixAudio", "cc[clip1_factor]f[clip2_factor]f", MixAudio::Create },
   { "ResampleAudio", "ci", ResampleAudio::Create },
-  { "LowPassAudio", "ci[]f", FilterAudio::Create_LowPass },
-//  { "LowPassAudioALT", "ci", FilterAudio::Create_LowPassALT },
-  { "HighPassAudio", "ci[]f", FilterAudio::Create_HighPass },
   { "ConvertAudioTo16bit", "c", ConvertAudio::Create_16bit },
   { "ConvertAudioTo8bit", "c", ConvertAudio::Create_8bit },
   { "ConvertAudioTo32bit", "c", ConvertAudio::Create_32bit },
   { "ConvertAudioToFloat", "c", ConvertAudio::Create_float },
   { "ConvertToMono", "c", ConvertToMono::Create },
   { "EnsureVBRMP3Sync", "c", EnsureVBRMP3Sync::Create },
-  { "MergeChannels", "cc", MergeChannels::Create },
+  { "MergeChannels", "c+", MergeChannels::Create },
   { "GetLeftChannel", "c", GetChannel::Create_left },
   { "GetRightChannel", "c", GetChannel::Create_right },
-  { "GetChannel", "ci", GetChannel::Create_n },
+  { "GetChannel", "ci+", GetChannel::Create_n },
+  { "GetChannels", "ci+", GetChannel::Create_n },    // Alias to ease use!
   { "KillAudio", "c", KillAudio::Create },
   { 0 }
 };
@@ -192,24 +190,24 @@ AVSValue __cdecl EnsureVBRMP3Sync::Create(AVSValue args, void*, IScriptEnvironme
  *******   as the two clip              ****
  *******************************************/
 
-MergeChannels::MergeChannels(PClip _child, PClip _clip, IScriptEnvironment* env) 
-  : GenericVideoFilter(_child),
-	tclip(_clip)
+MergeChannels::MergeChannels(PClip _clip, int _num_children, PClip* _child_array, IScriptEnvironment* env) 
+  : GenericVideoFilter(_clip), num_children(_num_children), child_array(_child_array)
 {
-
-  clip2 = ConvertAudio::Create(tclip,vi.SampleType(),vi.SampleType());  // Clip 2 should now be same type as clip 1.
-  vi2 = clip2->GetVideoInfo();
-
-	if (vi.audio_samples_per_second!=vi2.audio_samples_per_second) 
-		env->ThrowError("MergeChannels: Clips must have same sample rate! Use ResampleAudio()!");  // Could be removed for fun :)
-
-	if (vi.SampleType()!=vi2.SampleType()) 
-		env->ThrowError("MergeChannels: Clips must have same sample type! Use ConvertAudio()!");  
-
   clip1_channels=vi.AudioChannels();
-	clip2_channels=vi2.AudioChannels();
 
-  vi.nchannels = clip1_channels+clip2_channels;
+  for (int i=1;i<num_children;i++) {
+    tclip = child_array[i];
+    child_array[i] = ConvertAudio::Create(tclip,vi.SampleType(),vi.SampleType());  // Clip 2 should now be same type as clip 1.
+    vi2 = child_array[i]->GetVideoInfo();
+
+    if (vi.audio_samples_per_second!=vi2.audio_samples_per_second)  {
+		  env->ThrowError("MergeChannels: Clips must have same sample rate! Use ResampleAudio()!");  // Could be removed for fun :)
+    }
+	  if (vi.SampleType()!=vi2.SampleType()) 
+		  env->ThrowError("MergeChannels: Clips must have same sample type! Use ConvertAudio()!");    // Should never happend!
+
+    vi.nchannels += vi2.AudioChannels();
+  }
   tempbuffer_size=0;
 }
 
@@ -219,39 +217,42 @@ void __stdcall MergeChannels::GetAudio(void* buf, __int64 start, __int64 count, 
   if (tempbuffer_size) {
     if (tempbuffer_size<count) {
       delete[] tempbuffer;
-      tempbuffer=new signed char[count*vi.BytesPerChannelSample()*clip1_channels];
-      tempbuffer2=new signed char[count*vi2.BytesPerAudioSample()];
+      tempbuffer=new signed char[count*vi.BytesPerAudioSample()];
       tempbuffer_size=count;
     }
   } else {
-      tempbuffer=new signed char[count*vi.BytesPerChannelSample()*clip1_channels];
-      tempbuffer2=new signed char[count*vi2.BytesPerAudioSample()];
+      tempbuffer=new signed char[count*vi.BytesPerAudioSample()];
       tempbuffer_size=count;
   }
-
-
-  child->GetAudio(tempbuffer, start, count, env);
-  clip2->GetAudio(tempbuffer2, start, count, env);
-  char *samples=(char*) buf;
-  int cs=0;
-  int ct1=0;
-  int ct2=0;
-
-  for (int i=0;i<count;i++) {
-    for (int j=0;j<clip1_channels;j++) 
-      for (int k=0;k<vi.BytesPerChannelSample();k++) 
-        samples[cs++] = tempbuffer[ct1++];
-    for (j=0;j<clip1_channels;j++) 
-      for (int k=0;k<vi2.BytesPerChannelSample();k++) 
-        samples[cs++] = tempbuffer2[ct2++];
+// Get audio:
+  int channel_offset = count*vi.BytesPerChannelSample();  // Offset per channel
+  int c_channel=0;
+  for (int i = 0;i<num_children;i++) {
+    child_array[i]->GetAudio(tempbuffer+(c_channel*channel_offset), start, count, env);
+    c_channel += child_array[i]->GetVideoInfo().AudioChannels();
   }
-    
+  // Interleave channels
+  char *samples=(char*) buf;
+  int bpcs = vi.BytesPerChannelSample();
+  int cs=0;
+  for (i=0;i<count;i++) {
+    for (int j=0;j<vi.AudioChannels();j++) 
+      for (int k=0;k<bpcs;k++)
+        samples[cs++] = tempbuffer[channel_offset*j+k+(bpcs*i)];
+  }
 }
 
 
 AVSValue __cdecl MergeChannels::Create(AVSValue args, void*, IScriptEnvironment* env) 
 {
-  return new MergeChannels(args[0].AsClip(),args[1].AsClip(),env);
+  args = args[0];
+  const int num_args = args.ArraySize();
+  if (num_args == 1)
+    return args[0];
+  PClip* child_array = new PClip[num_args];
+  for (int i=0; i<num_args; ++i)
+    child_array[i] = args[i].AsClip();
+  return new MergeChannels(args[0].AsClip(),num_args, child_array, env);
 }
 
 
@@ -262,14 +263,17 @@ AVSValue __cdecl MergeChannels::Create(AVSValue args, void*, IScriptEnvironment*
 
 
 
-GetChannel::GetChannel(PClip _clip, int _channel) 
+GetChannel::GetChannel(PClip _clip, int* _channel, int _numchannels) 
   : GenericVideoFilter(_clip),
-		channel(_channel)
+		channel(_channel),
+		numchannels(_numchannels)
 {	
   src_bps=vi.BytesPerAudioSample();
   src_cbps=vi.BytesPerChannelSample();
-  vi.nchannels = 1;
+  vi.nchannels = numchannels;
   tempbuffer_size=0;
+  dst_bps=vi.BytesPerAudioSample();
+  dst_cbps=vi.BytesPerChannelSample();
 }
 
 
@@ -288,34 +292,37 @@ void __stdcall GetChannel::GetAudio(void* buf, __int64 start, __int64 count, ISc
   child->GetAudio(tempbuffer, start, count, env);
   char* samples = (char*)buf;
   for (int i=0; i<count; i++) 
-    for (int j=0;i<src_cbps;j++)
-		  samples[i+j] = tempbuffer[i*src_bps+(channel*src_cbps)+j];
+    for (int k=0; k<numchannels; k++) {
+      int ch = channel[k];
+      for (int j=0;j<src_cbps;j++)
+		    samples[(i*dst_bps)+(k*dst_cbps)+j] = tempbuffer[i*src_bps+(ch*src_cbps)+j];
+    }
 }
 
 
 PClip GetChannel::Create_left(PClip clip) 
 {
+  int* ch=new int[1]; 
+  ch[0]=0;
   if (clip->GetVideoInfo().AudioChannels()==1)
     return clip;
   else
-    return new GetChannel(clip,0);
+    return new GetChannel(clip,ch,1);
 }
 
 PClip GetChannel::Create_right(PClip clip) 
 {
+  int* ch=new int[1]; 
+  ch[0]=1;
   if (clip->GetVideoInfo().AudioChannels()==1)
     return clip;
   else
-    return new GetChannel(clip,1);
+    return new GetChannel(clip,ch,1);
 }
 
-PClip GetChannel::Create_n(PClip clip, int n) 
+PClip GetChannel::Create_n(PClip clip, int* n, int numchannels) 
 {
-  if (clip->GetVideoInfo().AudioChannels()==1)
-    return clip;
-  else
-    if (clip->GetVideoInfo().AudioChannels()<n) return clip;   // Should it fail instead?
-    return new GetChannel(clip,n);
+   return new GetChannel(clip,n,numchannels);
 }
 
 AVSValue __cdecl GetChannel::Create_left(AVSValue args, void*, IScriptEnvironment*) 
@@ -328,9 +335,19 @@ AVSValue __cdecl GetChannel::Create_right(AVSValue args, void*, IScriptEnvironme
   return Create_right(args[0].AsClip());
 }
 
-AVSValue __cdecl GetChannel::Create_n(AVSValue args, void*, IScriptEnvironment*) 
+AVSValue __cdecl GetChannel::Create_n(AVSValue args, void*, IScriptEnvironment* env) 
 {
-  return Create_n(args[0].AsClip(), args[1].AsInt(0));
+  AVSValue args_c = args[1];
+  const int num_args = args_c.ArraySize();
+  int* child_array = new int[num_args];
+  for (int i=0; i<num_args; ++i) {
+    child_array[i] = args_c[i].AsInt()-1;  // Beware: Channel is 0-based in code and 1 based in scripts
+    if (child_array[i]>=args[0].AsClip()->GetVideoInfo().AudioChannels()) 
+      env->ThrowError("GetChannel: Attempted to request a channel that didn't exist!");
+    if (child_array[i]<0) 
+      env->ThrowError("GetChannel: There are no channels below 1! (first channel is 1)");
+  }
+  return Create_n(args[0].AsClip(),child_array,num_args);
 }
 
 /******************************
@@ -545,8 +562,8 @@ MixAudio::MixAudio(PClip _child, PClip _clip, double _track1_factor, double _tra
 		track1_factor(int(_track1_factor*65536+.5)),
     track2_factor(int(_track2_factor*65536+.5)) {
 
-		const VideoInfo& vi2 = clip->GetVideoInfo();
     clip = ConvertAudio::Create(tclip,vi.SampleType(),vi.SampleType());  // Clip 2 should now be same type as clip 1.
+		const VideoInfo vi2 = clip->GetVideoInfo();
 
 		if (vi.audio_samples_per_second!=vi2.audio_samples_per_second) 
 			env->ThrowError("MixAudio: Clips must have same sample rate! Use ResampleAudio()!");  // Could be removed for fun :)
@@ -607,209 +624,6 @@ AVSValue __cdecl MixAudio::Create(AVSValue args, void*, IScriptEnvironment* env)
 }
 
   
-/**********************************************
- *******   Lowpass and highpass filter  *******
- *******                                *******
- *******   Type : biquad,               *******
- *******          tweaked butterworth   *******
- *******  Source: musicdsp.org          *******
- *******          Posted by Patrice Tarrabia **
- *******  Adapted by Klaus Post         *******
- ***********************************************/
-
-// FIXME: Support float
-FilterAudio::FilterAudio(PClip _child, int _cutoff, float _rez, int _lowpass)
-  : GenericVideoFilter(ConvertAudio::Create(_child,SAMPLE_INT16|SAMPLE_FLOAT,SAMPLE_FLOAT)),
-    cutoff(_cutoff),
-    rez(_rez), 
-    lowpass(_lowpass) {
-      l_vibrapos = 0;
-      l_vibraspeed = 0;
-      r_vibrapos = 0;
-      r_vibraspeed = 0;
-      lastsample=-1;
-      tempbuffer_size=0;
-} 
-
-
-void __stdcall FilterAudio::GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) 
-{
-  if (lowpass<2) {    
-    //Algorithm 1: Lowpass is only used in ALT-mode
-    
-    if (tempbuffer_size) {
-      if (tempbuffer_size<(count*2)) {
-        delete[] tempbuffer;
-        tempbuffer=new signed short[4+count*2];
-        tempbuffer_size=count;
-      }
-    } else {
-      tempbuffer=new signed short[4+count*2];
-      tempbuffer_size=count;
-    }
-    child->GetAudio(tempbuffer, start-2, count+2, env);
-    float a1,a2,a3,b1,b2,c; 
-    if (lowpass) {
-      c = 1.0 / tan(PI * (float)cutoff / (float)vi.audio_samples_per_second);
-      a1 = 1.0 / ( 1.0 + rez * c + c * c);
-      a2 = 2* a1;
-      a3 = a1;
-      b1 = 2.0 * ( 1.0 - c*c) * a1;
-      b2 = ( 1.0 - rez * c + c * c) * a1; 
-    } else {
-      c = tan(PI * (float)cutoff / (float)vi.audio_samples_per_second);
-      a1 = 1.0 / ( 1.0 + rez * c + c * c);
-      a2 = -2*a1;
-      a3 = a1;
-      b1 = 2.0 * ( c*c - 1.0) * a1;
-      b2 = ( 1.0 - rez * c + c * c) * a1;  
-    }
-    short* samples = (short*)buf;
-    if (vi.AudioChannels()==2) {
-      
-      if (lastsample!=start) {  // Streaming has just started here.
-        last_1=tempbuffer[3];
-        last_2=tempbuffer[2];
-        last_3=tempbuffer[1];
-        last_4=tempbuffer[0]; 
-      }
-      unsigned int i=0;
-      tempbuffer+=4;
-      samples[0]=Saturate((int)(a1 * (float)tempbuffer[i*2] + a2 * (float)tempbuffer[i*2-2] + a3 * (float)tempbuffer[i*2-4] - b1*(float)last_2 - b2*(float)last_4));
-      samples[1]=Saturate((int)(a1 * (float)tempbuffer[i*2+1] + a2 * (float)tempbuffer[i*2-2+1] + a3 * (float)tempbuffer[i*2-4+1] - b1*(float)last_1 - b2*(float)last_3+0.5f));
-      i++;
-      samples[2]=Saturate((int)(a1 * (float)tempbuffer[i*2] + a2 * (float)tempbuffer[i*2-2] + a3 * (float)tempbuffer[i*2-4] - b1*(float)samples[i*2-2] - b2*(float)last_2+0.5f));
-      samples[3]=Saturate((int)(a1 * (float)tempbuffer[i*2+1] + a2 * (float)tempbuffer[i*2-2+1] + a3 * (float)tempbuffer[i*2-4+1] - b1*(float)samples[i*2-2+1] - b2*(float)last_1+0.5f));
-      i++;
-      for (; i<count; ++i) { 
-        samples[i*2]=Saturate((int)(a1 * (float)tempbuffer[i*2] + a2 * (float)tempbuffer[i*2-2] + a3 * (float)tempbuffer[i*2-4] - b1*(float)samples[i*2-2] - b2*(float)samples[i*2-4]+0.5f));
-        samples[i*2+1]=Saturate((int)(a1 * (float)tempbuffer[i*2+1] + a2 * (float)tempbuffer[i*2-2+1] + a3 * (float)tempbuffer[i*2-4+1] - b1*(float)samples[i*2-2+1] - b2*(float)samples[i*2-4+1]+0.5f));
-      }
-      last_1=samples[count*2-1];
-      last_2=samples[count*2-2];
-      last_3=samples[count*2-3];
-      last_4=samples[count*2-4];
-      lastsample=start+count;
-    } 
-    else if (vi.AudioChannels()==1) { 
-      if (lastsample!=start) {
-        last_1=tempbuffer[1];
-        last_2=tempbuffer[0];
-      }
-      tempbuffer+=2;
-      unsigned int i=0;
-      samples[i]=Saturate((int)(a1 * (float)tempbuffer[i] + a2 * (float)tempbuffer[i-1] + a3 * (float)tempbuffer[i-2] - b1*(float)last_1 - b2*(float)last_2+0.5f));
-      i++;
-      samples[i]=Saturate((int)(a1 * (float)tempbuffer[i] + a2 * (float)tempbuffer[i-1] + a3 * (float)tempbuffer[i-2] - b1*(float)samples[0] - b2*(float)last_1+0.5f));
-      i++;
-      for (; i<count; ++i) {
-         samples[i]=Saturate((int)(a1 * (float)tempbuffer[i] + a2 * (float)tempbuffer[i-1] + a3 * (float)tempbuffer[i-2] - b1*(float)samples[i-1] - b2*(float)samples[i-2]+0.5f));
-      }
-      last_1=samples[count-1];
-      last_2=samples[count-2];
-      lastsample=start+count;
-    }
-    
-    
-  } else {
-    //Algorithm 2: 
-    // Only lowpass, but doesn't seem to amplify as much
-    
-    if (start==0) {
-      l_vibrapos = 0;
-      l_vibraspeed = 0;
-      r_vibrapos = 0;
-      r_vibraspeed = 0;
-    }
-    child->GetAudio(buf, start, count, env);
-    float amp = 0.9f; 
-    float w = 2.0*PI*(float)cutoff/(float)vi.audio_samples_per_second; // Pole angle
-    float q = 1.0-w/(2.0*(amp+0.5/(1.0+w))+w-2.0); // Pole magnitude
-    float r = q*q;
-    float c = r+1.0-2.0*cos(w)*q;
-    float temp;
-    short* samples = (short*)buf;
-    if (vi.AudioChannels()==2) {
-      for (unsigned int i=0; i<count; ++i) { 
-        
-        // Accelerate vibra by signal-vibra, multiplied by lowpasscutoff 
-        l_vibraspeed += ((float)samples[i*2] - l_vibrapos) * c;
-        r_vibraspeed += ((float)samples[i*2+1] - r_vibrapos) * c;
-        
-        // Add velocity to vibra's position 
-        l_vibrapos += l_vibraspeed;
-        r_vibrapos += r_vibraspeed;
-        
-        // Attenuate/amplify vibra's velocity by resonance 
-        l_vibraspeed *= r;
-        r_vibraspeed *= r;
-        
-        // Check clipping 
-        temp = l_vibrapos;
-        if (temp > 32767.0) {
-          temp = 32767.0;
-        } else if (temp < -32768.0) temp = -32768.0;
-        
-        // Store new value  
-        samples[i*2] = (short)temp; 
-
-        temp = r_vibrapos;
-        if (temp > 32767.0) {
-          temp = 32767.0;
-        } else if (temp < -32768.0) temp = -32768.0;
-        
-        // Store new value  
-        samples[i*2+1] = (short)temp; 
-      }
-    } else if (vi.AudioChannels()==1) {
-      for (unsigned int i=0; i<count; ++i) { 
-        
-        // Accelerate vibra by signal-vibra, multiplied by lowpasscutoff 
-        l_vibraspeed += ((float)samples[i] - l_vibrapos) * c;
-        
-        // Add velocity to vibra's position 
-        l_vibrapos += l_vibraspeed;
-        
-        // Attenuate/amplify vibra's velocity by resonance 
-        l_vibraspeed *= r;
-        
-        // Check clipping 
-        temp = l_vibrapos;
-        if (temp > 32767.0) {
-          temp = 32767.0;
-        } else if (temp < -32768.0) temp = -32768.0;
-        
-        // Store new value  
-        samples[i] = (short)temp; 
-      }
-    }
-  }
-}
-
-
-AVSValue __cdecl FilterAudio::Create_LowPass(AVSValue args, void*, IScriptEnvironment* env) 
-{
-  int cutoff = args[1].AsInt();
-  float rez = args[2].AsFloat(0.2);
-  return new FilterAudio(args[0].AsClip(), cutoff, rez,2);
-}
-
-
-AVSValue __cdecl FilterAudio::Create_HighPass(AVSValue args, void*, IScriptEnvironment* env) 
-{
-  int cutoff = args[1].AsInt();
-  float rez = args[2].AsFloat(0.2);
-  return new FilterAudio(args[0].AsClip(), cutoff, rez,0);
-}
-
-AVSValue __cdecl FilterAudio::Create_LowPassALT(AVSValue args, void*, IScriptEnvironment* env) 
-{
-  int cutoff = args[1].AsInt();
-  float rez = 0.0f;
-  return new FilterAudio(args[0].AsClip(), cutoff, rez,1);
-}
-  
-
 
 /********************************
  *******   Resample Audio   ******

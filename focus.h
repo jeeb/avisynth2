@@ -26,6 +26,9 @@ _PixelClip PixelClip;
 
 
 
+
+#define uc unsigned char
+
 class AdjustFocusV : public GenericVideoFilter 
 /**
   * Class to adjust focus in the vertical direction, helper for sharpen/blue
@@ -37,10 +40,15 @@ public:
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
 
 private:
+  bool chroma;
   const int amount;
-  BYTE* line;
+  uc* line;
 
 };
+
+/* Helpers for AdjustFocusV */
+void AFV_C(uc* l, uc* p, const int height, const int pitch, const int row_size, const int amount);
+void AFV_MMX(const uc* l, const uc* p, const int height, const int pitch, const int row_size, const int amount);
 
 
 class AdjustFocusH : public GenericVideoFilter 
@@ -53,15 +61,26 @@ public:
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
 
 private:
+  bool chroma;
   const int amount;
 
 };
 
+/* Helpers for AdjustFocusH */
+void AFH_YUY2_C(uc* p, int height, const int pitch, const int width, const int amount);
+void AFH_YUY2_MMX(const uc* p, const int height, const int pitch, const int width, const int amount);
+void AFH_RGB32_C(uc* p, int height, const int pitch, const int width, const int amount);
+void AFH_RGB32_MMX(const uc* p, const int height, const int pitch, const int width, const int amount);
+void AFH_YV12_C(uc* p, int height, const int pitch, const int row_size, const int amount);
+void AFH_YV12_MMX(uc* p, int height, const int pitch, const int row_size, const int amount);
+
+void AFH_RGB24_C(uc* p, int height, const int pitch, const int width, const int amount);
+// no mmx version. to be honest, who would intensively use this ?
 
 /*** Sharpen/Blur Factory methods ***/
 
-static AVSValue __cdecl Create_Sharpen(AVSValue args, void*, IScriptEnvironment* env);
-static AVSValue __cdecl Create_Blur(AVSValue args, void*, IScriptEnvironment* env);
+AVSValue __cdecl Create_Sharpen(AVSValue args, void*, IScriptEnvironment* env);
+AVSValue __cdecl Create_Blur(AVSValue args, void*, IScriptEnvironment* env);
 
 
 

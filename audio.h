@@ -112,19 +112,22 @@ class MergeChannels : public GenericVideoFilter
  **/
 {
 public:
-  MergeChannels(PClip _child,PClip _clip, IScriptEnvironment* env);
+  MergeChannels(PClip _clip, int _num_children, PClip* _child_array, IScriptEnvironment* env);
   virtual ~MergeChannels()
-   {if (tempbuffer_size) {delete[] tempbuffer;tempbuffer_size=0;delete[] tempbuffer2;}}
+   {if (tempbuffer_size) {delete[] tempbuffer;tempbuffer_size=0;}}
 
   void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env);
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment*);
 
 private:
-	PClip clip2;
-  PClip tclip;
-  signed char *tempbuffer, *tempbuffer2;
+  signed char *tempbuffer;
   int tempbuffer_size;
-	int clip1_channels,clip2_channels;
+	int clip1_channels;
+
+  const int num_children;
+  PClip* child_array;
+  PClip tclip;
+
   VideoInfo vi2;
 };
 
@@ -135,24 +138,27 @@ class GetChannel : public GenericVideoFilter
  **/
 {
 public:
-  GetChannel(PClip _clip, int _channel);
+  GetChannel(PClip _clip, int* _channel, int numchannels);
   virtual ~GetChannel()
    {if (tempbuffer_size) {delete[] tempbuffer;tempbuffer_size=0;}}
 
   void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env);
   static PClip Create_left(PClip clip);
   static PClip Create_right(PClip clip);
-  static PClip Create_n(PClip clip, int n);
+  static PClip Create_n(PClip clip, int* n, int numchannels);
   static AVSValue __cdecl Create_left(AVSValue args, void*, IScriptEnvironment*);
   static AVSValue __cdecl Create_right(AVSValue args, void*, IScriptEnvironment*);
-  static AVSValue __cdecl Create_n(AVSValue args, void*, IScriptEnvironment*);
+  static AVSValue __cdecl Create_n(AVSValue args, void*, IScriptEnvironment* env);
 
 private:
   char *tempbuffer;
   int tempbuffer_size;
-	int channel;
+	int* channel;
+  int numchannels;
   int src_bps;
   int src_cbps;
+  int dst_bps;
+  int dst_cbps;
 };
 
 class KillAudio : public GenericVideoFilter 
@@ -295,7 +301,7 @@ public:
   void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env);
 
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
-  virtual ~MixAudio() {delete[] tempbuffer;tempbuffer_size=0;}
+  virtual ~MixAudio() {if (tempbuffer_size) delete[] tempbuffer;tempbuffer_size=0;}
 
 
 private:
@@ -333,13 +339,14 @@ private:
 
   enum { Nwing = 8192, Nmult = 65 };
   short Imp[Nwing+1];
+  SFLOAT fImp[Nwing+1];
   const int target_rate;
   double factor;
   int Xoff, dtb, dhb;
   int LpScl;
   short* srcbuffer;
   int srcbuffer_size;
-  int skip_conversion;
+  bool skip_conversion;
 };
 
 

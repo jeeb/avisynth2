@@ -549,7 +549,8 @@ static AVSValue __cdecl Create_BlankClip(AVSValue args, void*, IScriptEnvironmen
   } else {
     vi.SetFPS(int(n+0.5), args[6].AsInt(vi_default.fps_denominator));
   }
-  vi.pixel_type |= vi_default.pixel_type & VideoInfo::CS_FIELDBASED;
+  vi.pixel_type |= vi_default.pixel_type;
+  vi.SetFieldBased(true);
   vi.audio_samples_per_second = args[7].AsInt(vi_default.audio_samples_per_second);
   vi.nchannels = args[8].AsInt(vi_default.nchannels);
   vi.sample_type = args[9].AsInt(vi_default.sample_type);
@@ -1054,7 +1055,7 @@ public:
       avg_time_per_frame = unsigned(vih->AvgTimePerFrame);
       pbi = &vih->bmiHeader;
       if (vih->dwInterlaceFlags & AMINTERLACE_1FieldPerSample) {
-        vi.pixel_type|=VideoInfo::CS_FIELDBASED;
+        vi.SetFieldBased(true);
       }
     } else {
       _RPT0(0, "*** format rejected\n");
