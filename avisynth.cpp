@@ -55,7 +55,7 @@ AVSFunction* builtin_functions[] = {
 
 const HKEY RegRootKey = HKEY_LOCAL_MACHINE;
 const char RegAvisynthKey[] = "Software\\Avisynth";
-const char RegPluginDir[] = "PluginDir";
+const char RegPluginDir[] = "PluginDir2_5";
 
 // in plugins.cpp
 AVSValue LoadPlugin(AVSValue args, void* user_data, IScriptEnvironment* env);
