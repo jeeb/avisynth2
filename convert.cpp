@@ -548,7 +548,7 @@ PVideoFrame __stdcall ConvertToYUY2::GetFrame(int n, IScriptEnvironment* env)
 			return dst;
 		}
 	}
-  if ((src_cs&VideoInfo::CS_YV12)==VideoInfo::CS_YV12) {  // TODO: Interpolate UV downwards.
+  if (((src_cs&VideoInfo::CS_YV12)==VideoInfo::CS_YV12)||((src_cs&VideoInfo::CS_I420)==VideoInfo::CS_I420)) {  // TODO: Interpolate UV downwards.
     PVideoFrame dst = env->NewVideoFrame(vi);
     BYTE* yuv = dst->GetWritePtr();
     const BYTE* yp = src->GetReadPtr(PLANAR_Y);

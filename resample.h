@@ -64,6 +64,7 @@ public:
 
 private:
   int* /*const*/ resampling_pattern;
+  int* /*const*/ resampling_patternUV;
   int *yOfs;
   int *yOfsUV;
 };

@@ -920,7 +920,8 @@ FilteredResizeV::FilteredResizeV( PClip _child, double subrange_top, double subr
     env->ThrowError("Resize: YV12 destination size must be multiple of 4.");
   if (vi.IsRGB())
     subrange_top = vi.height - subrange_top - subrange_height;
-  resampling_pattern = GetResamplingPatternRGB(vi.height-1, subrange_top, subrange_height, target_height, func);
+  resampling_pattern = GetResamplingPatternRGB(vi.height, subrange_top, subrange_height, target_height, func);
+  resampling_patternUV = GetResamplingPatternRGB(vi.height>>1, subrange_top/2.0f, subrange_height/2.0f, target_height>>1, func);
   vi.height = target_height;
 
   PVideoFrame src = child->GetFrame(0, env);
@@ -930,7 +931,9 @@ FilteredResizeV::FilteredResizeV( PClip _child, double subrange_top, double subr
 
   int shUV = src->GetHeight(PLANAR_U);
   yOfsUV = new int[shUV];
-  for (i = 0; i < shUV; i++) yOfsUV[i] = src->GetPitch(PLANAR_U) * (i);
+  for (i = 0; i < shUV; i++) {
+    yOfsUV[i] = src->GetPitch(PLANAR_U) * i;
+  }
 }
 
 
@@ -948,11 +951,11 @@ PVideoFrame __stdcall FilteredResizeV::GetFrame(int n, IScriptEnvironment* env)
   BYTE* dstp = dst->GetWritePtr();
   int y = vi.height;
   int plane = vi.IsPlanar() ? 4:1;
-  int *yOfs = this->yOfs;
+  int *yOfs2 = this->yOfs;
   while (plane-->0){
     switch (plane) {
       case 2:  // take V plane
-        cur = resampling_pattern;
+        cur = resampling_patternUV;
         fir_filter_size = *cur++;
         src_pitch = src->GetPitch(PLANAR_V);
         dst_pitch = dst->GetPitch(PLANAR_V);
@@ -960,27 +963,33 @@ PVideoFrame __stdcall FilteredResizeV::GetFrame(int n, IScriptEnvironment* env)
         dstp = dst->GetWritePtr(PLANAR_V);
         srcp = src->GetReadPtr(PLANAR_V);
         y = dst->GetHeight(PLANAR_V);
-        yOfs = this->yOfsUV;
+        yOfs2 = this->yOfsUV;
         break;
-      case 1:
-        cur = resampling_pattern;
+      case 1: // U Plane
+        cur = resampling_patternUV;
         fir_filter_size = *cur++;
         dstp = dst->GetWritePtr(PLANAR_U);
         srcp = src->GetReadPtr(PLANAR_U);
         y = dst->GetHeight(PLANAR_U);
-        yOfs = this->yOfsUV;
-        plane--;
+        src_pitch = src->GetPitch(PLANAR_U);
+        dst_pitch = dst->GetPitch(PLANAR_U);
+        xloops = src->GetRowSize(PLANAR_U_ALIGNED) / 4 ;  // Means mod 8 for planar
+        yOfs2 = this->yOfsUV;
+        plane--; // skip case 0
+        break;
+      case 3: // Y plane for planar
+      case 0: // Default for interleaved
         break;
     }
   __asm {
-    emms
+//    emms
     mov         edx, cur
     pxor        mm0, mm0
     mov         edi, fir_filter_size
     movq        mm6,[FPround]
     align 16
   yloop:
-    mov         esi, yOfs
+    mov         esi, yOfs2
     mov         eax, [edx]              ;eax = *cur
     mov         esi, [esi+eax*4]
     add         edx, 4                  ;cur++
