@@ -62,7 +62,7 @@ private:
   const char* const code;
   const char* const filename;
 
-  enum {max_args=60};
+  enum {max_args=1024};
 
   void Expect(int op, const char* msg);
 
