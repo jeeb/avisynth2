@@ -265,7 +265,11 @@ PVideoFrame __stdcall ConvertToRGB::GetFrame(int n, IScriptEnvironment* env)
   const BYTE* srcp = src->GetReadPtr();
   BYTE* dstp = dst->GetWritePtr();
   if (is_yv12) {
-    yv12_to_rgb32_mmx(dstp, dst_pitch/4,src->GetReadPtr(PLANAR_Y),src->GetReadPtr(PLANAR_U),src->GetReadPtr(PLANAR_V),src->GetPitch(PLANAR_Y),src->GetPitch(PLANAR_U),src->GetRowSize(PLANAR_Y),-src->GetHeight(PLANAR_Y));
+    if (vi.IsRGB24()) {
+      yv12_to_rgb24_mmx(dstp, dst_pitch/4,src->GetReadPtr(PLANAR_Y),src->GetReadPtr(PLANAR_U),src->GetReadPtr(PLANAR_V),src->GetPitch(PLANAR_Y),src->GetPitch(PLANAR_U),src->GetRowSize(PLANAR_Y),-src->GetHeight(PLANAR_Y));
+    } else {
+      yv12_to_rgb32_mmx(dstp, dst_pitch/4,src->GetReadPtr(PLANAR_Y),src->GetReadPtr(PLANAR_U),src->GetReadPtr(PLANAR_V),src->GetPitch(PLANAR_Y),src->GetPitch(PLANAR_U),src->GetRowSize(PLANAR_Y),-src->GetHeight(PLANAR_Y));
+    }
     return dst;
   }
   if (use_mmx) {
@@ -565,6 +569,9 @@ PVideoFrame __stdcall ConvertToYUY2::GetFrame(int n, IScriptEnvironment* env)
   if (((src_cs&VideoInfo::CS_YV12)==VideoInfo::CS_YV12)||((src_cs&VideoInfo::CS_I420)==VideoInfo::CS_I420)) {  // TODO: Interpolate UV downwards.
     PVideoFrame dst = env->NewVideoFrame(vi);
     BYTE* yuv = dst->GetWritePtr();
+    yv12_to_yuyv_mmx(yuv,dst->GetPitch()/2,src->GetReadPtr(PLANAR_Y),src->GetReadPtr(PLANAR_U),src->GetReadPtr(PLANAR_V), src->GetPitch(PLANAR_Y), src->GetPitch(PLANAR_U), src->GetRowSize(PLANAR_Y), src->GetHeight(PLANAR_Y));
+    return dst;
+
     const BYTE* yp = src->GetReadPtr(PLANAR_Y);
     const BYTE* up = src->GetReadPtr(PLANAR_U);
     const BYTE* vp = src->GetReadPtr(PLANAR_V);
