@@ -63,7 +63,7 @@ FilteredResizeH::FilteredResizeH( PClip _child, double subrange_left, double sub
     if ((target_width&1) && (vi.IsYUY2()))
       env->ThrowError("Resize: YUY2 width must be even");
     if ((target_width&1) && (vi.IsYV12()))
-      env->ThrowError("Resize: YV12 width must be mutiple of 4.");
+      env->ThrowError("Resize: YV12 width must be mutiple of 2.");
     tempY = (BYTE*) _aligned_malloc(original_width*2+4+32, 64);   // aligned for Athlon cache line
     tempUV = (BYTE*) _aligned_malloc(original_width*4+8+32, 64);  // aligned for Athlon cache line
     if (vi.IsYV12()) {

@@ -20,6 +20,7 @@
 #define __Audio_H__
 
 #include "internal.h"
+#include "text-overlay.h"
 
 
 
@@ -283,16 +284,17 @@ class Normalize : public GenericVideoFilter
  **/
 {
 public:
-  Normalize(PClip _child, double _max_factor);
+  Normalize(PClip _child, double _max_factor, bool _showvalues);
   void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env);
+  PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
 
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
-  static AVSValue __cdecl Create_dB(AVSValue args, void*, IScriptEnvironment* env);
   
 
 private:
   float max_factor;
   float max_volume;
+  bool showvalues;
 
   static __inline short Saturate(int n) {
     if (n <= -32768) return -32768;

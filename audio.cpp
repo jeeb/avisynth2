@@ -29,7 +29,7 @@ AVSFunction Audio_filters[] = {
   { "AmplifydB", "cf+", Amplify::Create_dB },
   { "Amplify", "cf+", Amplify::Create },
   { "AssumeSampleRate", "ci", AssumeRate::Create },
-  { "Normalize", "c[left]f", Normalize::Create },
+  { "Normalize", "c[volume]f[show]b", Normalize::Create },
   { "MixAudio", "cc[clip1_factor]f[clip2_factor]f", MixAudio::Create },
   { "ResampleAudio", "ci", ResampleAudio::Create },
   { "ConvertAudioTo16bit", "c", ConvertAudio::Create_16bit },
@@ -684,9 +684,10 @@ AVSValue __cdecl Amplify::Create_dB(AVSValue args, void*, IScriptEnvironment* en
  ******************************/
 // Fixme: Maxfactor should be different on different types
 
-Normalize::Normalize(PClip _child, double _max_factor)
+Normalize::Normalize(PClip _child, double _max_factor, bool _showvalues)
   : GenericVideoFilter(ConvertAudio::Create(_child,SAMPLE_INT16|SAMPLE_FLOAT,SAMPLE_FLOAT)),
-    max_factor(_max_factor)
+    max_factor(_max_factor),
+    showvalues(_showvalues)
 {
   max_volume=-1.0f;
 }
@@ -758,11 +759,34 @@ void __stdcall Normalize::GetAudio(void* buf, __int64 start, __int64 count, IScr
   }
 }
 
+PVideoFrame __stdcall Normalize::GetFrame(int n, IScriptEnvironment* env) {
+  if (showvalues) {
+    PVideoFrame src = child->GetFrame(n, env);
+    env->MakeWritable(&src);
+    char text[400];
+    double maxvol = 32767.0 / (double)max_volume;
+    double maxdb = log(20 / maxvol);
+    if (max_volume<0) {
+      sprintf(text,"Normalize: Result not yet calculated!");
+    } else {
+/*    sprintf(text,"Amplify Factor: %8.4f\nAmplify DB: %8.4f",
+      maxvol, maxdb);
+*/    sprintf(text,"Amplify Factor: %8.4f",
+      maxvol);
+    }
+    ApplyMessage(&src, vi, text, vi.width/4, 0xf0f0f0,0,0 , env );
+    return src;
+  }
+  return   child->GetFrame(n, env);
+
+}
+
+
 
 AVSValue __cdecl Normalize::Create(AVSValue args, void*, IScriptEnvironment* env) 
 {
   double max_volume=args[1].AsFloat(1.0);
-  return new Normalize(args[0].AsClip(), max_volume);
+  return new Normalize(args[0].AsClip(), max_volume, args[2].AsBool(false));
 }
 
 
@@ -846,7 +870,7 @@ AVSValue __cdecl MixAudio::Create(AVSValue args, void*, IScriptEnvironment* env)
 // FIXME: Support float
 
 ResampleAudio::ResampleAudio(PClip _child, int _target_rate, IScriptEnvironment* env)
-  : GenericVideoFilter(ConvertAudio::Create(_child,SAMPLE_INT16|SAMPLE_FLOAT,SAMPLE_FLOAT)), target_rate(_target_rate)
+  : GenericVideoFilter(ConvertAudio::Create(_child,SAMPLE_INT16,SAMPLE_INT16)), target_rate(_target_rate)
 {
   if ((target_rate==vi.audio_samples_per_second)||(vi.audio_samples_per_second==0)) {
 		skip_conversion=true;

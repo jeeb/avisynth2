@@ -651,6 +651,7 @@ const char* t_INT32="Integer 32 bit";
 const char* t_FLOAT32="Float 32 bit";
 const char* t_YES="YES";
 const char* t_NO="NO";
+const char* t_NONE="NONE";
 const char* t_PUNKNOWN="Parity unknown";
 const char* t_TFF="Top Field First";
 const char* t_BFF="Bottom Field First";
@@ -662,7 +663,7 @@ PVideoFrame FilterInfo::GetFrame(int n, IScriptEnvironment* env)
   env->MakeWritable(&frame);
   hdcAntialias = antialiaser.GetDC();
     const char* c_space;
-    const char* s_type;
+    const char* s_type = t_NONE;
     const char* s_parity;
     if (vi.IsRGB24()) c_space=t_RGB24;
     if (vi.IsRGB32()) c_space=t_RGB32;

@@ -186,18 +186,24 @@ Crop::Crop(int _left, int _top, int _width, int _height, PClip _child, IScriptEn
 
   if (vi.IsYUV()) {
     // YUY2 can only crop to even pixel boundaries horizontally
-    _left = _left & -2;
-    _width = (_width+1) & -2;
-    if (vi.IsYV12())  { //YV12 can only crop height to multiple of 2
-      if (vi.IsFieldBased()) {
-        _top = _top & -4;
-        _height = (_height+3) & -4; 
-    } else {
-        _top = _top & -2;
-        _height = (_height+1) & -2;
-    }
-      _left = _left & -2;
-      _width = (_width+1) & -2;
+    if (_left&1)
+      env->ThrowError("Crop: YUV images can only be cropped by even numbers (left side).");
+    if (_width&1)
+      env->ThrowError("Crop: YUV images can only be cropped by even numbers (right side).");
+    if (vi.IsYV12()) {
+      if (_top&1)
+        env->ThrowError("Crop: YV12 images can only be cropped by even numbers (top).");
+      if (_height&1)
+        env->ThrowError("Crop: YV12 images can only be cropped by even numbers (bottom).");
+      if ((_top&3) &&(vi.IsFieldBased()))
+        env->ThrowError("Crop: Interlaced (fieldbased) YV12 images can only be cropped by numbers multiple of 4 in height (top).");
+      if ((_height&3) &&(vi.IsFieldBased()))
+        env->ThrowError("Crop: Interlaced (fieldbased) YV12 images can only be cropped by numbers multiple of 4 in height (bottom).");
+    } else if (vi.IsYUY2()) {
+      if (vi.IsFieldBased() && (_top&1))
+        env->ThrowError("Crop: Interlaced (fieldbased) YUY2 images can only be cropped by even numbers in height (top).");
+      if (vi.IsFieldBased() && (_height&1))
+        env->ThrowError("Crop: Interlaced (fieldbased) YUY2 images can only be cropped by even numbers in height (bottom).");
     }
   } else {
     // RGB is upside-down
