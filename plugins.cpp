@@ -71,6 +71,8 @@ static bool MyLoadLibrary(const char* filename, HMODULE* hmod, bool quiet, IScri
   return false;
 }
 
+// TODO: Implement rejection of 1.x and 2.0x plugins
+
 AVSValue LoadPlugin(AVSValue args, void* user_data, IScriptEnvironment* env) {
   bool quiet = (user_data != 0);
   args = args[0];
@@ -209,11 +211,9 @@ public:
       VF_StreamInfo_Video stream_info = { sizeof(VF_StreamInfo_Video) };
       CheckHresult(env, plugin_func->GetStreamInfo(h, VF_STREAM_VIDEO, &stream_info));
       if (stream_info.dwBitCount == 24) {
-        vi.pixel_type = VideoInfo::CS_BGR|VideoInfo::CS_INTERLEAVED;
-        vi.bits_per_pixel=24;
+        vi.pixel_type = VideoInfo::CS_BGR24;
       } else if (stream_info.dwBitCount == 32) {
-        vi.pixel_type = VideoInfo::CS_BGR|VideoInfo::CS_INTERLEAVED;
-        vi.bits_per_pixel=32;
+        vi.pixel_type = VideoInfo::CS_BGR32;
       } else {
         env->ThrowError("VFAPIPluginProxy: plugin returned invalid bit depth (%d)", stream_info.dwBitCount);
       }
@@ -221,7 +221,6 @@ public:
       vi.height = stream_info.dwHeight;
       vi.num_frames = stream_info.dwLengthL;
       vi.SetFPS(stream_info.dwRate, stream_info.dwScale);
-      vi.field_based = false;
     }
     if (file_info.dwHasStreams & VF_STREAM_AUDIO) {
       VF_StreamInfo_Audio stream_info = { sizeof(VF_StreamInfo_Audio) };

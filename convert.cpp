@@ -53,8 +53,7 @@ AVSFunction Convert_filters[] = {
 RGB24to32::RGB24to32(PClip src) 
   : GenericVideoFilter(src) 
 {
-  vi.pixel_type = VideoInfo::CS_BGR|VideoInfo::CS_INTERLEAVED;
-  vi.bits_per_pixel=32;
+  vi.pixel_type = VideoInfo::CS_BGR32;
 }
 
 
@@ -83,8 +82,7 @@ PVideoFrame __stdcall RGB24to32::GetFrame(int n, IScriptEnvironment* env)
 RGB32to24::RGB32to24(PClip src) 
 : GenericVideoFilter(src) 
 {
-  vi.pixel_type = VideoInfo::CS_BGR|VideoInfo::CS_INTERLEAVED;
-  vi.bits_per_pixel=24;
+  vi.pixel_type = VideoInfo::CS_BGR24;
 }
 
 
@@ -131,8 +129,7 @@ ConvertToRGB::ConvertToRGB( PClip _child, bool rgb24, const char* matrix,
   if ((rgb24 || rec709) && !use_mmx)
     env->ThrowError("ConvertToRGB: 24-bit RGB and Rec.709 support require MMX and horizontal width a multiple of 4");
 
-  vi.pixel_type = VideoInfo::CS_BGR|VideoInfo::CS_INTERLEAVED;
-  vi.bits_per_pixel = rgb24 ? 24 : 32;
+  vi.pixel_type = rgb24 ? VideoInfo::CS_BGR24 : VideoInfo::CS_BGR32;
 }
 
 
@@ -215,8 +212,7 @@ ConvertToYUY2::ConvertToYUY2(PClip _child, IScriptEnvironment* env)
 {
   if (vi.width & 1)
     env->ThrowError("ConvertToYUY2: image width must be even");
-  vi.pixel_type = VideoInfo::CS_YUV|VideoInfo::CS_INTERLEAVED;
-  vi.bits_per_pixel=16;
+  vi.pixel_type = VideoInfo::CS_YUY2;
 }
 
 	/*****************************	
@@ -436,7 +432,7 @@ ConvertBackToYUY2::ConvertBackToYUY2(PClip _child, IScriptEnvironment* env)
 {
   if (vi.width & 1)
     env->ThrowError("ConvertBackToYUY2: image width must be even");
-  vi.pixel_type = VideoInfo::CS_YUV|VideoInfo::CS_INTERLEAVED;
+  vi.pixel_type = VideoInfo::CS_YUY2;
 }
 
 

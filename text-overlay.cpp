@@ -369,7 +369,7 @@ PVideoFrame ShowFrameNumber::GetFrame(int n, IScriptEnvironment* env) {
   char text[40];
   wsprintf(text, "%05d", n);
   if( scroll ) {
-    int n1 = vi.field_based ? (n/2) : n;
+    int n1 = vi.IsFieldBased() ? (n/2) : n;
     int y = 192 + (192*n1)%(vi.height*8);
     TextOut(hdc, child->GetParity(n) ? 32 : vi.width*8-512, y, text, strlen(text));
   } else {

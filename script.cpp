@@ -77,6 +77,8 @@ AVSFunction Script_functions[] = {
 
   { "SetMemoryMax", "i", SetMemoryMax },
 
+  { "SetWorkingDir", "s", SetWorkingDir },
+
   { 0 }
 };
 
@@ -227,6 +229,7 @@ AVSValue Import(AVSValue args, void*, IScriptEnvironment* env)
 
 
 AVSValue SetMemoryMax(AVSValue args, void*, IScriptEnvironment* env) { return env->SetMemoryMax(args[0].AsInt()); }
+AVSValue SetWorkingDir(AVSValue args, void*, IScriptEnvironment* env) { return env->SetWorkingDir(args[0].AsString()); }
 
 AVSValue Floor(AVSValue args, void*, IScriptEnvironment* env) { return int(args[0].AsFloat()); }
 AVSValue Ceil(AVSValue args, void*, IScriptEnvironment* env) { return -int(-args[0].AsFloat()); }
@@ -252,8 +255,8 @@ AVSValue AudioChannels(AVSValue args, void*, IScriptEnvironment* env) { return V
 AVSValue AudioBits(AVSValue args, void*, IScriptEnvironment* env) { return VI(args[0]).BytesPerChannelSample(); }
 AVSValue IsRGB(AVSValue args, void*, IScriptEnvironment* env) { return VI(args[0]).IsRGB(); }
 AVSValue IsYUY2(AVSValue args, void*, IScriptEnvironment* env) { return VI(args[0]).IsYUY2(); }
-AVSValue IsFieldBased(AVSValue args, void*, IScriptEnvironment* env) { return VI(args[0]).field_based; }
-AVSValue IsFrameBased(AVSValue args, void*, IScriptEnvironment* env) { return !VI(args[0]).field_based; }
+AVSValue IsFieldBased(AVSValue args, void*, IScriptEnvironment* env) { return VI(args[0]).IsFieldBased(); }
+AVSValue IsFrameBased(AVSValue args, void*, IScriptEnvironment* env) { return !VI(args[0]).IsFieldBased(); }
 AVSValue GetParity(AVSValue args, void*, IScriptEnvironment* env) { return args[0].AsClip()->GetParity(args[1].AsInt(0)); }
 
 AVSValue String(AVSValue args, void*, IScriptEnvironment* env)

@@ -62,7 +62,7 @@ SeparateFields::SeparateFields(PClip _child, IScriptEnvironment* env)
   vi.height >>= 1;
   vi.fps_numerator *= 2;
   vi.num_frames *= 2;
-  vi.field_based = true;
+  vi.pixel_type |= VideoInfo::CS_FIELDBASED;
 }
 
 
@@ -77,7 +77,7 @@ PVideoFrame SeparateFields::GetFrame(int n, IScriptEnvironment* env)
 AVSValue __cdecl SeparateFields::Create(AVSValue args, void*, IScriptEnvironment* env) 
 {
   PClip clip = args[0].AsClip();
-  if (clip->GetVideoInfo().field_based)
+  if (clip->GetVideoInfo().IsFieldBased())
     return clip;
   else
     return new SeparateFields(clip, env);
@@ -166,7 +166,7 @@ DoubleWeaveFields::DoubleWeaveFields(PClip _child)
   : GenericVideoFilter(_child) 
 {
   vi.height *= 2;
-  vi.field_based = false;
+  vi.pixel_type &= ~VideoInfo::CS_FIELDBASED;
 }
 
 
@@ -279,7 +279,7 @@ PVideoFrame __stdcall Fieldwise::GetFrame(int n, IScriptEnvironment* env)
 AVSValue __cdecl Create_DoubleWeave(AVSValue args, void*, IScriptEnvironment* env) 
 {
   PClip clip = args[0].AsClip();
-  if (clip->GetVideoInfo().field_based)
+  if (clip->GetVideoInfo().IsFieldBased())
     return new DoubleWeaveFields(clip);
   else
     return new DoubleWeaveFrames(clip);
@@ -312,7 +312,7 @@ AVSValue __cdecl Create_SwapFields(AVSValue args, void*, IScriptEnvironment* env
 AVSValue __cdecl Create_Bob(AVSValue args, void*, IScriptEnvironment* env)
 {
   PClip clip = args[0].AsClip();
-  if (!clip->GetVideoInfo().field_based) 
+  if (!clip->GetVideoInfo().IsFieldBased()) 
     clip = new_SeparateFields(clip, env);
   
   const VideoInfo& vi = clip->GetVideoInfo();

@@ -49,14 +49,24 @@ struct VideoInfo {
   unsigned fps_numerator, fps_denominator;
   int num_frames;
   // This is more extensible than previous versions. More properties can be added seeminglesly.
-  enum { CS_UNKNOWN=0,
-         CS_BGR=1<<0,
-         CS_YUV=1<<1,
-         CS_INTERLEAVED=1<<2,
-         CS_PLANAR=1<<3 };
+  enum {
+    CS_FIELDBASED = 1<<27,
+    CS_BGR = 1<<28,  
+    CS_YUV = 1<<29,
+    CS_INTERLEAVED = 1<<30,
+    CS_PLANAR = 1<<31
+  };
+
+  enum { CS_UNKNOWN = 0,
+         CS_BGR24 = 1<<0 | CS_BGR | CS_INTERLEAVED,
+         CS_BGR32 = 1<<1 | CS_BGR | CS_INTERLEAVED,
+         CS_YUY2 = 1<<2 | CS_YUV | CS_INTERLEAVED,
+         CS_YV12 = 1<<3 | CS_YUV | CS_PLANAR,  // y-v-u, planar
+         CS_I420 = 1<<4 | CS_YUV | CS_PLANAR,  // y-u-v, planar
+         CS_IYUV = 1<<4 | CS_YUV | CS_PLANAR  // as above
+         };
   int pixel_type;                // changed to int as of 2.5
-  bool field_based;
-  int bits_per_pixel;           // changed from bytes to bits as of 2.5
+//  bool field_based;
 
   int audio_samples_per_second;   // 0 means no audio
   int sample_type;                // as of 2.5
@@ -67,14 +77,14 @@ struct VideoInfo {
   bool HasVideo() const { return (width!=0); }
   bool HasAudio() const { return (audio_samples_per_second!=0); }
   bool IsRGB() const { return !!(pixel_type&CS_BGR); }
-  bool IsRGB24() const { return pixel_type&CS_BGR && (bits_per_pixel==24); }
-  bool IsRGB32() const { return (pixel_type&CS_BGR) && (bits_per_pixel==32); }
-  bool IsYUV() const { return !!(pixel_type&CS_YUV); }
-  bool IsYUY2() const { return pixel_type == (CS_YUV|CS_INTERLEAVED); }  
-  bool IsYV12() const { return pixel_type == (CS_YUV|CS_PLANAR); }
-  int BytesFromPixels(int pixels) const { return pixels * (bits_per_pixel>>3); }   // Will not work on planar images
+  bool IsRGB24() const { return (pixel_type&CS_BGR24)==CS_BGR24; }
+  bool IsRGB32() const { return (pixel_type & CS_BGR32) == CS_BGR32 ; }
+  bool IsYUV() const { return !!(pixel_type&CS_YUV ); }
+  bool IsYUY2() const { return (pixel_type & CS_YUY2) == CS_YUY2; }  
+  bool IsYV12() const { return (pixel_type & CS_YV12) == CS_YV12; }
+  bool IsFieldBased() const { return !!(pixel_type & CS_FIELDBASED); }
+  int BytesFromPixels(int pixels) const { return pixels * (BitsPerPixel()>>3); }   // Will not work on planar images, but will return only luma planes
   int RowSize() const { return BytesFromPixels(width); }
-  int BitsPerPixel() const { return bits_per_pixel; }
   int BMPSize() const { return height * ((RowSize()+3) & -4); }
   __int64 AudioSamplesFromFrames(__int64 frames) const { return (__int64(frames) * audio_samples_per_second * fps_denominator / fps_numerator); }
   int FramesFromAudioSamples(__int64 samples) const { return (__int64(samples) * fps_numerator / fps_denominator / audio_samples_per_second); }
@@ -84,6 +94,21 @@ struct VideoInfo {
   int SampleType() const{ return sample_type;}
   int SamplesPerSecond() const { return audio_samples_per_second; }
   int BytesPerAudioSample() const { return nchannels*BytesPerChannelSample();}
+  int BitsPerPixel() const { 
+    switch (pixel_type) {
+      case CS_BGR24:
+        return 24;
+      case CS_BGR32:
+        return 32;
+      case CS_YUY2:
+        return 16;
+      case CS_YV12:
+      case CS_I420:
+        return 12;
+      default:
+        return 0;
+    }
+  }
   int BytesPerChannelSample() const { 
     switch (sample_type) {
     case SAMPLE_INT8:
@@ -444,6 +469,8 @@ public:
   virtual PVideoFrame __stdcall Subframe(PVideoFrame src, int rel_offset, int new_pitch, int new_row_size, int new_height) = 0;
 
 	virtual int __stdcall SetMemoryMax(int mem) = 0;
+
+  virtual int __stdcall SetWorkingDir(const char * newdir) = 0;
 
 };
 

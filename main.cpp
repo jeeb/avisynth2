@@ -583,7 +583,7 @@ bool __stdcall CAVIFileSynth::GetParity(int n) {
 bool __stdcall CAVIFileSynth::IsFieldBased() {
   if (!DelayInit())
     return false;
-  return vi->field_based;
+  return vi->IsFieldBased();
 }
 
 

@@ -49,7 +49,7 @@ class AssumeParity : public GenericVideoFilter
 public:
   AssumeParity(PClip _child, bool _parity) : GenericVideoFilter(_child), parity(_parity) {}
   inline bool __stdcall GetParity(int n)
-    { return parity ^ (vi.field_based && (n & 1)); }
+    { return parity ^ (vi.IsFieldBased() && (n & 1)); }
 
 	inline static AVSValue __cdecl Create(AVSValue args, void* user_data, IScriptEnvironment* env)
 		{ return new AssumeParity(args[0].AsClip(), user_data!=0); }
@@ -65,7 +65,7 @@ class AssumeFieldBased : public GenericVideoFilter
 {
 public:
   AssumeFieldBased(PClip _child) : GenericVideoFilter(_child) 
-    { vi.field_based = true; }
+  { vi.pixel_type |= VideoInfo::CS_FIELDBASED; }
   inline bool __stdcall GetParity(int n) 
     { return n&1; }
 
@@ -81,7 +81,7 @@ class AssumeFrameBased : public GenericVideoFilter
 {
 public:
   AssumeFrameBased(PClip _child) : GenericVideoFilter(_child) 
-    { vi.field_based = false; }
+  { vi.pixel_type &= ~VideoInfo::CS_FIELDBASED; }
   inline bool __stdcall GetParity(int n) 
     { return false; }
 

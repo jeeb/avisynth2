@@ -267,7 +267,7 @@ loop:
 
 bool __stdcall ConvertFPS::GetParity(int n) 
 {
-	if( vi.field_based )
+	if( vi.IsFieldBased())
 		return child->GetParity(0) ^ (n&1);
 	else
 		return child->GetParity(0);
