@@ -18,11 +18,71 @@
 
 
 #include "cache.h"
+#include <algorithm>
+
+FrameCache::CachedVideoFrame::CachedVideoFrame(int _n, const PVideoFrame& _frame)
+: n(_n), frame(_frame) { seq_number = frame->GetFrameBuffer()->GetSequenceNumber(); }
+
+bool FrameCache::CachedVideoFrame::isValid() const { return frame && seq_number == frame->GetFrameBuffer()->GetSequenceNumber(); }
+
+                                               
+PVideoFrame __stdcall RangeCache::fetch(int n)
+{
+  CacheVector::iterator it = cache.begin();
+  while(it != cache.end())
+    if (it->isValid()) 
+      if (it->n == n)
+        return it->frame;
+      else ++it;
+    else it = cache.erase(it);
+  return PVideoFrame();
+}  
+
+void __stdcall RangeCache::store(int n, const PVideoFrame& frame)
+{
+  CacheVector::iterator it = cache.begin();
+  int range = cache.capacity(); //ie the cache hint provided
+  //tries to find a CachedVideoFrame to overwrite
+  while(it != cache.end() && it->isValid() && abs(it->n - n) < range) { ++it; }
+  if (it == cache.end())
+    cache.push_back(CachedVideoFrame(n, frame));
+  else it->set(n, frame);
+
+}
+
+//NB: for better efficiency of rotate code, a swap member should be added in PVideoFrame
+//    and used to create a swap method in CachedVideoFrame
+
+PVideoFrame __stdcall QueueCache::fetch(int n)
+{
+  CacheVector::iterator it = cache.begin();
+  while(it != cache.end() && it->n != n) { ++it; }
+  if (it == cache.end() || ! it->isValid())
+    return PVideoFrame();  //cache miss
+  rotate<CacheVector::iterator>(it, it + 1, cache.end()); //make it last;
+  return cache.back().frame;
+}
+
+void __stdcall QueueCache::store(int n, const PVideoFrame& frame)
+{
+  CacheVector::iterator it = cache.begin();
+  //tries to find a invalid one to overwrite
+  while(it != cache.end() && it->isValid()) { ++it; }
+  if (it == cache.end())
+    if (cache.size() < cache.capacity()) { //we have not filled the cache
+      cache.push_back(CachedVideoFrame(n, frame));
+      return;
+    } else it = cache.begin();  //the last one will go
+  rotate<CacheVector::iterator>(it, it + 1, cache.end()); //place at the end
+  cache.back().set(n, frame);    //and update value
+}
+
 
 
 /*******************************
  *******   Cache filter   ******
  ******************************/
+
 
 Cache::Cache(PClip _child) 
 : GenericVideoFilter(_child) { use_hints=false;}
@@ -156,3 +216,42 @@ found_old_frame:
   // move the newly-registered frame to the front
   Relink(&video_frames, i, video_frames.next);
 }
+
+
+/**********************************************************************
+ *******   Replacement code for when using FrameCache         *********
+ **********************************************************************
+
+Cache::Cache(PClip _child)
+: GenericVideoFilter(_child), cache(new RangeCache(5)) { }
+
+PVideoFrame __stdcall Cache::GetFrame(int n, IScriptEnvironment* env) 
+{
+  PVideoFrame result(cache.fetch(n));
+  if (! result) {
+    result = child->GetFrame(n, env);
+    cache.store(result);
+  }
+  return result;
+}
+
+void __stdcall Cache::SetCacheHints(int cachehints,int frame_range)
+{
+  delete cache;
+  switch(cachehints) {
+  case CACHE_RANGE:
+    cache = new RangeCache(frame_range);
+    break;
+  case CACHE_NOTHING:
+    cache = new FrameCache();
+    break;
+  case CACHE_ALL:   //seems I made a typo here
+    //cache = ... unspecified yet... 
+    break;
+ // case CACHE_LAST:  add this possibility
+    //cache = new QueueCache(frame_range);
+    //break;
+  }
+}
+
+~Cache(){ delete cache; }   */
