@@ -345,7 +345,9 @@ MergeChannels::MergeChannels(PClip _clip, int _num_children, PClip* _child_array
   : GenericVideoFilter(_clip), num_children(_num_children), child_array(_child_array)
 {
   clip1_channels=vi.AudioChannels();
-
+  clip_channels = new int[num_children]; // fixme: deleteme!
+  clip_offset = new signed char*[num_children]; // fixme: deleteme!
+  clip_channels[0]= clip1_channels;
   for (int i=1;i<num_children;i++) {
     tclip = child_array[i];
     child_array[i] = ConvertAudio::Create(tclip,vi.SampleType(),vi.SampleType());  // Clip 2 should now be same type as clip 1.
@@ -356,7 +358,7 @@ MergeChannels::MergeChannels(PClip _clip, int _num_children, PClip* _child_array
     }
 	  if (vi.SampleType()!=vi2.SampleType()) 
 		  env->ThrowError("MergeChannels: Clips must have same sample type! Use ConvertAudio()!");    // Should never happend!
-
+    clip_channels[i] = vi2.AudioChannels();
     vi.nchannels += vi2.AudioChannels();
   }
   tempbuffer_size=0;
@@ -378,18 +380,26 @@ void __stdcall MergeChannels::GetAudio(void* buf, __int64 start, __int64 count, 
 // Get audio:
   int channel_offset = count*vi.BytesPerChannelSample();  // Offset per channel
   int c_channel=0;
+
   for (int i = 0;i<num_children;i++) {
     child_array[i]->GetAudio(tempbuffer+(c_channel*channel_offset), start, count, env);
-    c_channel += child_array[i]->GetVideoInfo().AudioChannels();
+    clip_offset[i]=tempbuffer+(c_channel*channel_offset);
+    c_channel += clip_channels[i];
   }
+  
   // Interleave channels
   char *samples=(char*) buf;
   int bpcs = vi.BytesPerChannelSample();
-  int cs=0;
-  for (i=0;i<count;i++) {
-    for (int j=0;j<vi.AudioChannels();j++) 
-      for (int k=0;k<bpcs;k++)
-        samples[cs++] = tempbuffer[channel_offset*j+k+(bpcs*i)];
+  int bps = vi.BytesPerAudioSample();
+  int dst_offset=0;
+  for (i=0;i<num_children;i++) {
+    signed char* src_buf=clip_offset[i];
+    for (int l=0;l<count;l++) {
+      for (int k=0;k<(bpcs*clip_channels[i]);k++) {
+        samples[dst_offset+(l*bps)+k] = src_buf[(l*bpcs*clip_channels[i])+k];
+      }
+    }
+    dst_offset+=clip_channels[i]*bpcs;
   }
 }
 
@@ -442,12 +452,27 @@ void __stdcall GetChannel::GetAudio(void* buf, __int64 start, __int64 count, ISc
   }
   child->GetAudio(tempbuffer, start, count, env);
   char* samples = (char*)buf;
+  int dst_o;
+  int src_o;
+  for (int i=0; i<count; i++) {
+    dst_o=i*dst_bps;
+    src_o=i*src_bps;
+    for (int k=0; k<numchannels; k++) {
+      int ch = channel[k];
+      for (int j=0;j<dst_cbps;j++)
+      samples[dst_o+(k*dst_cbps)+j] = tempbuffer[src_o+(ch*src_cbps)+j];
+    }
+  }
+
+
+  /*
   for (int i=0; i<count; i++) 
     for (int k=0; k<numchannels; k++) {
       int ch = channel[k];
-      for (int j=0;j<src_cbps;j++)
-		    samples[(i*dst_bps)+(k*dst_cbps)+j] = tempbuffer[i*src_bps+(ch*src_cbps)+j];
+      for (int j=0;j<dst_cbps;j++)
+		    samples[(i*dst_bps)+(k*dst_cbps)+j] = tempbuffer[(i*src_bps)+(ch*src_cbps)+j];
     }
+    */
 }
 
 

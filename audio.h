@@ -120,6 +120,8 @@ public:
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment*);
 
 private:
+  int* clip_channels;
+  signed char** clip_offset;
   signed char *tempbuffer;
   int tempbuffer_size;
 	int clip1_channels;
