@@ -74,10 +74,10 @@ PVideoFrame __stdcall Swap::GetFrame(int n, IScriptEnvironment* env) {
     env->MakeWritable(&src);
     const int xpixels=src->GetRowSize(PLANAR_U_ALIGNED)>>2; // Ints
     const int yloops=src->GetHeight(PLANAR_U);
-    int* srcpU=(int*)src->GetWritePtr(PLANAR_Y);  // Y Plane must be touched!
+    int* srcpY=(int*)src->GetWritePtr(PLANAR_Y);  // Y Plane must be touched!
     int* srcpV=(int*)src->GetWritePtr(PLANAR_V);
-    srcpU=(int*)src->GetWritePtr(PLANAR_U);  // U is now correct!
-
+    int* srcpU=(int*)src->GetWritePtr(PLANAR_U);
+    
     for (int y=0;y<yloops;y++) { //todo: mmx me
       for (int x=0;x<xpixels;x++) {
         int t=srcpU[x];
@@ -695,13 +695,13 @@ void mmx_weigh_yv12(BYTE *p1,BYTE *p2, int p1_pitch, int p2_pitch,int rowsize, i
       mov ebx,[rowsize]
       mov esi,[p1]
       mov edi,[p2]
-      xor eax, eax
       xor ecx, ecx  // Height
       mov edx,[height]
       align 16
 yloopback:
       cmp ecx, edx
       jge outy
+      xor eax, eax
       align 16 
 testloop:
       cmp ebx, eax
@@ -732,7 +732,7 @@ testloop:
       jmp testloop
       align 16
 outloop:
-      inc edx
+      inc ecx
       add esi, [p1_pitch];
       add edi, [p2_pitch];
       jmp yloopback

@@ -750,13 +750,13 @@ PVideoFrame __stdcall ScriptEnvironment::NewVideoFrame(const VideoInfo& vi, int 
 bool ScriptEnvironment::MakeWritable(PVideoFrame* pvf) {
   const PVideoFrame& vf = *pvf;
   // If the frame is already writable, do nothing.
-  if (vf->IsWritable()) {
+/*  if (vf->IsWritable()) {
     return false;
   }
+*/
   // Otherwise, allocate a new frame (using NewVideoFrame) and
   // copy the data into it.  Then modify the passed PVideoFrame
   // to point to the new buffer.
-  else {    
     const int row_size = vf->GetRowSize(); 
     const int height = vf->GetHeight();
     PVideoFrame dst;
@@ -772,7 +772,6 @@ bool ScriptEnvironment::MakeWritable(PVideoFrame* pvf) {
 
     *pvf = dst;
     return true;
-  }
 }
 
 
