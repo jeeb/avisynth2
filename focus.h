@@ -107,6 +107,8 @@ private:
     int* div_line;
   void TemporalSoften::mmx_accumulate_line(const BYTE* c_plane, const BYTE** planeP, int planes, int rowsize, __int64* t);
   void TemporalSoften::isse_accumulate_line(const BYTE* c_plane, const BYTE** planeP, int planes, int rowsize, __int64* t);
+  void TemporalSoften::isse_accumulate_line_mode2(const BYTE* c_plane, const BYTE** planeP, int planes, int rowsize, __int64* t, int div);
+  int TemporalSoften::isse_scenechange(const BYTE* c_plane, const BYTE* tplane, int height, int width, int pitch);
 // YUY2:
   const unsigned luma_threshold, chroma_threshold;
   DWORD* accu;
@@ -118,12 +120,6 @@ private:
 
   enum { MAX_RADIUS=7 };
 
-  PVideoFrame LoadFrame(int n,int offset, IScriptEnvironment* env);
-  void FillBuffer(int n, int offset, IScriptEnvironment* env);
-
-  typedef void run_func(DWORD *pframe, int rowsize, int height, int modulo, int noffset, int coffset);
-  run_func run_C;
-  run_func run_MMX;
 };
 
 

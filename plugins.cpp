@@ -83,28 +83,26 @@ AVSValue LoadPlugin(AVSValue args, void* user_data, IScriptEnvironment* env) {
     if (MyLoadLibrary(plugin_name, &plugin, quiet, env)) {
       typedef const char* (__stdcall *AvisynthPluginInitFunc)(IScriptEnvironment* env);
       AvisynthPluginInitFunc AvisynthPluginInit = (AvisynthPluginInitFunc)GetProcAddress(plugin, "AvisynthPluginInit2");   // TODO: Change this to reject 1.0!!
-      if (!AvisynthPluginInit)
+      if (!AvisynthPluginInit) {
         AvisynthPluginInit = (AvisynthPluginInitFunc)GetProcAddress(plugin, "_AvisynthPluginInit2@4");
-      if (!AvisynthPluginInit) {  // Older version
-        AvisynthPluginInit = (AvisynthPluginInitFunc)GetProcAddress(plugin, "AvisynthPluginInit");   // TODO: Change this to reject 1.0!!
-        if (!AvisynthPluginInit)
-          AvisynthPluginInit = (AvisynthPluginInitFunc)GetProcAddress(plugin, "_AvisynthPluginInit@4");
-        if (!AvisynthPluginInit) {
-          if (GetProcAddress(plugin, "AvisynthPluginGetInfo"))
-            env->ThrowError("LoadPlugin: \"%s\" is an Avisynth 0.x plugin, and is not compatible with version 1.x", plugin_name);
-          else if (quiet) {
-            FreeLibrary(plugin);
+        if (!AvisynthPluginInit) {  // Older version
+          FreeLibrary(plugin);
+          if (quiet) {
+//            FreeLibrary(plugin);
             // remove the last handle from the list
             HMODULE* loaded_plugins = (HMODULE*)env->GetVar("$Plugins$").AsString();
             int j=0;
             while (loaded_plugins[j+1]) j++;
             loaded_plugins[j] = 0;
-          } else
-            env->ThrowError("LoadPlugin: \"%s\" is not an Avisynth 1.0 plugin", plugin_name);
-        } else
+          } else {
+            env->ThrowError("Plugin %s is not an AviSynth 2.5 plugin.",plugin_name);
+          }
+        } else {
           result = AvisynthPluginInit(env);
-      } else
+        }
+      } else {
         result = AvisynthPluginInit(env);
+      }
     }
   }
   return result ? AVSValue(result) : AVSValue();
