@@ -211,7 +211,7 @@ PVideoFrame __stdcall MergeLuma::GetFrame(int n, IScriptEnvironment* env)
     int* lumapY = (int*)luma->GetReadPtr(PLANAR_Y);
     const int isrc_pitch = (src->GetPitch())>>2;  // int pitch (one pitch=two pixels)
     const int iluma_pitch = (luma->GetPitch())>>2;  // Ints
-    const int xpixels=src->GetRowSize(PLANAR_Y)>>2; // Ints
+    const int xpixels=src->GetRowSize(PLANAR_Y_ALIGNED)>>2; // Ints
     const int yloops=src->GetHeight(PLANAR_Y);
 
     for (int y=0;y<yloops;y++) {

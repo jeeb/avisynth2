@@ -198,7 +198,8 @@ loopback_last:
  ***********************************/
 
 HorizontalReduceBy2::HorizontalReduceBy2(PClip _child, IScriptEnvironment* env)
- : GenericVideoFilter(_child), mybuffer(0)
+: GenericVideoFilter(_child), mybuffer(0)
+//: GenericVideoFilter(FillBorder::Create(_child)), mybuffer(0)
 {
   if (vi.IsYUY2() && (vi.width & 3))
     env->ThrowError("HorizontalReduceBy2: YUY2 image width must be even");
@@ -211,14 +212,55 @@ PVideoFrame HorizontalReduceBy2::GetFrame(int n, IScriptEnvironment* env)
 {
   PVideoFrame src = child->GetFrame(n, env);
   PVideoFrame dst = env->NewVideoFrame(vi);
-
-  const int src_gap = src->GetPitch() - src->GetRowSize();  //aka 'modulo' in VDub filter terminology
-  const int dst_gap = dst->GetPitch() - dst->GetRowSize();
+  int src_gap = src->GetPitch() - src->GetRowSize();  //aka 'modulo' in VDub filter terminology
+  int dst_gap = dst->GetPitch() - dst->GetRowSize();
   const int dst_pitch = dst->GetPitch();
 
   BYTE* dstp = dst->GetWritePtr();
 
-  if (vi.IsYUY2()) {
+  if (vi.IsYV12()) {
+    const BYTE* srcp = src->GetReadPtr(PLANAR_Y);
+    int yloops=dst->GetHeight(PLANAR_Y);
+    int xloops=dst->GetRowSize(PLANAR_Y)-1;
+    for (int y = 0; y<yloops; y++) {
+      for (int x = 0; x<xloops; x++) {
+        dstp[0] = (srcp[0] + 2*srcp[1] + srcp[2] + 2) >> 2;
+        dstp ++;
+        srcp +=2;
+      }      
+      dstp[0] = (srcp[0] + srcp[1] +1 ) >> 1;
+      dstp += dst_gap+1;
+      srcp += src_gap+2;
+    }
+    srcp = src->GetReadPtr(PLANAR_U);
+    dstp = dst->GetWritePtr(PLANAR_U);
+    src_gap = src->GetPitch(PLANAR_U) - src->GetRowSize(PLANAR_U);
+    dst_gap = dst->GetPitch(PLANAR_U) - dst->GetRowSize(PLANAR_U);
+    yloops=dst->GetHeight(PLANAR_U);
+    xloops=dst->GetRowSize(PLANAR_U)-1;
+    for (y = 0; y<yloops; y++) {
+      for (int x = 0; x<xloops; x++) {
+        dstp[0] = (srcp[0] + 2*srcp[1] + srcp[3] + 2) >> 2;
+        dstp ++;
+        srcp +=2;
+      }
+      dstp[0] = (srcp[0] + srcp[1] +1 ) >> 1;
+      dstp += dst_gap+1;
+      srcp += src_gap+2;
+    }
+    srcp = src->GetReadPtr(PLANAR_V);
+    dstp = dst->GetWritePtr(PLANAR_V);
+    for (y = 0; y<yloops; y++) {
+      for (int x = 0; x<xloops; x++) {
+        dstp[0] = (srcp[0] + 2*srcp[1] + srcp[3] + 2) >> 2;
+        dstp ++;
+        srcp +=2;
+      }
+      dstp[0] = (srcp[0] + srcp[1] +1 ) >> 1;
+      dstp += dst_gap+1;
+      srcp += src_gap+2;
+    }
+  } else if (vi.IsYUY2()) {
     if (env->GetCPUFlags() & CPUF_INTEGER_SSE) {
 			isse_process_yuy2(src,dstp,dst_pitch);
 			return dst;
@@ -262,7 +304,7 @@ PVideoFrame HorizontalReduceBy2::GetFrame(int n, IScriptEnvironment* env)
         srcp += src_gap+6;
       }
     }
-  } else {  //rgb32
+  } else if (vi.IsRGB32()) {  //rgb32
     const BYTE* srcp = src->GetReadPtr();
     for (int y = vi.height; y>0; --y) {
       for (int x = (source_width-1)>>1; x; --x) {
@@ -288,6 +330,7 @@ PVideoFrame HorizontalReduceBy2::GetFrame(int n, IScriptEnvironment* env)
   }
   return dst;
 }
+
 
 /************************************
  **** Horizontal 2:1 Reduction ******
