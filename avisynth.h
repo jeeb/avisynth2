@@ -48,32 +48,36 @@ struct VideoInfo {
   int width, height;    // width=0 means no video
   unsigned fps_numerator, fps_denominator;
   int num_frames;
-  enum { UNKNOWN=0, BGR24=0x13, BGR32=0x14, YUY2=0x22 };
-  BYTE pixel_type;
+  // This is more extensible than previous versions. More properties can be added seeminglesly.
+  enum { CS_UNKNOWN=0,
+         CS_BGR=1<<0,
+         CS_YUV=1<<1,
+         CS_INTERLEAVED=1<<2,
+         CS_PLANAR=1<<3 };
+  BYTE pixel_type;                // changed as of 2.5
   bool field_based;
-
+  int bits_per_pixel;
 
   int audio_samples_per_second;   // 0 means no audio
-  int sample_type;
-  __int64 num_audio_samples;
-  int nchannels;
+  int sample_type;                // as of 2.5
+  __int64 num_audio_samples;      // changed as of 2.5
+  int nchannels;                  // as of 2.5
 
   // useful functions of the above
-  //bool HasVideo() const { return !!width; }
   bool HasVideo() const { return (width!=0); }
   bool HasAudio() const { return (audio_samples_per_second!=0); }
-  //bool HasAudio() const { return !!audio_samples_per_second; }
-  bool IsRGB() const { return !!(pixel_type&0x10); }
-  bool IsRGB24() const { return pixel_type == BGR24; }
-  bool IsRGB32() const { return pixel_type == BGR32; }
-  bool IsYUV() const { return !!(pixel_type&0x20); }
-  bool IsYUY2() const { return pixel_type == YUY2; }
-  int BytesFromPixels(int pixels) const { return pixels * (pixel_type&7); }
+  bool IsRGB() const { return !!(pixel_type&CS_BGR); }
+  bool IsRGB24() const { return pixel_type&CS_BGR && (bits_per_pixel==24); }
+  bool IsRGB32() const { return (pixel_type&CS_BGR) && (bits_per_pixel==32); }
+  bool IsYUV() const { return !!(pixel_type&CS_YUV); }
+  bool IsYUY2() const { return pixel_type == (CS_YUV&CS_INTERLEAVED); }  
+  bool IsYV12() const { return pixel_type == (CS_YUV&CS_PLANAR); }
+  int BytesFromPixels(int pixels) const { return pixels * (bits_per_pixel>>3); }   // Will not work on planar images
   int RowSize() const { return BytesFromPixels(width); }
-  int BitsPerPixel() const { return (pixel_type&7) * 8; }
+  int BitsPerPixel() const { return bits_per_pixel; }
   int BMPSize() const { return height * ((RowSize()+3) & -4); }
   __int64 AudioSamplesFromFrames(__int64 frames) const { return (__int64(frames) * audio_samples_per_second * fps_denominator / fps_numerator); }
-  __int64 FramesFromAudioSamples(__int64 samples) const { return (__int64(samples) * fps_numerator / fps_denominator / audio_samples_per_second); }
+  int FramesFromAudioSamples(__int64 samples) const { return (__int64(samples) * fps_numerator / fps_denominator / audio_samples_per_second); }
   __int64 AudioSamplesFromBytes(__int64 bytes) const { return bytes / BytesPerAudioSample(); }
   __int64 BytesFromAudioSamples(__int64 samples) const { return samples * BytesPerAudioSample(); }
   int AudioChannels() const { return nchannels; }

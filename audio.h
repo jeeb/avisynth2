@@ -293,7 +293,7 @@ class Normalize : public GenericVideoFilter
  **/
 {
 public:
-  Normalize(PClip _child, double _left_factor, double _right_factor);
+  Normalize(PClip _child, double _max_factor);
   void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env);
 
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
@@ -301,8 +301,8 @@ public:
   
 
 private:
-  int left_factor, right_factor;
-  int max_volume;
+  float max_factor;
+  float max_volume;
 
   static __inline short Saturate(int n) {
     if (n <= -32768) return -32768;

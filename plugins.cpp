@@ -208,12 +208,15 @@ public:
     if (file_info.dwHasStreams & VF_STREAM_VIDEO) {
       VF_StreamInfo_Video stream_info = { sizeof(VF_StreamInfo_Video) };
       CheckHresult(env, plugin_func->GetStreamInfo(h, VF_STREAM_VIDEO, &stream_info));
-      if (stream_info.dwBitCount == 24)
-        vi.pixel_type = VideoInfo::BGR24;
-      else if (stream_info.dwBitCount == 32)
-        vi.pixel_type = VideoInfo::BGR32;
-      else
+      if (stream_info.dwBitCount == 24) {
+        vi.pixel_type = VideoInfo::CS_BGR|VideoInfo::CS_INTERLEAVED;
+        vi.bits_per_pixel=24;
+      } else if (stream_info.dwBitCount == 32) {
+        vi.pixel_type = VideoInfo::CS_BGR|VideoInfo::CS_INTERLEAVED;
+        vi.bits_per_pixel=32;
+      } else {
         env->ThrowError("VFAPIPluginProxy: plugin returned invalid bit depth (%d)", stream_info.dwBitCount);
+      }
       vi.width = stream_info.dwWidth;
       vi.height = stream_info.dwHeight;
       vi.num_frames = stream_info.dwLengthL;

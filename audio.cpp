@@ -198,6 +198,7 @@ AVSValue __cdecl ConvertAudio::Create_float(AVSValue args, void*, IScriptEnviron
 
 /******************************************
  *******   Convert Audio -> Mono     ******
+ *******   Supports int16 & float    ******
  *****************************************/
 
 ConvertToMono::ConvertToMono(PClip _clip) 
@@ -389,7 +390,6 @@ AVSValue __cdecl MonoToStereo::Create(AVSValue args, void*, IScriptEnvironment* 
  ***************************************************/
 
 
-// FIXME: Support ALL type of samples
 
 GetChannel::GetChannel(PClip _clip, int _channel) 
   : GenericVideoFilter(_clip),
@@ -397,7 +397,6 @@ GetChannel::GetChannel(PClip _clip, int _channel)
 {	
   src_bps=vi.BytesPerAudioSample();
   src_cbps=vi.BytesPerChannelSample();
-//  src_channels=vi.AudioChannels();
   vi.nchannels = 1;
   tempbuffer_size=0;
 }
@@ -444,7 +443,7 @@ PClip GetChannel::Create_n(PClip clip, int n)
   if (clip->GetVideoInfo().AudioChannels()==1)
     return clip;
   else
-    if (clip->GetVideoInfo().AudioChannels()<n) return clip;
+    if (clip->GetVideoInfo().AudioChannels()<n) return clip;   // Should it fail instead?
     return new GetChannel(clip,n);
 }
 
@@ -579,58 +578,82 @@ AVSValue __cdecl Amplify::Create_dB(AVSValue args, void*, IScriptEnvironment* en
 
 /*****************************
  ***** Normalize audio  ******
-******************************/
+ ***** Supports int16   ******
+ ******************************/
 // Fixme: Support float
+// Fixme: Maxfactor should be different on different types
 
-Normalize::Normalize(PClip _child, double _left_factor, double _right_factor)
-  : GenericVideoFilter(ConvertAudio::Create(_child,SAMPLE_INT16|SAMPLE_FLOAT,SAMPLE_FLOAT)),
-    left_factor(int(_left_factor*65536+.5)),
-    right_factor(int(_right_factor*65536+.5)) {
-  max_volume=-1;
-  }
+Normalize::Normalize(PClip _child, double _max_factor)
+  : GenericVideoFilter(ConvertAudio::Create(_child,SAMPLE_INT16,SAMPLE_INT16)),
+    max_factor(_max_factor)
+{
+  max_volume=-1.0f;
+}
 
 
 void __stdcall Normalize::GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env)
 {
-  short* samples = (short*)buf;
-  if (max_volume==-1) {
+  if (max_volume<0.0f) {
     int passes=vi.num_audio_samples/count;
     int num_samples=count;
     num_samples*=vi.AudioChannels();
     // Read samples into buffer and test them
-    for (int i=0;i<passes;i++) {
-        child->GetAudio(buf, num_samples*i, count, env);
-        for (int i=0;i<num_samples;i++) {
-          max_volume=max(abs(samples[i]),max_volume);
-        }
-    }     
-    // Remaining samples
-    int rem_samples=vi.num_audio_samples%count;
-    rem_samples*=vi.AudioChannels();
-    child->GetAudio(buf, num_samples*passes, rem_samples, env);
-    for (i=0;i<rem_samples;i++) {
-      max_volume=max(abs(samples[i]),max_volume);
+    if (vi.SampleType()==SAMPLE_INT16) {
+      short* samples = (short*)buf;
+      short i_max_volume=0;
+      for (int i=0;i<passes;i++) {
+          child->GetAudio(buf, num_samples*i, count, env);
+          for (int i=0;i<num_samples;i++) {
+            i_max_volume=max(abs(samples[i]),i_max_volume);
+          }      
+      }    
+      // Remaining samples
+      int rem_samples=vi.num_audio_samples%count;
+      rem_samples*=vi.AudioChannels();
+      child->GetAudio(buf, num_samples*passes, rem_samples, env);
+      for (i=0;i<rem_samples;i++) {
+        max_volume=max(abs(samples[i]),max_volume);
+      }
+      max_volume=(float)i_max_volume/32768.0f;
+    } else if (vi.SampleType()==SAMPLE_FLOAT) {  // Float 
+      SFLOAT* samples = (SFLOAT*)buf;
+      for (int i=0;i<passes;i++) {
+          child->GetAudio(buf, num_samples*i, count, env);
+          for (int i=0;i<num_samples;i++) {
+            max_volume=max(abs(samples[i]),max_volume);
+          }      
+      }    
+      // Remaining samples
+      int rem_samples=vi.num_audio_samples%count;
+      rem_samples*=vi.AudioChannels();
+      child->GetAudio(buf, num_samples*passes, rem_samples, env);
+      for (i=0;i<rem_samples;i++) {
+        max_volume=max(abs(samples[i]),max_volume);
+      }
+
     }
 
-    double volume=32767.0/(double)max_volume;
-    left_factor=(int)((double)left_factor*volume);
-    right_factor=(int)((double)right_factor*volume);
+    float volume=max_volume;
+    max_factor=(int)(max_factor*volume);
   } 
-  child->GetAudio(buf, start, count, env); 
-  int channels=vi.AudioChannels();
-  for (int i=0; i<count; ++i) {
-   for (int j=0;j<channels;j++) {
-      samples[i*channels+j] = Saturate(int(Int32x32To64(samples[i*channels+j],left_factor) >> 16));
-    }
-  } 
+  if (vi.SampleType()==SAMPLE_INT16) {
+    short* samples = (short*)buf;
+    child->GetAudio(buf, start, count, env); 
+    int channels=vi.AudioChannels();
+    for (int i=0; i<count; ++i) {
+      for (int j=0;j<channels;j++) {
+        samples[i*channels+j] = Saturate(int(Int32x32To64(samples[i*channels+j],max_factor) >> 16));
+      }
+    } 
+  }
+  // Do float here
 }
 
 
 AVSValue __cdecl Normalize::Create(AVSValue args, void*, IScriptEnvironment* env) 
 {
-  double left_factor = args[1].AsFloat(1.0);
-  double right_factor = args[2].AsFloat(left_factor);
-  return new Normalize(args[0].AsClip(), left_factor, right_factor);
+  double max_volume=args[1].AsFloat();
+  return new Normalize(args[0].AsClip(), max_volume);
 }
 
 

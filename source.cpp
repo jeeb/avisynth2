@@ -171,11 +171,14 @@ void AVISource::LocateVideoCodec(IScriptEnvironment* env) {
 
   // see if we can handle the video format directly
   if (pbiSrc->biCompression == '2YUY') {
-    vi.pixel_type = VideoInfo::YUY2;
+    vi.pixel_type = VideoInfo::CS_YUV|VideoInfo::CS_INTERLEAVED;
+    vi.bits_per_pixel = pbiSrc->biBitCount;
   } else if (pbiSrc->biCompression == BI_RGB && pbiSrc->biBitCount == 32) {
-    vi.pixel_type = VideoInfo::BGR32;
+    vi.pixel_type = VideoInfo::CS_BGR|VideoInfo::CS_INTERLEAVED;
+    vi.bits_per_pixel = pbiSrc->biBitCount;
   } else if (pbiSrc->biCompression == BI_RGB && pbiSrc->biBitCount == 24) {
-    vi.pixel_type = VideoInfo::BGR24;
+    vi.pixel_type = VideoInfo::CS_BGR|VideoInfo::CS_INTERLEAVED;
+    vi.bits_per_pixel = pbiSrc->biBitCount;
 
   // otherwise, find someone who will decompress it
   } else {
@@ -259,18 +262,21 @@ AVISource::AVISource(const char filename[], bool fAudio, const char pixel_type[]
         biDst.biPlanes = 1;
         biDst.biSizeImage = ((vi.width*2+3)&~3) * vi.height;
         if (fYUY2 && ICERR_OK == ICDecompressQuery(hic, pbiSrc, &biDst)) {
-          vi.pixel_type = VideoInfo::YUY2;
+          vi.pixel_type = VideoInfo::CS_YUV|VideoInfo::CS_INTERLEAVED;
+          vi.bits_per_pixel=biDst.biBitCount;
         } else {
           biDst.biCompression = BI_RGB;
           biDst.biBitCount = 32;
           biDst.biSizeImage = vi.width*vi.height*4;
           if (fRGB32 && ICERR_OK == ICDecompressQuery(hic, pbiSrc, &biDst)) {
-            vi.pixel_type = VideoInfo::BGR32;
+            vi.pixel_type = VideoInfo::CS_BGR|VideoInfo::CS_INTERLEAVED;
+            vi.bits_per_pixel=biDst.biBitCount;
           } else {
             biDst.biBitCount = 24;
             biDst.biSizeImage = ((vi.width*3+3)&~3) * vi.height;
             if (fRGB24 && ICERR_OK == ICDecompressQuery(hic, pbiSrc, &biDst)) {
-              vi.pixel_type = VideoInfo::BGR24;
+              vi.pixel_type = VideoInfo::CS_BGR|VideoInfo::CS_INTERLEAVED;
+              vi.bits_per_pixel=biDst.biBitCount;
             } else {
               if (fYUY2 && (fRGB32 || fRGB24))
                 env->ThrowError("AVISource: the video decompressor couldn't produce YUY2 or RGB output");
@@ -463,7 +469,7 @@ static PVideoFrame CreateBlankFrame(const VideoInfo& vi, int color, IScriptEnvir
 }
 
 static AVSValue __cdecl Create_BlankClip(AVSValue args, void*, IScriptEnvironment* env) {
-  VideoInfo vi_default = { 640, 480, 24, 1, 240, VideoInfo::BGR32, false, 44100, 0, 2, SAMPLE_INT16 };  /// fixme: AUDIO is probably not correct!!!!
+  VideoInfo vi_default = { 640, 480, 24, 1, 240, VideoInfo::CS_BGR|VideoInfo::CS_INTERLEAVED, false, 44100, 0, 2, SAMPLE_INT16 };  /// fixme: NOTHING is probably not correct due to changed structs!!!!  Stupid way of defaulting anyway
   VideoInfo vi;
   if (args[0].Defined()) {
     vi_default = args[0].AsClip()->GetVideoInfo();
@@ -474,14 +480,18 @@ static AVSValue __cdecl Create_BlankClip(AVSValue args, void*, IScriptEnvironmen
   vi.pixel_type = vi_default.pixel_type;
   if (args[4].Defined()) {
     const char* pixel_type_string = args[4].AsString();
-    if (!lstrcmpi(pixel_type_string, "YUY2"))
-      vi.pixel_type = VideoInfo::YUY2;
-    else if (!lstrcmpi(pixel_type_string, "RGB24"))
-      vi.pixel_type = VideoInfo::BGR24;
-    else if (!lstrcmpi(pixel_type_string, "RGB32"))
-      vi.pixel_type = VideoInfo::BGR32;
-    else
+    if (!lstrcmpi(pixel_type_string, "YUY2")) {
+      vi.pixel_type = VideoInfo::CS_YUV|VideoInfo::CS_INTERLEAVED;
+      vi.bits_per_pixel=16;
+    } else if (!lstrcmpi(pixel_type_string, "RGB24")) {
+      vi.pixel_type = VideoInfo::CS_BGR|VideoInfo::CS_INTERLEAVED;
+      vi.bits_per_pixel=24;
+    } else if (!lstrcmpi(pixel_type_string, "RGB32")) {
+      vi.pixel_type = VideoInfo::CS_BGR|VideoInfo::CS_INTERLEAVED;
+      vi.bits_per_pixel=32;
+    } else {
       env->ThrowError("BlankClip: pixel_type must be \"RGB32\", \"RGB24\", or \"YUY2\"");
+    }
   }
   double n = args[5].AsFloat(double(vi_default.fps_numerator));
   if (args[5].Defined() && !args[6].Defined()) {
@@ -547,7 +557,7 @@ PClip Create_MessageClip(const char* message, int width, int height, int pixel_t
 
 AVSValue __cdecl Create_MessageClip(AVSValue args, void*, IScriptEnvironment* env) {
   return Create_MessageClip(args[0].AsString(), args[1].AsInt(-1),
-      args[2].AsInt(-1), VideoInfo::BGR24, args[3].AsBool(false),
+      args[2].AsInt(-1), VideoInfo::CS_BGR|VideoInfo::CS_INTERLEAVED, args[3].AsBool(false),
       args[4].AsInt(0xFFFFFF), args[5].AsInt(0), args[6].AsInt(0), env);
 }
 
@@ -571,7 +581,8 @@ public:
     vi.fps_numerator = 2997;
     vi.fps_denominator = 100;
     vi.num_frames = 107892;   // 1 hour
-    vi.pixel_type = VideoInfo::BGR32;
+    vi.pixel_type = VideoInfo::CS_BGR|VideoInfo::CS_INTERLEAVED;
+    vi.bits_per_pixel = 32;
     vi.field_based = false;
     vi.sample_type = SAMPLE_INT16;
     vi.nchannels = 2;
@@ -974,11 +985,14 @@ public:
     }
 
     if (pmt->subtype == MEDIASUBTYPE_YUY2) {
-      vi.pixel_type = VideoInfo::YUY2;
+      vi.pixel_type = VideoInfo::CS_YUV|VideoInfo::CS_INTERLEAVED;
+      vi.bits_per_pixel = 16;
     } else if (pmt->subtype == MEDIASUBTYPE_RGB24) {
-      vi.pixel_type = VideoInfo::BGR24;
+      vi.pixel_type = VideoInfo::CS_BGR|VideoInfo::CS_INTERLEAVED;
+      vi.bits_per_pixel = 24;
     } else if (pmt->subtype == MEDIASUBTYPE_RGB32) {
-      vi.pixel_type = VideoInfo::BGR32;
+      vi.pixel_type = VideoInfo::CS_BGR|VideoInfo::CS_INTERLEAVED;
+      vi.bits_per_pixel = 32;
     } else {
       _RPT0(0, "*** subtype rejected\n");
       return S_FALSE;
@@ -1424,7 +1438,7 @@ AVSValue __cdecl Create_Version(AVSValue args, void*, IScriptEnvironment* env) {
   return Create_MessageClip("Avisynth v2.0.6, 27 September. 2002\n"
           "\xA9 2000-2002 Ben Rudiak-Gould, et al.\n"
           "http://www.avisynth.org",
-  -1, -1, VideoInfo::BGR24, false, 0xECF2BF, 0, 0x404040, env);
+  -1, -1, VideoInfo::CS_BGR|VideoInfo::CS_INTERLEAVED, false, 0xECF2BF, 0, 0x404040, env);
 }
  
 
