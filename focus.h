@@ -93,7 +93,7 @@ class TemporalSoften : public GenericVideoFilter
  **/
 {
 public:
-  TemporalSoften( PClip _child, unsigned radius, unsigned luma_thresh, unsigned chroma_thresh, IScriptEnvironment* env );
+  TemporalSoften( PClip _child, unsigned radius, unsigned luma_thresh, unsigned chroma_thresh,int _scenechange, int _mode ,IScriptEnvironment* env );
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
   virtual ~TemporalSoften(void);
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
@@ -103,12 +103,18 @@ private:
     int* planes;
     int* divtab;
     const BYTE** planeP;
+    const BYTE** planeP2;
+    int* planePitch;
+    int* planePitch2;
     int* accum_line;
     int* div_line;
+    bool* planeDisabled;
+    int scenechange;
+    int mode;
   void TemporalSoften::mmx_accumulate_line(const BYTE* c_plane, const BYTE** planeP, int planes, int rowsize, __int64* t);
   void TemporalSoften::isse_accumulate_line(const BYTE* c_plane, const BYTE** planeP, int planes, int rowsize, __int64* t);
   void TemporalSoften::isse_accumulate_line_mode2(const BYTE* c_plane, const BYTE** planeP, int planes, int rowsize, __int64* t, int div);
-  int TemporalSoften::isse_scenechange(const BYTE* c_plane, const BYTE* tplane, int height, int width, int pitch);
+  int TemporalSoften::isse_scenechange(const BYTE* c_plane, const BYTE* tplane, int height, int width, int c_pitch, int t_pitch);
 // YUY2:
   const unsigned luma_threshold, chroma_threshold;
   DWORD* accu;

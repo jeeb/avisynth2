@@ -18,6 +18,7 @@
 
 
 #include "focus.h"
+#include "text-overlay.h"
 
 
 
@@ -30,13 +31,13 @@
 AVSFunction Focus_filters[] = {
   { "Blur", "cf[]f", Create_Blur },                     // amount [0 - 1]
   { "Sharpen", "cf[]f", Create_Sharpen },               // amount [0 - 1]
-  { "TemporalSoften", "ciii", TemporalSoften::Create }, // radius, luma_threshold, chroma_threshold
+  { "TemporalSoften", "ciii[scenechange]i[mode]i", TemporalSoften::Create }, // radius, luma_threshold, chroma_threshold
   { "SpatialSoften", "ciii", SpatialSoften::Create },   // radius, luma_threshold, chroma_threshold
   { 0 }
 };
 
 
-
+ 
 
 
 /****************************************
@@ -696,99 +697,65 @@ AVSValue __cdecl Create_Blur(AVSValue args, void*, IScriptEnvironment* env)
  **/
 
 
-#define SCALE(i)    (int)((double)32768.0/(i)+0.5)
-const short TemporalSoften::scaletab[] = {
-  0,
-  32767,     // because of signed MMX multiplications
-  SCALE(2),
-  SCALE(3),
-  SCALE(4),
-  SCALE(5),
-  SCALE(6),
-  SCALE(7),
-  SCALE(8),
-  SCALE(9),
-  SCALE(10),
-  SCALE(11),
-  SCALE(12),
-  SCALE(13),
-  SCALE(14),
-  SCALE(15),
-};
-#undef SCALE
-
-
 
 TemporalSoften::TemporalSoften( PClip _child, unsigned radius, unsigned luma_thresh, 
-                                unsigned chroma_thresh, IScriptEnvironment* env )
+                                unsigned chroma_thresh, int _scenechange, int _mode, IScriptEnvironment* env )
   : GenericVideoFilter  (_child),
     chroma_threshold    (min(chroma_thresh,255)),
     luma_threshold      (min(luma_thresh,255)),
     kernel              (2*min(radius,MAX_RADIUS)+1),
-    scaletab_MMX        (NULL)    
+    scaletab_MMX        (NULL),
+    scenechange (_scenechange),
+    mode(_mode)
 {
   if (!vi.IsYUV())
     env->ThrowError("TemporalSoften: requires YUV input");
 
   child->SetCacheHints(CACHE_RANGE,kernel);
   if ((vi.IsYUY2()) && (vi.width&7)) {
-    env->ThrowError("Temporalsoften: YUY2 source must be multiple of 8 in width.");
+    env->ThrowError("TemporalSoften: YUY2 source must be multiple of 8 in width.");
   }
-  if (vi.IsYUV()) {
-    planes = new int[8];
-    planeP = new const BYTE*[16];
-    divtab = new int[16]; // First index = x/1
-    for (int i = 0; i<16;i++)
-      divtab[i] = 32768/(i+1);
-    int c = 0;
-    if (vi.IsYV12()) {
-      if (luma_thresh>=0) {planes[c++] = PLANAR_Y; planes[c++] = luma_thresh;}
-      if (chroma_thresh>=0) { planes[c++] = PLANAR_V;planes[c++] =chroma_thresh;planes[c++] = PLANAR_U;planes[c++] =chroma_thresh;}
-    } else {
-      planes[c++]=0;
-      planes[c++]=luma_thresh|(chroma_thresh<<8);
-    }
-    planes[c]=0;
-    accum_line=(int*)_aligned_malloc(((vi.width*vi.BytesFromPixels(1)+FRAME_ALIGN-1)/8)*16,8);
-    div_line=(int*)_aligned_malloc(((vi.width*vi.BytesFromPixels(1)+FRAME_ALIGN-1)/8)*16,8);
-    return;
+  if (mode!=max(min(mode,2),1)) {
+    env->ThrowError("TemporalSoften: Mode must be 1 or 2.");
   }
-
-  accu = (DWORD*)new DWORD[(vi.width * vi.height * kernel * vi.BytesFromPixels(1)) >> 2];
-  if (!accu)
-    env->ThrowError("TemporalSoften: memory allocation error");
-  memset(accu, 0, vi.width * vi.height * kernel * vi.BytesFromPixels(1));
-
-  nprev = -100;
-
-  if (env->GetCPUFlags() & CPUF_MMX) {
-    scaletab_MMX = new __int64[65536]; 
-    if (!scaletab_MMX) {
-      delete[] accu;
-      env->ThrowError("TemporalSoften: memory allocation error");
-    }
-    for(int i=0; i<65536; i++)
-      scaletab_MMX[i] = ( (__int64) scaletab[ i       & 15]        ) |
-                        (((__int64) scaletab[(i >> 4) & 15]) << 16 ) |
-                        (((__int64) scaletab[(i >> 8) & 15]) << 32 ) |
-                        (((__int64) scaletab[(i >>12) & 15]) << 48 );
+  if (mode==2 || scenechange>0) {
+    if (!(env->GetCPUFlags() & CPUF_INTEGER_SSE))
+      env->ThrowError("TemporalSoften: Mode 2 and Scenechange requires Integer SSE capable CPU.");
   }
+  scenechange *= ((vi.width/32)*32)*vi.height;
+  
+  planes = new int[8];
+  planeP = new const BYTE*[16];
+  planeP2 = new const BYTE*[16];
+  planePitch = new int[16];
+  planePitch2 = new int[16];
+  planeDisabled = new bool[16];
+  divtab = new int[16]; // First index = x/1
+  for (int i = 0; i<16;i++)
+    divtab[i] = 32768/(i+1);
+  int c = 0;
+  if (vi.IsYV12()) {
+    if (luma_thresh>=0) {planes[c++] = PLANAR_Y; planes[c++] = luma_thresh;}
+    if (chroma_thresh>=0) { planes[c++] = PLANAR_V;planes[c++] =chroma_thresh;planes[c++] = PLANAR_U;planes[c++] =chroma_thresh;}
+  } else {
+    planes[c++]=0;
+    planes[c++]=luma_thresh|(chroma_thresh<<8);
+  }
+  planes[c]=0;
+  accum_line=(int*)_aligned_malloc(((vi.width*vi.BytesFromPixels(1)+FRAME_ALIGN-1)/8)*16,8);
+  div_line=(int*)_aligned_malloc(((vi.width*vi.BytesFromPixels(1)+FRAME_ALIGN-1)/8)*16,8);
 }
 
 
 
 TemporalSoften::~TemporalSoften(void) 
 {
-  if (!vi.IsYUV()) {
-    delete[] accu;
-    delete[] scaletab_MMX;
-  } else {
     delete[] planes;
     delete[] divtab;
     delete[] planeP;
+    delete[] planeP2;
     _aligned_free(accum_line);
     _aligned_free(div_line);
-  }
 }
 
 
@@ -800,20 +767,25 @@ PVideoFrame TemporalSoften::GetFrame(int n, IScriptEnvironment* env)
   int radius = (kernel-1) / 2 ;
   int c=0;
   PVideoFrame dst;
+
+  for (int p=0;p<16;p++)
+    planeDisabled[p]=false;
+
   do {
     int c_thresh = planes[c+1];  // Threshold for current plane.
     int d=0;
     for (int i = radius;i>=1;i--) { // Fetch all planes sequencially
       PVideoFrame tframe = child->GetFrame(min(vi.num_frames-1,max(n-i,1)), env);
+      planePitch[d] = tframe->GetPitch(planes[c]);
       planeP[d++] = tframe->GetReadPtr(planes[c]);
     }
     frame = child->GetFrame(n, env);          // get the new frame
     env->MakeWritable(&frame);
     BYTE* c_plane= frame->GetWritePtr(planes[c]);
-    BYTE* dstp;
-    dstp = c_plane;
+
     for (i = 1;i<=radius;i++) { // Fetch all planes sequencially
       PVideoFrame tframe = child->GetFrame(min(vi.num_frames-1,max(n+i,1)), env);
+      planePitch[d] = tframe->GetPitch(planes[c]);
       planeP[d++] = tframe->GetReadPtr(planes[c]);
     }
     
@@ -821,15 +793,68 @@ PVideoFrame TemporalSoften::GetFrame(int n, IScriptEnvironment* env)
     int h = frame->GetHeight(planes[c]);
     int w=frame->GetRowSize(planes[c]); // Non-aligned
     int pitch = frame->GetPitch(planes[c]);
-//    int scenevalues = isse_scenechange(c_plane, planeP[d-1], h, w, pitch);
 
+/*
+    if (planes[c]==PLANAR_Y) {
+      int scenevalues = isse_scenechange(c_plane, planeP[radius-1], h, w, pitch, pitch);
+      char text[400];
+      float divisor = (float)(w*h);
+      float fchangep = (float)scenevalues / divisor;
+      sprintf(text,"Scenechange: %7.2f.",fchangep);
+      ApplyMessage(&frame, vi, text, vi.width/4, 0xa0a0a0,0,0 , env );
+    }
+*/
+
+
+    if (scenechange>0) {
+      int d2=0;
+      bool skiprest = false;
+      for (int i = radius-1;i>=0;i--) { // Check frames backwards
+        if (!skiprest && (!planeDisabled[i])) {
+          int scenevalues = isse_scenechange(c_plane, planeP[i], h, w, pitch, planePitch[i]);
+          if (scenevalues < scenechange) {
+            if (scenevalues)  { // If not completely the same
+              planePitch2[d2] =  planePitch[i];
+              planeP2[d2++] = planeP[i]; 
+            }
+          } else {
+            skiprest = true;
+          }
+          planeDisabled[i] = skiprest;  // Disable this frame on next plane (so that Y can affect UV)
+        }
+      }
+      skiprest = false;
+      for (i = 0;i<radius;i++) { // Check forward frames
+        if (!skiprest  && (!planeDisabled[i+radius]) ) {   // Disable this frame on next plane (so that Y can affect UV)
+          int scenevalues = isse_scenechange(c_plane, planeP[i+radius], h, w, pitch,  planePitch[i+radius]);
+          if (scenevalues < scenechange) {
+            if (scenevalues) { // If not completely the same
+              planePitch2[d2] =  planePitch[i+radius];
+              planeP2[d2++] = planeP[i+radius];
+            }
+          } else {
+            skiprest = true;
+          }
+          planeDisabled[i+radius] = skiprest;
+        }
+      }
+      //Copy back
+      for (i=0;i<d2;i++) {
+        planeP[i]=planeP2[i];
+        planePitch[i]=planePitch2[i];
+      }
+      d = d2;
+    }
+
+    if (d<=1)
+      return frame;
+    
     i64_thresholds = (__int64)c_thresh | (__int64)(c_thresh<<8) | (((__int64)c_thresh)<<16) | (((__int64)c_thresh)<<24);
     if (vi.IsYUY2()) { 
       i64_thresholds = (__int64)luma_threshold | (__int64)(chroma_threshold<<8) | ((__int64)(luma_threshold)<<16) | ((__int64)(chroma_threshold)<<24);
     }
     i64_thresholds |= (i64_thresholds<<32);
-    int mode = 1;
-    int c_div = 32768/(kernel-1);
+    int c_div = 32768/d;
     if (c_thresh) {
       for (int y=0;y<h;y++) { // One line at the time
         if (mode == 1) {
@@ -848,7 +873,7 @@ PVideoFrame TemporalSoften::GetFrame(int n, IScriptEnvironment* env)
           isse_accumulate_line_mode2(c_plane, planeP, d-1, rowsize,&i64_thresholds, c_div);
         }
         for (int p=0;p<d;p++)
-          planeP[p] += pitch;
+          planeP[p] += planePitch[p];
         c_plane += pitch;
       }
     } else { // Just maintain the plane
@@ -1014,10 +1039,17 @@ outloop:
 
 void TemporalSoften::isse_accumulate_line_mode2(const BYTE* c_plane, const BYTE** planeP, int planes, int rowsize, __int64* t, int div) {
   __declspec(align(8)) static __int64 full = 0xffffffffffffffffi64;
+  __declspec(align(8)) static __int64 t2 = *t;
+  __int64 div64 = (__int64)(div) | ((__int64)(div)<<16) | ((__int64)(div)<<32) | ((__int64)(div)<<48);
+  div>>=1;
+  __int64 add64 = (__int64)(div) | ((__int64)(div)<<32);
+
+  /*
   __declspec(align(8)) static __int64 div64 = (__int64)(div) | ((__int64)(div)<<16) | ((__int64)(div)<<32) | ((__int64)(div)<<48);
   div>>=1;
   __declspec(align(8)) static __int64 add64 = (__int64)(div) | ((__int64)(div)<<32);
-  __declspec(align(8)) static __int64 t2 = *t;
+
+*/
   int* _accum_line=accum_line;
 
   __asm {
@@ -1077,21 +1109,22 @@ kernel_loop:
      movq mm0,mm6
     movq mm1,mm6
      punpcklwd mm0,mm5         // low,low
+    movq mm6,[div64]
     punpckhwd mm1,mm5         // low,high
      movq mm2,mm7
-    pmaddwd mm0,[div64]
+    pmaddwd mm0,mm6
      punpcklwd mm2,mm5         // high,low
      movq mm3,mm7
      paddd mm0,mm4
-    pmaddwd mm1,[div64]
+    pmaddwd mm1,mm6
      punpckhwd mm3,mm5         // high,high
      psrld mm0,15
      paddd mm1,mm4
-    pmaddwd mm2,[div64]
+    pmaddwd mm2,mm6
      packssdw mm0, mm0
      psrld mm1,15
      paddd mm2,mm4
-    pmaddwd mm3,[div64]
+    pmaddwd mm3,mm6
      packssdw mm1, mm1
      psrld mm2,15
      paddd mm3,mm4
@@ -1119,6 +1152,63 @@ outloop:
   }
 }
 
+int TemporalSoften::isse_scenechange(const BYTE* c_plane, const BYTE* tplane, int height, int width, int c_pitch, int t_pitch) {
+  __declspec(align(8)) static __int64 full = 0xffffffffffffffffi64;
+  int wp=(width/32)*32;
+  int hp=height;
+  int returnvalue=0xbadbad00;
+  __asm {
+    xor ebx,ebx     // Height
+    pxor mm5,mm5  // Maximum difference
+    mov edx, c_pitch    //copy pitch
+    mov ecx, t_pitch    //copy pitch
+    pxor mm6,mm6   // We maintain two sums, for better pairablility
+    pxor mm7,mm7
+    mov esi, c_plane
+    mov edi, tplane
+    jmp yloopover
+    align 16
+yloop:
+    inc ebx
+    add edi,edx     // add pitch to both planes
+    add esi,edx
+yloopover:
+    cmp ebx,[hp]
+    jge endframe
+    xor eax,eax     // Width
+    align 16
+xloop:
+    cmp eax,[wp]    
+    jge yloop
+
+    movq mm0,[esi+eax]
+     movq mm2,[esi+eax+8]
+    movq mm1,[edi+eax]
+     movq mm3,[edi+eax+8]
+    psadbw mm0,mm1    // Sum of absolute difference
+     psadbw mm2,mm3
+    paddd mm6,mm0     // Add...
+     paddd mm7,mm2
+    movq mm0,[esi+eax+16]
+     movq mm2,[esi+eax+24]
+    movq mm1,[edi+eax+16]
+     movq mm3,[edi+eax+24]
+    psadbw mm0,mm1
+     psadbw mm2,mm3
+    paddd mm6,mm0
+     paddd mm7,mm2
+
+    add eax,32
+    jmp xloop
+endframe:
+    paddd mm7,mm6
+    movd returnvalue,mm7
+    emms
+  }
+  return returnvalue;
+}
+
+/*
 int TemporalSoften::isse_scenechange(const BYTE* c_plane, const BYTE* tplane, int height, int width, int pitch) {
   __declspec(align(8)) static __int64 full = 0xffffffffffffffffi64;
   int wp=(width/32)*32;
@@ -1135,14 +1225,14 @@ yloop:
     mov edx, ecx    //copy pitch
     imul edx, ebx   // multiply by height
     xor eax,eax     // Width
+    mov esi, c_plane
+    mov edi, tplane
     add edi,edx     // add pitch to both planes
     add esi,edx
     align 16
 xloop:
     cmp eax,[wp]    
     jge yloop
-    mov esi, c_plane
-    mov edi, tplane
     pxor mm6,mm6   // We maintain two sums, for better pairablility
     pxor mm7,mm7
     mov edx,32
@@ -1185,10 +1275,11 @@ endframe:
   return returnvalue;
 }
 
+*/
 AVSValue __cdecl TemporalSoften::Create(AVSValue args, void*, IScriptEnvironment* env) 
 {
   return new TemporalSoften( args[0].AsClip(), args[1].AsInt(), args[2].AsInt(), 
-                             args[3].AsInt(), env );
+                             args[3].AsInt(), args[4].AsInt(0),args[5].AsInt(1),env );
 }
 
 
