@@ -1,5 +1,8 @@
-// Avisynth v2.5.  Copyright 2002 Ben Rudiak-Gould et al.
-// http://www.avisynth.org
+// Avisynth v1.0 beta.  Copyright 2000 Ben Rudiak-Gould.
+// http://www.math.berkeley.edu/~benrg/avisynth.html
+
+// VirtualDub - Video processing and capture application
+// Copyright (C) 1998-2000 Avery Lee
 
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -15,27 +18,10 @@
 // along with this program; if not, write to the Free Software
 // Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA, or visit
 // http://www.gnu.org/copyleft/gpl.html .
-//
-// Linking Avisynth statically or dynamically with other modules is making a
-// combined work based on Avisynth.  Thus, the terms and conditions of the GNU
-// General Public License cover the whole combination.
-//
-// As a special exception, the copyright holders of Avisynth give you
-// permission to link Avisynth with independent modules that communicate with
-// Avisynth solely through the interfaces defined in avisynth.h, regardless of the license
-// terms of these independent modules, and to copy and distribute the
-// resulting combined work under terms of your choice, provided that
-// every copy of the combined work is accompanied by a complete copy of
-// the source code of Avisynth (the version of Avisynth used to produce the
-// combined work), being distributed under the terms of the GNU General
-// Public License plus this exception.  An independent module is a module
-// which is not derived from or based on Avisynth, such as 3rd-party filters,
-// import and export plugins, or graphical user interfaces.
 
 
 #define INITGUID
 #include "internal.h"
-#include "audio.h"
 
 
 static long gRefCnt=0;
@@ -156,23 +142,23 @@ public:
 };
 
 
+static HRESULT hrfromcoinit = E_FAIL;
+
 BOOL APIENTRY DllMain(HANDLE hModule, ULONG ulReason, LPVOID lpReserved) {
 
 	switch(ulReason) {
 	case DLL_PROCESS_ATTACH:
-		CoInitialize(NULL);
+		hrfromcoinit = CoInitialize(NULL);
 		_RPT0(0,"Process attach\n");
 		break;
 
 	case DLL_PROCESS_DETACH:
-		CoUninitialize();
+    if(SUCCEEDED(hrfromcoinit)) CoUninitialize();
 		_RPT0(0,"Process detach\n");
 		break;
 	}
-
-    return TRUE;
+  return TRUE;
 }
-
 
 // From the Microsoft AVIFile docs.  Dense code...
 
@@ -468,18 +454,13 @@ bool CAVIFileSynth::DelayInit() {
         AVSValue return_val = env->Invoke("Import", szScriptName);
         // store the script's return value (a video clip)
         if (return_val.IsClip())
-          filter_graph = ConvertAudio::Create(return_val.AsClip(), SAMPLE_INT8|SAMPLE_INT16|SAMPLE_INT24|SAMPLE_INT32, SAMPLE_INT16);  // Ensure samples are int     [filter_graph = return_val.AsClip();]
+          filter_graph = return_val.AsClip();
         else
           throw AvisynthError("The script's return value was not a video clip");
         if (!filter_graph)
           throw AvisynthError("The returned video clip was nil (this is a bug)");
         // get information about the clip
         vi = &filter_graph->GetVideoInfo();
-
-        if (vi->IsYV12()&&(vi->width&3))
-          throw AvisynthError("Avisynth error: YV12 images for output must have a width divisible by 4 (use crop)!");
-        if (vi->IsYUY2()&&(vi->width&3))
-          throw AvisynthError("Avisynth error: YUY2 images for output must have a width divisible by 4 (use crop)!");
       }
       catch (AvisynthError error) {
         error_msg = error.msg;
@@ -602,7 +583,7 @@ bool __stdcall CAVIFileSynth::GetParity(int n) {
 bool __stdcall CAVIFileSynth::IsFieldBased() {
   if (!DelayInit())
     return false;
-  return vi->IsFieldBased();
+  return vi->field_based;
 }
 
 
@@ -678,17 +659,7 @@ STDMETHODIMP_(LONG) CAVIStreamSynth::Info(AVISTREAMINFOW *psi, LONG lSize) {
       wcscpy(asi.szName, L"Avisynth audio #1");
     } else {
       const int image_size = vi->BMPSize();
-      asi.fccHandler = 'UNKN';
-      if (vi->IsRGB()) 
-        asi.fccHandler = ' BID';
-      else if (vi->IsYUY2())
-        asi.fccHandler = '2YUY';
-      else if (vi->IsYV12())
-        asi.fccHandler = '21VY'; 
-      else {
-        _ASSERT(FALSE);
-      }
-      //      asi.fccHandler = vi->IsYUY2() ? '2YUY' : ' BID';
+      asi.fccHandler = vi->IsYUY2() ? '2YUY' : ' BID';
       asi.dwScale = vi->fps_denominator;
       asi.dwRate = vi->fps_numerator;
       asi.dwLength = vi->num_frames;
@@ -721,32 +692,26 @@ STDMETHODIMP_(LONG) CAVIStreamSynth::FindSample(LONG lPos, LONG lFlags) {
 void CAVIStreamSynth::ReadFrame(void* lpBuffer, int n) {
   PVideoFrame frame = parent->filter_graph->GetFrame(n, parent->env);
   if (!frame)
-    parent->env->ThrowError("Avisynth error: generated video frame was nil (this is a bug)");
-//  VideoInfo vi = parent->filter_graph->GetVideoInfo();
+    throw AvisynthError("Avisynth error: generated video frame was nil (this is a bug)");
   const int pitch = frame->GetPitch();
   const int row_size = frame->GetRowSize();
   // BMP scanlines are always dword-aligned
   const int out_pitch = (row_size+3) & -4;
   BitBlt((BYTE*)lpBuffer, out_pitch, frame->GetReadPtr(), pitch, row_size, frame->GetHeight());
-  // TODO: Make the following more eyepleasing
-  BitBlt((BYTE*)lpBuffer+(out_pitch*frame->GetHeight()), out_pitch/2, frame->GetReadPtr(PLANAR_V), frame->GetPitch(PLANAR_V), frame->GetRowSize(PLANAR_V), frame->GetHeight(PLANAR_V));
-  BitBlt((BYTE*)lpBuffer+(out_pitch*frame->GetHeight()+frame->GetHeight(PLANAR_U)*out_pitch/2), out_pitch/2, frame->GetReadPtr(PLANAR_U), frame->GetPitch(PLANAR_U), frame->GetRowSize(PLANAR_V), frame->GetHeight(PLANAR_U));
 }
 
 
 void CAVIStreamSynth::ReadHelper(void* lpBuffer, int lStart, int lSamples) {
   // It's illegal to call GetExceptionInformation() inside an __except
   // block!  Hence this variable and the horrible hack below...
-#ifndef _DEBUG
   EXCEPTION_POINTERS* ei;
   DWORD code;
-  __try { 
-#endif
+
+  __try {
     if (fAudio)
       parent->filter_graph->GetAudio(lpBuffer, lStart, lSamples, parent->env);
     else
       ReadFrame(lpBuffer, lStart);
-#ifndef _DEBUG
   }
   __except (ei = GetExceptionInformation(), code = GetExceptionCode(), (code >> 28) == 0xC) {
     switch (code) {
@@ -768,7 +733,6 @@ void CAVIStreamSynth::ReadHelper(void* lpBuffer, int lStart, int lSamples) {
         code, ei->ExceptionRecord->ExceptionAddress);
     }
   }
-#endif
 }
 
 STDMETHODIMP CAVIStreamSynth::Read(LONG lStart, LONG lSamples, LPVOID lpBuffer, LONG cbBuffer, LONG *plBytes, LONG *plSamples) {
@@ -786,6 +750,7 @@ STDMETHODIMP CAVIStreamSynth::Read(LONG lStart, LONG lSamples, LPVOID lpBuffer, 
 
   } else {
     int image_size = parent->vi->BMPSize();
+
     if (plSamples) *plSamples = 1;
     if (plBytes) *plBytes = image_size;
 
@@ -797,14 +762,11 @@ STDMETHODIMP CAVIStreamSynth::Read(LONG lStart, LONG lSamples, LPVOID lpBuffer, 
     }
   }
 
-#ifndef _DEBUG
   try {
     try {
-#endif
       // VC compiler says "only one form of exception handling permitted per
       // function."  Sigh...
       ReadHelper(lpBuffer, lStart, lSamples);
-#ifndef _DEBUG
     }
     catch (AvisynthError error) {
       parent->MakeErrorStream(error.msg);
@@ -818,7 +780,7 @@ STDMETHODIMP CAVIStreamSynth::Read(LONG lStart, LONG lSamples, LPVOID lpBuffer, 
   catch (...) {
     return E_FAIL;
   }
-#endif
+
   return S_OK;
 }
 
@@ -838,9 +800,9 @@ STDMETHODIMP CAVIStreamSynth::ReadFormat(LONG lPos, LPVOID lpFormat, LONG *lpcbF
     WAVEFORMATEX wfx;
     memset(&wfx, 0, sizeof(wfx));
     wfx.wFormatTag = 1;
-    wfx.nChannels = vi->AudioChannels();  // Perhaps max out at 2?
-    wfx.nSamplesPerSec = vi->SamplesPerSecond();
-    wfx.wBitsPerSample = vi->BytesPerChannelSample() * 8;
+    wfx.nChannels = vi->stereo ? 2 : 1;
+    wfx.nSamplesPerSec = vi->audio_samples_per_second;
+    wfx.wBitsPerSample = vi->sixteen_bit ? 16 : 8;
     wfx.nBlockAlign = vi->BytesPerAudioSample();
     wfx.nAvgBytesPerSec = wfx.nSamplesPerSec * wfx.nBlockAlign;
     memcpy(lpFormat, &wfx, min(size_t(*lpcbFormat), sizeof(wfx)));
@@ -852,17 +814,8 @@ STDMETHODIMP CAVIStreamSynth::ReadFormat(LONG lPos, LPVOID lpFormat, LONG *lpcbF
     bi.biHeight = vi->height;
     bi.biPlanes = 1;
     bi.biBitCount = vi->BitsPerPixel();
-      if (vi->IsRGB()) 
-        bi.biCompression = BI_RGB;
-      else if (vi->IsYUY2())
-        bi.biCompression = '2YUY';
-      else if (vi->IsYV12())
-        bi.biCompression = '21VY';
-      else {
-        _ASSERT(FALSE);
-      }
-    bi.biSizeImage = vi->BMPSize();
-//    bi.biSizeImage = bi.biWidth * bi.biHeight * bi.biBitCount / 8;
+    bi.biCompression = vi->IsYUY2() ? '2YUY' : BI_RGB;
+    bi.biSizeImage = bi.biWidth * bi.biHeight * bi.biBitCount / 8;
     memcpy(lpFormat, &bi, min(size_t(*lpcbFormat), sizeof(bi)));
   }
 
