@@ -340,13 +340,13 @@ void __stdcall MergeChannels::GetAudio(void* buf, __int64 start, __int64 count, 
   if (tempbuffer_size) {
     if (tempbuffer_size<count) {
       delete[] tempbuffer;
-      tempbuffer=new signed char[vi.BytesPerChannelSample()*clip1_channels];
-      tempbuffer2=new signed char[vi2.BytesPerAudioSample()];
+      tempbuffer=new signed char[count*vi.BytesPerChannelSample()*clip1_channels];
+      tempbuffer2=new signed char[count*vi2.BytesPerAudioSample()];
       tempbuffer_size=count;
     }
   } else {
-      tempbuffer=new signed char[vi.BytesPerChannelSample()*clip1_channels];
-      tempbuffer2=new signed char[vi2.BytesPerAudioSample()];
+      tempbuffer=new signed char[count*vi.BytesPerChannelSample()*clip1_channels];
+      tempbuffer2=new signed char[count*vi2.BytesPerAudioSample()];
       tempbuffer_size=count;
   }
 
