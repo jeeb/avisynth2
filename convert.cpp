@@ -296,7 +296,7 @@ AVSValue __cdecl ConvertToRGB::Create32(AVSValue args, void*, IScriptEnvironment
   PClip clip = args[0].AsClip();
   const char* const matrix = args[1].AsString(0);
   const VideoInfo& vi = clip->GetVideoInfo();
-  if (vi.IsYUV())
+  if (vi.IsYUY2())
     return new ConvertToRGB(clip, false, matrix, env);
   else if (vi.IsRGB24())
     return new RGB24to32(clip);
@@ -310,7 +310,7 @@ AVSValue __cdecl ConvertToRGB::Create24(AVSValue args, void*, IScriptEnvironment
   PClip clip = args[0].AsClip();
   const char* const matrix = args[1].AsString(0);
   const VideoInfo& vi = clip->GetVideoInfo();
-  if (vi.IsYUV())
+  if (vi.IsYUY2())
     return new ConvertToRGB(clip, true, matrix, env);
   else if (vi.IsRGB32())
     return new RGB32to24(clip);
@@ -327,11 +327,17 @@ AVSValue __cdecl ConvertToRGB::Create24(AVSValue args, void*, IScriptEnvironment
 ConvertToYV12::ConvertToYV12(PClip _child, IScriptEnvironment* env)
   : GenericVideoFilter(_child)
 {
-  if (vi.width & 4)
-    env->ThrowError("ConvertToYV12: image width must be multiple of 4");
-  if (vi.height & 4)
-    env->ThrowError("ConvertToYV12: image height must be multiple of 4");
+  if (vi.width & 1)
+    env->ThrowError("ConvertToYV12: image width must be multiple of 2");
+  if (vi.IsFieldBased() && (vi.height & 3))
+    env->ThrowError("ConvertToYV12: Interlaced image height must be multiple of 4");
+  if ((!vi.IsFieldBased()) && (vi.height & 1))
+    env->ThrowError("ConvertToYV12: image height must be multiple of 2");
+  if (!vi.IsYUY2())
+    env->ThrowError("ConvertToYV12: Only YUY2 input is allowed.");
+
   vi.pixel_type = VideoInfo::CS_YV12;
+
 }
 //optme: MMX pretty obvious
 PVideoFrame __stdcall ConvertToYV12::GetFrame(int n, IScriptEnvironment* env) {

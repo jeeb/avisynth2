@@ -237,7 +237,7 @@ public:
   int GetRowSize() const { return row_size; }
   int GetRowSize(int plane) const { 
     switch (plane) {
-    case PLANAR_U: case PLANAR_V: if (pitchUV) return row_size>>1;
+    case PLANAR_U: case PLANAR_V: if (pitchUV) return row_size>>1; else return 0;
     case PLANAR_U_ALIGNED: case PLANAR_V_ALIGNED: 
       if (pitchUV) { 
         int r = ((row_size+FRAME_ALIGN-1)&(~(FRAME_ALIGN-1)) )>>1; // Aligned rowsize
@@ -263,6 +263,7 @@ public:
   // in plugins use env->SubFrame()
   VideoFrame* Subframe(int rel_offset, int new_pitch, int new_row_size, int new_height) const;
   VideoFrame* Subframe(int rel_offset, int new_pitch, int new_row_size, int new_height, int rel_offsetU, int rel_offsetV, int pitchUV) const;
+
 
   const BYTE* GetReadPtr() const { return vfb->GetReadPtr() + offset; }
   const BYTE* GetReadPtr(int plane) const { return vfb->GetReadPtr() + GetOffset(plane); }
@@ -526,6 +527,13 @@ void ConvertAudio::convertFromFloat(float* inbuf, void* outbuf, char sample_type
 class AlignPlanar : public GenericVideoFilter {
 public:
   AlignPlanar(PClip _clip);
+  static PClip Create(PClip clip);
+  PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
+};
+
+class FillBorder : public GenericVideoFilter {
+public:
+  FillBorder(PClip _clip);
   static PClip Create(PClip clip);
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
 };

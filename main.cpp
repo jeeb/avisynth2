@@ -461,6 +461,11 @@ bool CAVIFileSynth::DelayInit() {
           throw AvisynthError("The returned video clip was nil (this is a bug)");
         // get information about the clip
         vi = &filter_graph->GetVideoInfo();
+
+        if (vi->IsYV12()&&(vi->width&3))
+          throw AvisynthError("Avisynth error: YV12 images for output must have a width diviable by 4 (use crop)!");
+        if (vi->IsYUY2()&&(vi->width&3))
+          throw AvisynthError("Avisynth error: YUY2 images for output must have a width diviable by 4 (use crop)!");
       }
       catch (AvisynthError error) {
         error_msg = error.msg;
@@ -702,7 +707,8 @@ STDMETHODIMP_(LONG) CAVIStreamSynth::FindSample(LONG lPos, LONG lFlags) {
 void CAVIStreamSynth::ReadFrame(void* lpBuffer, int n) {
   PVideoFrame frame = parent->filter_graph->GetFrame(n, parent->env);
   if (!frame)
-    throw AvisynthError("Avisynth error: generated video frame was nil (this is a bug)");
+    parent->env->ThrowError("Avisynth error: generated video frame was nil (this is a bug)");
+//  VideoInfo vi = parent->filter_graph->GetVideoInfo();
   const int pitch = frame->GetPitch();
   const int row_size = frame->GetRowSize();
   // BMP scanlines are always dword-aligned

@@ -660,8 +660,8 @@ void ScriptEnvironment::PrescanPlugins()
 PVideoFrame ScriptEnvironment::NewPlanarVideoFrame(int width, int height, int align, bool U_first) {
   int pitch = (width+align-1) / align * align;  // Y plane, width = 1 byte per pixel
 //  int UVpitch = ((width>>1)+align-1) / align * align;  // UV plane, width = 1/2 byte per pixel - can't align UV planes seperately.
-  if (align==16) 
-    pitch=pitch+1-1;
+//  if (align==16) 
+//    pitch=pitch+1-1;
   int UVpitch = pitch>>1;  // UV plane, width = 1/2 byte per pixel
   int size = pitch * height + UVpitch * height;
   VideoFrameBuffer* vfb = GetFrameBuffer(size+(FRAME_ALIGN*4));
@@ -675,7 +675,9 @@ PVideoFrame ScriptEnvironment::NewPlanarVideoFrame(int width, int height, int al
     }
   }
 #endif
-  int offset = (-int(vfb->GetWritePtr())) & (align-1);  // align first line offset
+//  int offset = (-int(vfb->GetWritePtr())) & (align-1);  // align first line offset
+  int offset = int(vfb->GetWritePtr()) & (FRAME_ALIGN-1);  // align first line offset
+  offset = (FRAME_ALIGN - offset)%FRAME_ALIGN;
   int Uoffset, Voffset;
   if (U_first) {
     Uoffset = offset + pitch * height;
@@ -702,7 +704,9 @@ PVideoFrame ScriptEnvironment::NewVideoFrame(int row_size, int height, int align
     }
   }
 #endif
-  int offset = (-int(vfb->GetWritePtr())) & (align-1);  // align first line offset  (alignment is free here!)
+  int offset = int(vfb->GetWritePtr()) & (FRAME_ALIGN-1);  // align first line offset
+  offset = (FRAME_ALIGN - offset)%FRAME_ALIGN;
+//  int offset = (-int(vfb->GetWritePtr())) & (align-1);  // align first line offset  (alignment is free here!)
   return new VideoFrame(vfb, offset, pitch, row_size, height);
 }
 
@@ -714,8 +718,10 @@ PVideoFrame __stdcall ScriptEnvironment::NewVideoFrame(const VideoInfo& vi, int 
     } else {
       align = max(align,FRAME_ALIGN);
     }
-    if ((vi.height&3)||(vi.width&3))
-      ThrowError("Filter Error: Attempted to request an YV12 frame that wasn't mod4 in width and height!");
+    if ((vi.height&1)||(vi.width&1))
+      ThrowError("Filter Error: Attempted to request an YV12 frame that wasn't mod2 in width and height!");
+    if ((vi.height&3)&&vi.IsFieldBased())
+      ThrowError("Filter Error: Attempted to request a fieldbased YV12 frame that wasn't mod4 in height!");
     return ScriptEnvironment::NewPlanarVideoFrame(vi.width, vi.height, align, !vi.IsVPlaneFirst());  // If planar, maybe swap U&V
   } else {
     if (align<0) {
@@ -737,7 +743,7 @@ bool ScriptEnvironment::MakeWritable(PVideoFrame* pvf) {
   // copy the data into it.  Then modify the passed PVideoFrame
   // to point to the new buffer.
   else {    
-    const int row_size = vf->GetRowSize();
+    const int row_size = vf->GetRowSize(PLANAR_Y_ALIGNED);
     const int height = vf->GetHeight();
     PVideoFrame dst;
     if (vf->GetPitch(PLANAR_U)) {  // we have no videoinfo, so we can only assume that it is Planar
@@ -747,8 +753,8 @@ bool ScriptEnvironment::MakeWritable(PVideoFrame* pvf) {
     }
     BitBlt(dst->GetWritePtr(), dst->GetPitch(), vf->GetReadPtr(), vf->GetPitch(), row_size, height);
     // Blit More planes (pitch, rowsize and height should be 0, if none is present)
-    BitBlt(dst->GetWritePtr(PLANAR_V), dst->GetPitch(PLANAR_V), vf->GetReadPtr(PLANAR_V), vf->GetPitch(PLANAR_V), vf->GetRowSize(PLANAR_V), vf->GetHeight(PLANAR_V));
-    BitBlt(dst->GetWritePtr(PLANAR_U), dst->GetPitch(PLANAR_U), vf->GetReadPtr(PLANAR_U), vf->GetPitch(PLANAR_U), vf->GetRowSize(PLANAR_U), vf->GetHeight(PLANAR_U));
+    BitBlt(dst->GetWritePtr(PLANAR_V), dst->GetPitch(PLANAR_V), vf->GetReadPtr(PLANAR_V), vf->GetPitch(PLANAR_V), vf->GetRowSize(PLANAR_V_ALIGNED), vf->GetHeight(PLANAR_V));
+    BitBlt(dst->GetWritePtr(PLANAR_U), dst->GetPitch(PLANAR_U), vf->GetReadPtr(PLANAR_U), vf->GetPitch(PLANAR_U), vf->GetRowSize(PLANAR_U_ALIGNED), vf->GetHeight(PLANAR_U));
 
     *pvf = dst;
     return true;
@@ -1111,18 +1117,18 @@ AlignPlanar::AlignPlanar(PClip _clip) : GenericVideoFilter(_clip) {}
 
 PVideoFrame __stdcall AlignPlanar::GetFrame(int n, IScriptEnvironment* env) {
   PVideoFrame src = child->GetFrame(n, env);
-  if (!(src->GetPitch(PLANAR_Y_ALIGNED)&(FRAME_ALIGN-1))) return src;
+  if (!(src->GetRowSize(PLANAR_Y_ALIGNED)&(FRAME_ALIGN-1))) return src;
   PVideoFrame dst = env->NewVideoFrame(vi);
-  if (!(dst->GetPitch(PLANAR_Y_ALIGNED)&(FRAME_ALIGN-1))) 
+  if ((dst->GetRowSize(PLANAR_Y_ALIGNED)&(FRAME_ALIGN-1))) 
     env->ThrowError("AlignPlanar: [internal error] Returned frame was not aligned!");
 
-  const int row_size = src->GetRowSize();
 
   BitBlt(dst->GetWritePtr(), dst->GetPitch(), src->GetReadPtr(), src->GetPitch(), src->GetRowSize(), src->GetHeight());
   BitBlt(dst->GetWritePtr(PLANAR_V), dst->GetPitch(PLANAR_V), src->GetReadPtr(PLANAR_V), src->GetPitch(PLANAR_V), src->GetRowSize(PLANAR_V), src->GetHeight(PLANAR_V));
   BitBlt(dst->GetWritePtr(PLANAR_U), dst->GetPitch(PLANAR_U), src->GetReadPtr(PLANAR_U), src->GetPitch(PLANAR_U), src->GetRowSize(PLANAR_U), src->GetHeight(PLANAR_U));
   return dst;
 }
+
 
 PClip AlignPlanar::Create(PClip clip) 
 {
@@ -1131,4 +1137,57 @@ PClip AlignPlanar::Create(PClip clip)
   }
   else 
     return new AlignPlanar(clip);
+}
+
+ /*  This function fills up the right side of the picture on planar images with duplicates of the rightmost pixel
+  *   TODO: Implement fast ISSE routines
+  */
+
+FillBorder::FillBorder(PClip _clip) : GenericVideoFilter(_clip) {
+}
+
+PVideoFrame __stdcall FillBorder::GetFrame(int n, IScriptEnvironment* env) {
+
+  PVideoFrame src = child->GetFrame(n, env);
+  if (src->GetRowSize(PLANAR_Y)==src->GetRowSize(PLANAR_Y_ALIGNED)) return src;  // No need to fill extra pixels
+  
+  unsigned char* Ydata = src->GetWritePtr(PLANAR_U) - (src->GetOffset(PLANAR_U)-src->GetOffset(PLANAR_Y)); // Nasty hack, to avoid "MakeWritable" - never, EVER do this at home!
+  unsigned char* Udata = src->GetWritePtr(PLANAR_U);
+  unsigned char* Vdata = src->GetWritePtr(PLANAR_V);
+
+  int fillp=src->GetRowSize(PLANAR_Y_ALIGNED) - src->GetRowSize(PLANAR_Y);
+  int h=src->GetHeight(PLANAR_Y);
+
+  Ydata = &Ydata[src->GetRowSize(PLANAR_Y)-1];
+  for (int y=0;y<h;y++){
+    for (int x=1;x<=fillp;x++) {
+      Ydata[x]=Ydata[0];
+    }
+    Ydata+=src->GetPitch(PLANAR_Y);
+  }
+
+  fillp=src->GetRowSize(PLANAR_U_ALIGNED) - src->GetRowSize(PLANAR_U);
+  Udata = &Udata[src->GetRowSize(PLANAR_U)-1];
+  Vdata = &Vdata[src->GetRowSize(PLANAR_V)-1];
+  h=src->GetHeight(PLANAR_U);
+
+  for (y=0;y<h;y++){
+    for (int x=1;x<=fillp;x++) {
+      Udata[x]=Udata[0];
+      Vdata[x]=Vdata[0];
+    }
+    Udata+=src->GetPitch(PLANAR_U);
+    Vdata+=src->GetPitch(PLANAR_V);
+  }
+  return src;
+}
+ 
+
+PClip FillBorder::Create(PClip clip) 
+{
+  if (!clip->GetVideoInfo().IsPlanar()) {  // If not planar, already ok.
+    return clip;
+  }
+  else 
+    return new FillBorder(clip);
 }

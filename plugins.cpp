@@ -82,7 +82,7 @@ AVSValue LoadPlugin(AVSValue args, void* user_data, IScriptEnvironment* env) {
     const char* plugin_name = args[i].AsString();
     if (MyLoadLibrary(plugin_name, &plugin, quiet, env)) {
       typedef const char* (__stdcall *AvisynthPluginInitFunc)(IScriptEnvironment* env);
-      AvisynthPluginInitFunc AvisynthPluginInit = (AvisynthPluginInitFunc)GetProcAddress(plugin, "AvisynthPluginInit");
+      AvisynthPluginInitFunc AvisynthPluginInit = (AvisynthPluginInitFunc)GetProcAddress(plugin, "AvisynthPluginInit");   // TODO: Change this to reject 1.0!!
       if (!AvisynthPluginInit)
         AvisynthPluginInit = (AvisynthPluginInitFunc)GetProcAddress(plugin, "_AvisynthPluginInit@4");
       if (!AvisynthPluginInit) {

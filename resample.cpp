@@ -62,7 +62,7 @@ FilteredResizeH::FilteredResizeH( PClip _child, double subrange_left, double sub
   {
     if ((target_width&1) && (vi.IsYUY2()))
       env->ThrowError("Resize: YUY2 width must be even");
-    if ((target_width&3) && (vi.IsYV12()))
+    if ((target_width&1) && (vi.IsYV12()))
       env->ThrowError("Resize: YV12 width must be mutiple of 4.");
     tempY = (BYTE*) _aligned_malloc(original_width*2+4+32, 64);   // aligned for Athlon cache line
     tempUV = (BYTE*) _aligned_malloc(original_width*4+8+32, 64);  // aligned for Athlon cache line
@@ -902,7 +902,7 @@ FilteredResizeH::~FilteredResizeH(void)
   }
 }
 
-
+ 
 
 
 
@@ -916,8 +916,10 @@ FilteredResizeV::FilteredResizeV( PClip _child, double subrange_top, double subr
 {
   if (target_height<4)
     env->ThrowError("Resize: Height must be bigger than or equal to 4.");
-  if (vi.IsYV12() && (target_height&3))
-    env->ThrowError("Resize: YV12 destination size must be multiple of 4.");
+  if (vi.IsYV12() && (target_height&3) && vi.IsFieldBased())
+    env->ThrowError("Resize: Fieldbased YV12 destination height must be multiple of 4.");
+  if (vi.IsYV12() && (target_height&1))
+    env->ThrowError("Resize: YV12 destination height must be multiple of 2.");
   if (vi.IsRGB())
     subrange_top = vi.height - subrange_top - subrange_height;
   resampling_pattern = GetResamplingPatternRGB(vi.height, subrange_top, subrange_height, target_height, func);
