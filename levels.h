@@ -109,6 +109,7 @@ public:
 	PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
   static AVSValue __cdecl Create(AVSValue args, void* user_data, IScriptEnvironment* env);
   void isse_limiter(BYTE* p, int row_size, int height, int modulo, int cmin, int cmax);
+  void isse_limiter_mod8(BYTE* p, int row_size, int height, int modulo, int cmin, int cmax);
 private:
 	int max_luma;
   int min_luma;

@@ -927,6 +927,7 @@ void BitBlt(BYTE* dstp, int dst_pitch, const BYTE* srcp, int src_pitch, int row_
   }
 }
 
+//Todo: Align reads to mod8 boundaries. Perhaps only prefect at new cacheline, now prefetches at every 16'th byte.
 
 void asm_BitBlt(BYTE* dstp, int dst_pitch, const BYTE* srcp, int src_pitch, int row_size, int height) {
   int bytesleft=0;

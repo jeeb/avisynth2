@@ -1710,34 +1710,58 @@ PVideoFrame __stdcall Subtract::GetFrame(int n, IScriptEnvironment* env)
 {
   PVideoFrame src1 = child1->GetFrame(n, env);
   PVideoFrame src2 = child2->GetFrame(n, env);
-  PVideoFrame dst=0;
-  if (!src1->IsWritable())
-    dst = env->NewVideoFrame(vi);
-  const BYTE* src1p = src1->GetReadPtr();
-  const BYTE* src2p = src2->GetReadPtr();
-  BYTE* dstp = (dst ? dst : src1)->GetWritePtr();
-  const int dst_pitch = (dst ? dst : src1)->GetPitch();
 
-  const int row_size = src1->GetRowSize();
+  env->MakeWritable(&src1);
+
+  BYTE* src1p = src1->GetWritePtr();
+  const BYTE* src2p = src2->GetReadPtr();
+  int row_size = src1->GetRowSize();
+
+  if (vi.IsYV12()) {
+    for (int y=0; y<vi.height; y++) {
+      for (int x=0; x<row_size; x++) {
+        src1p[x] = (src1p[x] - src2p[x]) + 126;
+      }
+      src1p += src1->GetPitch();
+      src2p += src2->GetPitch();
+    }
+    BYTE* src1p = src1->GetWritePtr(PLANAR_U);
+    const BYTE* src2p = src2->GetReadPtr(PLANAR_U);
+    BYTE* src1pV = src1->GetWritePtr(PLANAR_V);
+    const BYTE* src2pV = src2->GetReadPtr(PLANAR_V);
+
+    row_size=src1->GetRowSize(PLANAR_U);
+
+    for (y=0; y<src1->GetHeight(PLANAR_U); y++) {
+      for (int x=0; x<row_size; x++) {
+        src1p[x] = (src1p[x] - src2p[x]) + 128;
+        src1pV[x] = (src1pV[x] - src2pV[x]) + 128;
+      }
+      src1p += src1->GetPitch(PLANAR_U);
+      src2p += src2->GetPitch(PLANAR_U);
+      src1pV += src1->GetPitch(PLANAR_V);
+      src2pV += src2->GetPitch(PLANAR_V);
+    }
+    return src1;
+  } // End planar
 
   for (int y=0; y<vi.height; ++y) 
   {
     // For YUY2, 50% gray is about (126,128,128) instead of (128,128,128).  Grr...
     if (vi.IsYUY2()) {
       for (int x=0; x<row_size; x+=2) {
-        dstp[x] = src1p[x] - src2p[x] + 126;
-        dstp[x+1] = src1p[x+1] - src2p[x+1] + 128;
+        src1p[x] = src1p[x] - src2p[x] + 126;
+        src1p[x+1] = src1p[x+1] - src2p[x+1] + 128;
       }
     } else {
       for (int x=0; x<row_size; ++x)
-        dstp[x] = src1p[x] - src2p[x] + 128;
+        src1p[x] = src1p[x] - src2p[x] + 128;
     }
-    dstp += dst_pitch;
     src1p += src1->GetPitch();
     src2p += src2->GetPitch();
   }
 
-  return (dst ? dst : src1);
+  return src1;
 }
 
 

@@ -565,7 +565,11 @@ PVideoFrame __stdcall Limiter::GetFrame(int n, IScriptEnvironment* env) {
   int height = frame->GetHeight();
   if (vi.IsYUY2()) {
     if (env->GetCPUFlags() & CPUF_INTEGER_SSE) {
-      isse_limiter((BYTE*)srcp, row_size, height, pitch-row_size, min_luma|(min_chroma<<8), max_luma|(max_chroma<<8));
+      if (frame->GetRowSize()&7) {
+        isse_limiter((BYTE*)srcp, row_size, height, pitch-row_size, min_luma|(min_chroma<<8), max_luma|(max_chroma<<8));
+      } else {
+        isse_limiter_mod8((BYTE*)srcp, row_size, height, pitch-row_size, min_luma|(min_chroma<<8), max_luma|(max_chroma<<8));
+      }
     }
 	  for(int y = 0; y < height; y++) {
       for(int x = 0; x < row_size; x++) {
@@ -584,17 +588,17 @@ PVideoFrame __stdcall Limiter::GetFrame(int n, IScriptEnvironment* env) {
     }  
   } else if(vi.IsYV12()) {
   if (env->GetCPUFlags() & CPUF_INTEGER_SSE) {
-    isse_limiter((BYTE*)srcp, row_size, height, pitch-row_size, min_luma|(min_luma<<8), max_luma|(max_luma<<8));
+    isse_limiter_mod8((BYTE*)srcp, frame->GetRowSize(PLANAR_Y_ALIGNED), height, pitch-frame->GetRowSize(PLANAR_Y_ALIGNED), min_luma|(min_luma<<8), max_luma|(max_luma<<8));
 
     srcp = frame->GetWritePtr(PLANAR_U);
     row_size = frame->GetRowSize(PLANAR_U_ALIGNED);
     pitch = frame->GetPitch(PLANAR_U);
     height = frame->GetHeight(PLANAR_U);
 
-    isse_limiter((BYTE*)srcp, row_size, height, pitch-row_size, min_chroma|(min_chroma<<8), max_chroma|(max_chroma<<8));
+    isse_limiter_mod8((BYTE*)srcp, row_size, height, pitch-row_size, min_chroma|(min_chroma<<8), max_chroma|(max_chroma<<8));
 
     srcp = frame->GetWritePtr(PLANAR_V);
-    isse_limiter((BYTE*)srcp, row_size, height, pitch-row_size, min_chroma|(min_chroma<<8), max_chroma|(max_chroma<<8));
+    isse_limiter_mod8((BYTE*)srcp, row_size, height, pitch-row_size, min_chroma|(min_chroma<<8), max_chroma|(max_chroma<<8));
     return frame;
   }
 
@@ -650,6 +654,34 @@ xloop:
     movd [ebx],mm0
     add ebx,4
     sub edx,4
+    jnz xloop
+    add ebx,ecx;
+    dec height
+    jnz yloop
+    emms
+  }
+}
+
+void Limiter::isse_limiter_mod8(BYTE* p, int row_size, int height, int modulo, int cmin, int cmax) {
+  __asm {
+    mov eax, [height]
+    mov ebx, p
+    mov ecx, modulo
+    movd mm7,[cmax]
+    movd mm6,[cmin]
+    pshufw mm7,mm7,0
+    pshufw mm6,mm6,0
+yloop:
+    mov edx,[row_size]
+    align 16
+xloop:
+    prefetchnta [ebx+256]
+    movq mm0,[ebx]
+    pminub mm0,mm7
+    pmaxub mm0,mm6
+    movq [ebx],mm0
+    add ebx,8
+    sub edx,8
     jnz xloop
     add ebx,ecx;
     dec height
