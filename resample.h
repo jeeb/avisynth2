@@ -67,6 +67,8 @@ private:
   int* /*const*/ resampling_patternUV;
   int *yOfs;
   int *yOfsUV;
+  int pitch_gY;
+  int pitch_gUV;
 };
 
 

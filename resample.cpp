@@ -927,10 +927,12 @@ FilteredResizeV::FilteredResizeV( PClip _child, double subrange_top, double subr
 
   PVideoFrame src = child->GetFrame(0, env);
   int sh = src->GetHeight();
+  pitch_gY = src->GetPitch(PLANAR_Y);
   yOfs = new int[sh];
   for (int i = 0; i < sh; i++) yOfs[i] = src->GetPitch() * i;
 
   int shUV = src->GetHeight(PLANAR_U);
+  pitch_gUV = src->GetPitch(PLANAR_U);
   yOfsUV = new int[shUV];
   for (i = 0; i < shUV; i++) {
     yOfsUV[i] = src->GetPitch(PLANAR_U) * i;
@@ -953,6 +955,16 @@ PVideoFrame __stdcall FilteredResizeV::GetFrame(int n, IScriptEnvironment* env)
   int y = vi.height;
   int plane = vi.IsPlanar() ? 4:1;
   int *yOfs2 = this->yOfs;
+  if (pitch_gUV != src->GetPitch(PLANAR_U)) {
+    int shUV = src->GetHeight(PLANAR_U);
+    for (int i = 0; i < shUV; i++) yOfsUV[i] = src->GetPitch(PLANAR_U) * i;
+    pitch_gUV = src->GetPitch(PLANAR_U);
+  }
+  if (pitch_gY != src->GetPitch(PLANAR_Y))  {
+    int sh = src->GetHeight();
+    pitch_gY = src->GetPitch(PLANAR_Y);
+    for (int i = 0; i < sh; i++) yOfs[i] = src->GetPitch() * i;
+  }
   while (plane-->0){
     switch (plane) {
       case 2:  // take V plane
