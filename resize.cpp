@@ -240,7 +240,7 @@ PVideoFrame HorizontalReduceBy2::GetFrame(int n, IScriptEnvironment* env)
     xloops=dst->GetRowSize(PLANAR_U)-1;
     for (y = 0; y<yloops; y++) {
       for (int x = 0; x<xloops; x++) {
-        dstp[0] = (srcp[0] + 2*srcp[1] + srcp[3] + 2) >> 2;
+        dstp[0] = (srcp[0] + 2*srcp[1] + srcp[2] + 2) >> 2;
         dstp ++;
         srcp +=2;
       }
@@ -252,7 +252,7 @@ PVideoFrame HorizontalReduceBy2::GetFrame(int n, IScriptEnvironment* env)
     dstp = dst->GetWritePtr(PLANAR_V);
     for (y = 0; y<yloops; y++) {
       for (int x = 0; x<xloops; x++) {
-        dstp[0] = (srcp[0] + 2*srcp[1] + srcp[3] + 2) >> 2;
+        dstp[0] = (srcp[0] + 2*srcp[1] + srcp[2] + 2) >> 2;
         dstp ++;
         srcp +=2;
       }
