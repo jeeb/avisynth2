@@ -718,11 +718,11 @@ TemporalSoften::TemporalSoften( PClip _child, unsigned radius, unsigned luma_thr
   if (mode!=max(min(mode,2),1)) {
     env->ThrowError("TemporalSoften: Mode must be 1 or 2.");
   }
-  if (mode==2 || scenechange>0) {
+  if (scenechange>0) {
     if (!(env->GetCPUFlags() & CPUF_INTEGER_SSE))
-      env->ThrowError("TemporalSoften: Mode 2 and Scenechange requires Integer SSE capable CPU.");
+      env->ThrowError("TemporalSoften: Scenechange requires Integer SSE capable CPU.");
   }
-  scenechange *= ((vi.width/32)*32)*vi.height;
+  scenechange *= ((vi.width/32)*32)*vi.height*vi.BytesFromPixels(1);
   
   planes = new int[8];
   planeP = new const BYTE*[16];
@@ -754,6 +754,8 @@ TemporalSoften::~TemporalSoften(void)
     delete[] divtab;
     delete[] planeP;
     delete[] planeP2;
+    delete[] planePitch;
+    delete[] planePitch2;
     _aligned_free(accum_line);
     _aligned_free(div_line);
 }
@@ -810,8 +812,8 @@ PVideoFrame TemporalSoften::GetFrame(int n, IScriptEnvironment* env)
       int d2=0;
       bool skiprest = false;
       for (int i = radius-1;i>=0;i--) { // Check frames backwards
-        if (!skiprest && (!planeDisabled[i])) {
-          int scenevalues = isse_scenechange(c_plane, planeP[i], h, w, pitch, planePitch[i]);
+        if ((!skiprest) && (!planeDisabled[i])) {
+          int scenevalues = isse_scenechange(c_plane, planeP[i], h, frame->GetRowSize(planes[c]), pitch, planePitch[i]);
           if (scenevalues < scenechange) {
             if (scenevalues)  { // If not completely the same
               planePitch2[d2] =  planePitch[i];
@@ -821,12 +823,14 @@ PVideoFrame TemporalSoften::GetFrame(int n, IScriptEnvironment* env)
             skiprest = true;
           }
           planeDisabled[i] = skiprest;  // Disable this frame on next plane (so that Y can affect UV)
+        } else {
+          planeDisabled[i] = true;
         }
       }
       skiprest = false;
       for (i = 0;i<radius;i++) { // Check forward frames
-        if (!skiprest  && (!planeDisabled[i+radius]) ) {   // Disable this frame on next plane (so that Y can affect UV)
-          int scenevalues = isse_scenechange(c_plane, planeP[i+radius], h, w, pitch,  planePitch[i+radius]);
+        if ((!skiprest)  && (!planeDisabled[i+radius]) ) {   // Disable this frame on next plane (so that Y can affect UV)
+          int scenevalues = isse_scenechange(c_plane, planeP[i+radius], h, frame->GetRowSize(planes[c]), pitch,  planePitch[i+radius]);
           if (scenevalues < scenechange) {
             if (scenevalues) { // If not completely the same
               planePitch2[d2] =  planePitch[i+radius];
@@ -836,8 +840,11 @@ PVideoFrame TemporalSoften::GetFrame(int n, IScriptEnvironment* env)
             skiprest = true;
           }
           planeDisabled[i+radius] = skiprest;
+        } else {
+          planeDisabled[i+radius] = true;
         }
       }
+      
       //Copy back
       for (i=0;i<d2;i++) {
         planeP[i]=planeP2[i];
@@ -846,7 +853,7 @@ PVideoFrame TemporalSoften::GetFrame(int n, IScriptEnvironment* env)
       d = d2;
     }
 
-    if (d<=1)
+    if (d<=1) 
       return frame;
     
     i64_thresholds = (__int64)c_thresh | (__int64)(c_thresh<<8) | (((__int64)c_thresh)<<16) | (((__int64)c_thresh)<<24);
@@ -870,7 +877,11 @@ PVideoFrame TemporalSoften::GetFrame(int n, IScriptEnvironment* env)
             c_plane[i]=(div*(int)s_accum_line[i]+(div>>1))>>15; //Todo: Attempt asm/mmx mix - maybe faster
           }
         } else {
-          isse_accumulate_line_mode2(c_plane, planeP, d-1, rowsize,&i64_thresholds, c_div);
+          if ((env->GetCPUFlags() & CPUF_INTEGER_SSE)) {
+            isse_accumulate_line_mode2(c_plane, planeP, d-1, rowsize,&i64_thresholds, c_div);
+          } else {
+            mmx_accumulate_line_mode2(c_plane, planeP, d-1, rowsize,&i64_thresholds, c_div);
+          }
         }
         for (int p=0;p<d;p++)
           planeP[p] += planePitch[p];
@@ -980,8 +991,8 @@ testplane:
      pxor mm2,mm2        // Clear mm2
     movq mm1,mm0
      movq mm3,mm0
-    PUNPCKlbw mm3,mm2    // mm0 = lower 4 pixels  (exhanging h/l in these two give funny results)
-     PUNPCKhbw mm1,mm2     // mm1 = upper 4 pixels
+    punpcklbw mm3,mm2    // mm0 = lower 4 pixels  (exhanging h/l in these two give funny results)
+     punpckhbw mm1,mm2     // mm1 = upper 4 pixels
 
     mov edi,[planeP];  // Adress of planeP array is now in edi
     mov ebx,[planes]   // How many planes (this will be our counter)
@@ -1055,7 +1066,6 @@ void TemporalSoften::isse_accumulate_line_mode2(const BYTE* c_plane, const BYTE*
   __asm {
     mov esi,c_plane;
     xor eax,eax          // EAX will be plane offset (all planes).
-    mov ecx,[_accum_line]
     align 16
 testplane:
     mov ebx,[rowsize]
@@ -1145,12 +1155,133 @@ kernel_loop:
     movntq [esi+eax],mm0
 
     add eax,8   // Next 8 pixels
-    add ecx,16  // Next 8 accumulated pixels
     jmp testplane
 outloop:
     emms
   }
 }
+
+void TemporalSoften::mmx_accumulate_line_mode2(const BYTE* c_plane, const BYTE** planeP, int planes, int rowsize, __int64* t, int div) {
+  __declspec(align(8)) static __int64 full = 0xffffffffffffffffi64;
+  __declspec(align(8)) static __int64 low_ffff = 0x000000000000ffffi64;
+  __declspec(align(8)) static __int64 t2 = *t;
+  __int64 div64 = (__int64)(div) | ((__int64)(div)<<16) | ((__int64)(div)<<32) | ((__int64)(div)<<48);
+  div>>=1;
+  __int64 add64 = (__int64)(div) | ((__int64)(div)<<32);
+
+  /*
+  __declspec(align(8)) static __int64 div64 = (__int64)(div) | ((__int64)(div)<<16) | ((__int64)(div)<<32) | ((__int64)(div)<<48);
+  div>>=1;
+  __declspec(align(8)) static __int64 add64 = (__int64)(div) | ((__int64)(div)<<32);
+
+*/
+//  int* _accum_line=accum_line;
+
+  __asm {
+    mov esi,c_plane;
+    xor eax,eax          // EAX will be plane offset (all planes).
+//    mov ecx,[_accum_line]
+    align 16
+testplane:
+    mov ebx,[rowsize]
+    cmp ebx, eax
+    jle outloop
+
+    movq mm0,[esi+eax]  // Load current frame pixels
+     pxor mm2,mm2        // Clear mm2
+    movq mm6,mm0
+     movq mm7,mm0
+    PUNPCKlbw mm6,mm2    // mm0 = lower 4 pixels  (exhanging h/l in these two give funny results)
+     PUNPCKhbw mm7,mm2     // mm1 = upper 4 pixels
+
+    mov edi,[planeP];  // Adress of planeP array is now in edi
+    mov ebx,[planes]   // How many planes (this will be our counter)
+    lea edi,[edi+ebx*4]
+    align 16
+kernel_loop:
+    mov edx,[edi]
+    movq mm1,[edx+eax]      // Load 8 pixels from test plane
+     movq mm2,mm0
+    movq mm5, mm1           // Save test plane pixels (twice for unpack)
+     pxor mm4,mm4
+    movq mm3,mm1            // Calc abs difference
+     psubusb   mm1, mm2
+    psubusb   mm2, mm3
+    por       mm2, mm1               
+
+    movq mm3,[t2]          // Using t also gives funny results
+    PSUBUSB mm2,mm3         // Subtrack threshold (unsigned, so all below threshold will give 0)
+     movq mm1,mm5
+    PCMPEQB mm2,mm4         // Compare values to 0
+    movq mm3,mm2
+     pxor mm2,[full]       // mm2 inverse mask
+    movq mm4, mm0
+     pand mm5, mm3
+    pand mm4,mm2
+     pxor mm1,mm1
+    por mm4,mm5
+    movq mm5,mm4  // stall (this & below)
+    punpcklbw mm4,mm1         // mm4 = lower pixels
+     punpckhbw mm5,mm1        // mm5 = upper pixels
+    paddusw mm6,mm4
+     paddusw mm7,mm5
+
+    sub edi,4
+    dec ebx
+    jnz kernel_loop
+     // Multiply (or in reality divides) added values
+    movq mm4,[add64]
+    pxor mm5,mm5
+     movq mm0,mm6
+    movq mm1,mm6
+     punpcklwd mm0,mm5         // low,low
+    movq mm6,[div64]
+    punpckhwd mm1,mm5         // low,high
+     movq mm2,mm7
+    pmaddwd mm0,mm6
+     punpcklwd mm2,mm5         // high,low
+     movq mm3,mm7
+     paddd mm0,mm4
+    pmaddwd mm1,mm6
+     punpckhwd mm3,mm5         // high,high
+     psrld mm0,15
+     paddd mm1,mm4
+    pmaddwd mm2,mm6
+     packssdw mm0, mm0
+     psrld mm1,15
+     paddd mm2,mm4
+    pmaddwd mm3,mm6
+     packssdw mm1, mm1
+     psrld mm2,15
+     paddd mm3,mm4
+    psrld mm3,15
+     packssdw mm2, mm2
+    packssdw mm3, mm3
+     packuswb mm0,mm5
+    packuswb mm1,mm5
+     packuswb mm2,mm5
+    packuswb mm3,mm5
+     movq mm4, [low_ffff]
+    pand mm0, mm4;
+     pand mm1, mm4;
+    pand mm2, mm4;
+     pand mm3, mm4;
+    psllq mm1, 16
+    psllq mm2, 32
+    psllq mm3, 48
+     por mm0,mm1
+    por mm2,mm3
+    por mm0,mm2
+    movntq [esi+eax],mm0
+
+    add eax,8   // Next 8 pixels
+///    add ecx,16  // Next 8 accumulated pixels
+    jmp testplane
+outloop:
+    emms
+  }
+}
+
 
 int TemporalSoften::isse_scenechange(const BYTE* c_plane, const BYTE* tplane, int height, int width, int c_pitch, int t_pitch) {
   __declspec(align(8)) static __int64 full = 0xffffffffffffffffi64;
@@ -1208,74 +1339,7 @@ endframe:
   return returnvalue;
 }
 
-/*
-int TemporalSoften::isse_scenechange(const BYTE* c_plane, const BYTE* tplane, int height, int width, int pitch) {
-  __declspec(align(8)) static __int64 full = 0xffffffffffffffffi64;
-  int wp=(width/32)*32;
-  int hp=(height/32)*32;
-  int returnvalue=0xbadbad00;
-  __asm {
-    mov ebx,-32     // Height
-    pxor mm5,mm5  // Maximum difference
-    mov ecx, pitch
-yloop:
-    add ebx,32
-    cmp ebx,[hp]
-    jge endframe
-    mov edx, ecx    //copy pitch
-    imul edx, ebx   // multiply by height
-    xor eax,eax     // Width
-    mov esi, c_plane
-    mov edi, tplane
-    add edi,edx     // add pitch to both planes
-    add esi,edx
-    align 16
-xloop:
-    cmp eax,[wp]    
-    jge yloop
-    pxor mm6,mm6   // We maintain two sums, for better pairablility
-    pxor mm7,mm7
-    mov edx,32
-    align 16
-loopback:
-    movq mm0,[esi+eax]
-    movq mm1,[edi+eax]
-    movq mm2,[esi+eax+8]
-    movq mm3,[edi+eax+8]
-    psadbw mm0,mm1    // Sum of absolute difference
-     psadbw mm2,mm3
-    paddd mm6,mm0     // Add...
-     paddd mm7,mm2
-    movq mm0,[esi+eax+16]
-    movq mm1,[edi+eax+16]
-    movq mm2,[esi+eax+24]
-    movq mm3,[edi+eax+24]
-    psadbw mm0,mm1
-     psadbw mm2,mm3
-    paddd mm6,mm0
-     paddd mm7,mm2
-    add esi, ecx  // add pitch
-    add edi, ecx
 
-    dec edx
-    jnz loopback
-    paddd mm6,mm7
-    movq mm4,mm6
-     pcmpgtd mm6,mm5
-    movq mm7,mm6
-     pxor mm6,[full]
-    pand mm5,mm6
-     pand mm4,mm7
-    por mm5,mm4
-    add eax,32
-    jmp xloop
-endframe:
-    movd returnvalue,mm5
-  }
-  return returnvalue;
-}
-
-*/
 AVSValue __cdecl TemporalSoften::Create(AVSValue args, void*, IScriptEnvironment* env) 
 {
   return new TemporalSoften( args[0].AsClip(), args[1].AsInt(), args[2].AsInt(), 
