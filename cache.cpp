@@ -19,7 +19,7 @@
 
 #include "cache.h"
 #include <algorithm>
-
+/*
 FrameCache::CachedVideoFrame::CachedVideoFrame(int _n, const PVideoFrame& _frame)
 : n(_n), frame(_frame) { seq_number = frame->GetFrameBuffer()->GetSequenceNumber(); }
 
@@ -76,7 +76,7 @@ void __stdcall QueueCache::store(int n, const PVideoFrame& frame)
   rotate<CacheVector::iterator>(it, it + 1, cache.end()); //place at the end
   cache.back().set(n, frame);    //and update value
 }
-
+*/
 
 
 /*******************************
