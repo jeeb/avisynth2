@@ -497,6 +497,14 @@ SOURCE=.\convolution.h
 # End Source File
 # Begin Source File
 
+SOURCE=.\debug.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\debug.h
+# End Source File
+# Begin Source File
+
 SOURCE=.\layer.cpp
 # End Source File
 # Begin Source File
