@@ -258,22 +258,18 @@ AVISource::AVISource(const char filename[], bool fAudio, const char pixel_type[]
         if (!(fYV12 || fYUY2 || fRGB32 || fRGB24))
           env->ThrowError("AVISource: requested format should be YV12, YUY2, RGB32 or RGB24");
         
-        // try to decompress to YUY2, RGB32, and RGB24 in turn
+        // try to decompress to YV12, YUY2, RGB32, and RGB24 in turn
         memset(&biDst, 0, sizeof(BITMAPINFOHEADER));
         biDst.biSize = sizeof(BITMAPINFOHEADER);
         biDst.biWidth = vi.width;
         biDst.biHeight = vi.height;
-        biDst.biCompression = 'YV12';
+        biDst.biCompression = '21VY';
         biDst.biBitCount = 12;
-        biDst.biPlanes = 1;  // Should planes = 3? 
-//        biDst.biSizeImage = ((vi.width+3)&~3) * vi.height + ((vi.width/2+3)&~3) * (vi.height/2) + ((vi.width/2+3)&~3) * (vi.height/2);
+        biDst.biPlanes = 1;  
         int xwidth=(vi.width+3)&~-3;
-        biDst.biSizeImage = xwidth * vi.height;
-        xwidth = ((vi.width/2)+3)&~-3;
-        biDst.biSizeImage += xwidth * (vi.height/2);
-        biDst.biSizeImage += xwidth * (vi.height/2);
+        biDst.biSizeImage = xwidth * vi.height + ((xwidth>>1) * vi.height);
 
-        if (fYV12 && ICERR_OK == ICDecompressQuery(hic, pbiSrc, &biDst)) {  // FIXME: It never chooses YV12
+        if (fYV12 && ICERR_OK == ICDecompressQuery(hic, pbiSrc, &biDst)) {  
           vi.pixel_type = VideoInfo::CS_YV12;
           _RPT0(0,"AVISource: Opening as YV12.\n");
         } else {
@@ -298,8 +294,10 @@ AVISource::AVISource(const char filename[], bool fAudio, const char pixel_type[]
                 vi.pixel_type = VideoInfo::CS_BGR24;
                 _RPT0(0,"AVISource: Opening as RGB24.\n");
               } else {
-                if (fYUY2 && (fRGB32 || fRGB24))
+                if (fYUY2 && (fRGB32 || fRGB24) && fYV12)
                   env->ThrowError("AVISource: the video decompressor couldn't produce YUY2 or RGB output");
+                else if (fYV12)
+                  env->ThrowError("AVISource: the video decompressor couldn't produce YV12 output");
                 else if (fYUY2)
                   env->ThrowError("AVISource: the video decompressor couldn't produce YUY2 output");
                 else if (fRGB32)
@@ -1115,9 +1113,9 @@ public:
     } else {
     env->BitBlt(pvf->GetWritePtr(PLANAR_Y), pvf->GetPitch(PLANAR_Y), buf,
       pvf->GetPitch(PLANAR_Y), pvf->GetRowSize(PLANAR_Y), pvf->GetHeight(PLANAR_Y));
-    env->BitBlt(pvf->GetWritePtr(PLANAR_V), pvf->GetPitch(PLANAR_U), buf + pvf->GetOffset(PLANAR_U),
+    env->BitBlt(pvf->GetWritePtr(PLANAR_U), pvf->GetPitch(PLANAR_U), buf + pvf->GetOffset(PLANAR_U),
       pvf->GetPitch(PLANAR_U), pvf->GetRowSize(PLANAR_U), pvf->GetHeight(PLANAR_U));
-    env->BitBlt(pvf->GetWritePtr(PLANAR_U), pvf->GetPitch(PLANAR_V), buf+ pvf->GetOffset(PLANAR_V),
+    env->BitBlt(pvf->GetWritePtr(PLANAR_V), pvf->GetPitch(PLANAR_V), buf+ pvf->GetOffset(PLANAR_V),
       pvf->GetPitch(PLANAR_V), pvf->GetRowSize(PLANAR_V), pvf->GetHeight(PLANAR_V));
     }
     if (state == State_Running) {

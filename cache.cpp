@@ -40,7 +40,7 @@ PVideoFrame __stdcall Cache::GetFrame(int n, IScriptEnvironment* env)
         _RPT1(0, "Cache: using cached copy of frame %d\n", n);
         // move the matching cache entry to the front of the list
         Relink(&video_frames, i, video_frames.next);
-        VideoFrame* result = new VideoFrame(i->vfb, i->offset, i->pitch, i->row_size, i->height);
+        VideoFrame* result = new VideoFrame(i->vfb, i->offset, i->pitch, i->row_size, i->height, i->offsetU, i->offsetV, i->pitchUV);
         InterlockedDecrement(&i->vfb->refcount);
         return result;
       }
@@ -80,7 +80,10 @@ found_old_frame:
   i->vfb = frame->vfb;
   i->sequence_number = frame->vfb->GetSequenceNumber();
   i->offset = frame->offset;
+  i->offsetU = frame->offsetU;
+  i->offsetV = frame->offsetV;
   i->pitch = frame->pitch;
+  i->pitchUV = frame->pitchUV;
   i->row_size = frame->row_size;
   i->height = frame->height;
   i->frame_number = n;

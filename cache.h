@@ -45,7 +45,7 @@ private:
     CachedVideoFrame *prev, *next;
     VideoFrameBuffer* vfb;
     int sequence_number;
-    int offset, pitch, row_size, height;
+    int offset, pitch, row_size, height, offsetU, offsetV, pitchUV;
     int frame_number;
     CachedVideoFrame() { next=prev=this; }
   };

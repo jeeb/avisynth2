@@ -206,7 +206,7 @@ class VideoFrame {
   VideoFrame(VideoFrameBuffer* _vfb, int _offset, int _pitch, int _row_size, int _height, int _offsetU, int _offsetV, int _pitchUV);
 
   void* operator new(unsigned size);
-
+// TESTME: OFFSET U/V may be switched to what could be expected from AVI standard!
 public:
   int GetPitch() const { return pitch; }
   int GetPitch(int plane) const { switch (plane) {case PLANAR_U: case PLANAR_V: return pitchUV;} return pitch; }
