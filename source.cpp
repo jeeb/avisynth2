@@ -1132,7 +1132,7 @@ public:
         DWORD(sample_end_time>>32), DWORD(sample_end_time));
       _RPT1(0," (%d)\n", DWORD(sample_end_time - sample_start_time));
     }
-    pvf = env->NewVideoFrame(vi, -4);
+    pvf = env->NewVideoFrame(vi,-4);
     PBYTE buf;
     pSamples->GetPointer(&buf);
     if (!vi.IsPlanar()) {
@@ -1141,9 +1141,9 @@ public:
     } else {
     env->BitBlt(pvf->GetWritePtr(PLANAR_Y), pvf->GetPitch(PLANAR_Y), buf,
       pvf->GetPitch(PLANAR_Y), pvf->GetRowSize(PLANAR_Y), pvf->GetHeight(PLANAR_Y));
-    env->BitBlt(pvf->GetWritePtr(PLANAR_U), pvf->GetPitch(PLANAR_U), buf + pvf->GetOffset(PLANAR_U),
+    env->BitBlt(pvf->GetWritePtr(PLANAR_U), pvf->GetPitch(PLANAR_U), buf + pvf->GetOffset(PLANAR_U) - pvf->GetOffset(PLANAR_Y),
       pvf->GetPitch(PLANAR_U), pvf->GetRowSize(PLANAR_U), pvf->GetHeight(PLANAR_U));
-    env->BitBlt(pvf->GetWritePtr(PLANAR_V), pvf->GetPitch(PLANAR_V), buf+ pvf->GetOffset(PLANAR_V),
+    env->BitBlt(pvf->GetWritePtr(PLANAR_V), pvf->GetPitch(PLANAR_V), buf+ pvf->GetOffset(PLANAR_V) - pvf->GetOffset(PLANAR_Y),
       pvf->GetPitch(PLANAR_V), pvf->GetRowSize(PLANAR_V), pvf->GetHeight(PLANAR_V));
     }
     if (state == State_Running) {
