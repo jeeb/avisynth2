@@ -643,7 +643,7 @@ public:
       for (int i=0; i<7; ++i) {
         for (; x < (w*(i+1)+3)/7; ++x)
           p[x] = top_two_thirds[i];
-      }
+      } 
       p += pitch;
     }
   }

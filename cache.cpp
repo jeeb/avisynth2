@@ -55,7 +55,7 @@ PVideoFrame __stdcall Cache::GetFrame(int n, IScriptEnvironment* env)
 }
 
 void __stdcall Cache::SetCacheHints(int cachehints,int frame_range) {   //TODO: Implement me!
-  _RPT2(0, "Cache: Setting cache hints (hints:%d, ahead:%d back:%d)\n", cachehints, frame_range);
+  _RPT2(0, "Cache: Setting cache hints (hints:%d, range:%d )\n", cachehints, frame_range);
 } 
 
 AVSValue __cdecl Cache::Create_Cache(AVSValue args, void*, IScriptEnvironment* env) 

@@ -81,7 +81,6 @@ struct VideoInfo {
   int sample_type;                // as of 2.5
   __int64 num_audio_samples;      // changed as of 2.5
   int nchannels;                  // as of 2.5
-
   // useful functions of the above
   bool HasVideo() const { return (width!=0); }
   bool HasAudio() const { return (audio_samples_per_second!=0); }
@@ -90,13 +89,13 @@ struct VideoInfo {
   bool IsRGB32() const { return (pixel_type & CS_BGR32) == CS_BGR32 ; }
   bool IsYUV() const { return !!(pixel_type&CS_YUV ); }
   bool IsYUY2() const { return (pixel_type & CS_YUY2) == CS_YUY2; }  
-  bool IsYV12() const { return (pixel_type & CS_YV12) == CS_YV12; }
+  bool IsYV12() const { return ((pixel_type & CS_YV12) == CS_YV12)||((pixel_type & CS_I420) == CS_I420); }
   bool IsPlanar() const { return !!(pixel_type & CS_PLANAR); }
   bool IsFieldBased() const { return !!(pixel_type & CS_FIELDBASED); }
-//  int VideoPlanes() {return (pixel_type&CS_PLANAR) ? 3 : 1;}
+  bool IsVPlaneFirst() const {return ((pixel_type & CS_YV12) == CS_YV12); }  // Don't use this 
   int BytesFromPixels(int pixels) const { return pixels * (BitsPerPixel()>>3); }   // Will not work on planar images, but will return only luma planes
-  int RowSize() const { return BytesFromPixels(width); }
-  int BMPSize() const { if (IsPlanar()) {int p = height * ((RowSize()+3) & -4); p+=p/2; return p;  } return height * ((RowSize()+3) & -4); }
+  int RowSize() const { return BytesFromPixels(width); }  // Also only returns first plane on planar images
+  int BMPSize() const { if (IsPlanar()) {int p = height * ((RowSize()+3) & -4); p+=p>>1; return p;  } return height * ((RowSize()+3) & -4); }
   __int64 AudioSamplesFromFrames(__int64 frames) const { return (__int64(frames) * audio_samples_per_second * fps_denominator / fps_numerator); }
   int FramesFromAudioSamples(__int64 samples) const { return (__int64(samples) * fps_numerator / fps_denominator / audio_samples_per_second); }
   __int64 AudioSamplesFromBytes(__int64 bytes) const { return bytes / BytesPerAudioSample(); }
@@ -105,6 +104,7 @@ struct VideoInfo {
   int SampleType() const{ return sample_type;}
   int SamplesPerSecond() const { return audio_samples_per_second; }
   int BytesPerAudioSample() const { return nchannels*BytesPerChannelSample();}
+  void SetFieldBased(bool isfieldbased)  { if (isfieldbased) pixel_type|=CS_FIELDBASED; else  pixel_type&=~CS_FIELDBASED; }
   int BitsPerPixel() const { 
     switch (pixel_type) {
       case CS_BGR24:
@@ -215,7 +215,7 @@ public:
   int GetHeight() const { return height; }
   int GetHeight(int plane) const {  switch (plane) {case PLANAR_U: case PLANAR_V: if (pitchUV) return height>>1; return 0;} return height; }
 
-  // generally you shouldn't use these two 
+  // generally you shouldn't use these three
   VideoFrameBuffer* GetFrameBuffer() const { return vfb; }
   int GetOffset() const { return offset; }
   int GetOffset(int plane) const { switch (plane) {case PLANAR_U: return offsetU;case PLANAR_V: return offsetV;default: return offset;}; }
@@ -233,11 +233,8 @@ public:
     return IsWritable() ? (vfb->GetWritePtr() + offset) : 0;
   }
 
-  BYTE* GetWritePtr(int plane) const {  // We disable refcounts for UV planes, so they can be written to seperately.
-    if (plane==PLANAR_Y) {
-      return GetWritePtr();
-    }
-    return vfb->GetWritePtr() + GetOffset(plane);
+  BYTE* GetWritePtr(int plane) const {  
+    return IsWritable() ? vfb->GetWritePtr() + GetOffset(plane) : 0;
   }
 
   ~VideoFrame() { --vfb->refcount; }

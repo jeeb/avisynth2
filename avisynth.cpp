@@ -467,7 +467,7 @@ public:
   void __stdcall PopContext();
   PVideoFrame __stdcall NewVideoFrame(const VideoInfo& vi, int align);
   PVideoFrame NewVideoFrame(int row_size, int height, int align);
-  PVideoFrame NewPlanarVideoFrame(int width, int height, int align);
+  PVideoFrame NewPlanarVideoFrame(int width, int height, int align, bool U_first);
   bool __stdcall MakeWritable(PVideoFrame* pvf);
   void __stdcall BitBlt(BYTE* dstp, int dst_pitch, const BYTE* srcp, int src_pitch, int row_size, int height);
   void __stdcall AtExit(IScriptEnvironment::ShutdownFunc function, void* user_data);
@@ -657,9 +657,11 @@ void ScriptEnvironment::PrescanPlugins()
   }
 }
 
-PVideoFrame ScriptEnvironment::NewPlanarVideoFrame(int width, int height, int align) {
+PVideoFrame ScriptEnvironment::NewPlanarVideoFrame(int width, int height, int align, bool U_first) {
   int pitch = (width+align-1) / align * align;  // Y plane, width = 1 byte per pixel
 //  int UVpitch = ((width>>1)+align-1) / align * align;  // UV plane, width = 1/2 byte per pixel - can't align UV planes seperately.
+  if (align==16) 
+    pitch=pitch+1-1;
   int UVpitch = pitch>>1;  // UV plane, width = 1/2 byte per pixel
   int size = pitch * height + UVpitch * height;
   VideoFrameBuffer* vfb = GetFrameBuffer(size+(FRAME_ALIGN*4));
@@ -673,9 +675,15 @@ PVideoFrame ScriptEnvironment::NewPlanarVideoFrame(int width, int height, int al
     }
   }
 #endif
-  int offset = (-int(vfb->GetWritePtr())) & (FRAME_ALIGN-1);  // align first line offset
-  int Uoffset = offset + pitch * height;
-  int Voffset = offset + pitch * height + UVpitch * (height>>1);
+  int offset = (-int(vfb->GetWritePtr())) & (align-1);  // align first line offset
+  int Uoffset, Voffset;
+  if (U_first) {
+    Uoffset = offset + pitch * height;
+    Voffset = offset + pitch * height + UVpitch * (height>>1);
+  } else {
+    Voffset = offset + pitch * height;
+    Uoffset = offset + pitch * height + UVpitch * (height>>1);
+  }
   return new VideoFrame(vfb, offset, pitch, width, height, Uoffset, Voffset, UVpitch);
 }
 
@@ -697,10 +705,11 @@ PVideoFrame ScriptEnvironment::NewVideoFrame(int row_size, int height, int align
   int offset = (-int(vfb->GetWritePtr())) & (FRAME_ALIGN-1);  // align first line offset  (alignment is free here!)
   return new VideoFrame(vfb, offset, pitch, row_size, height);
 }
- // Generates copy
+
+
 PVideoFrame __stdcall ScriptEnvironment::NewVideoFrame(const VideoInfo& vi, int align) { 
   if (vi.IsPlanar()) { // Planar requires different math ;)
-    return ScriptEnvironment::NewPlanarVideoFrame(vi.width, vi.height, align);
+    return ScriptEnvironment::NewPlanarVideoFrame(vi.width, vi.height, align, !vi.IsVPlaneFirst());  // If planar, maybe swap U&V
   } else {
     return ScriptEnvironment::NewVideoFrame(vi.RowSize(), vi.height, align);
   }
@@ -721,8 +730,8 @@ bool ScriptEnvironment::MakeWritable(PVideoFrame* pvf) {
     PVideoFrame dst = NewVideoFrame(row_size, height, FRAME_ALIGN);
     BitBlt(dst->GetWritePtr(), dst->GetPitch(), vf->GetReadPtr(), vf->GetPitch(), row_size, height);
     // Blit More planes (pitch, rowsize and height should be 0, if none is present)
-    BitBlt(dst->GetWritePtr(PLANAR_U), dst->GetPitch(PLANAR_U), vf->GetReadPtr(PLANAR_U), vf->GetPitch(PLANAR_U), vf->GetRowSize(PLANAR_U), vf->GetHeight(PLANAR_U));
     BitBlt(dst->GetWritePtr(PLANAR_V), dst->GetPitch(PLANAR_V), vf->GetReadPtr(PLANAR_V), vf->GetPitch(PLANAR_V), vf->GetRowSize(PLANAR_V), vf->GetHeight(PLANAR_V));
+    BitBlt(dst->GetWritePtr(PLANAR_U), dst->GetPitch(PLANAR_U), vf->GetReadPtr(PLANAR_U), vf->GetPitch(PLANAR_U), vf->GetRowSize(PLANAR_U), vf->GetHeight(PLANAR_U));
 
     *pvf = dst;
     return true;

@@ -387,13 +387,13 @@ PVideoFrame __stdcall ConvertToYUY2::GetFrame(int n, IScriptEnvironment* env)
       for (int x=0; x<(vi.width>>1); x++) {
         yuv[x*4]=yp[x*2];
         yuv[x*4+2]=yp[x*2+1];
-        yuv[x*4+3]=up[x];
-        yuv[x*4+1]=vp[x];
+        yuv[x*4+1]=up[x];
+        yuv[x*4+3]=vp[x];
 
         yuv[x*4+dst_pitch]=yp[x*2+src_pitchY];
         yuv[x*4+2+dst_pitch]=yp[x*2+1+src_pitchY];
-        yuv[x*4+3+dst_pitch]=up[x];
-        yuv[x*4+1+dst_pitch]=vp[x];
+        yuv[x*4+1+dst_pitch]=up[x];
+        yuv[x*4+3+dst_pitch]=vp[x];
       }
       yp += src_pitchY*2;
       up += src_pitchUV;

@@ -121,6 +121,7 @@ public:
 
 private:
 	PClip clip2;
+  PClip tclip;
   signed char *tempbuffer, *tempbuffer2;
   int tempbuffer_size;
 	int clip1_channels,clip2_channels;

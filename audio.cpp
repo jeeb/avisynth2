@@ -194,9 +194,10 @@ AVSValue __cdecl EnsureVBRMP3Sync::Create(AVSValue args, void*, IScriptEnvironme
 
 MergeChannels::MergeChannels(PClip _child, PClip _clip, IScriptEnvironment* env) 
   : GenericVideoFilter(_child),
-	clip2(_clip)
+	tclip(_clip)
 {
 
+  clip2 = ConvertAudio::Create(tclip,vi.SampleType(),vi.SampleType());  // Clip 2 should now be same type as clip 1.
   vi2 = clip2->GetVideoInfo();
 
 	if (vi.audio_samples_per_second!=vi2.audio_samples_per_second) 

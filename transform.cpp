@@ -123,6 +123,7 @@ Crop::Crop(int _left, int _top, int _width, int _height, PClip _child, IScriptEn
   top = _top;
   vi.width = _width;
   vi.height = _height;
+  child->SetCacheHints(CACHE_NOTHING,0);
 }
 
 
@@ -160,7 +161,7 @@ AddBorders::AddBorders(int _left, int _top, int _right, int _bot, PClip _child)
     right = (right+1) & -2;
     if (vi.IsYV12()) {
       top=top& -2;
-      bot=bot& -2;
+      bot=bot+1& -2;
     }
   } else {
     // RGB is upside-down
@@ -168,6 +169,7 @@ AddBorders::AddBorders(int _left, int _top, int _right, int _bot, PClip _child)
   }
   vi.width += left+right;
   vi.height += top+bot;
+  child->SetCacheHints(CACHE_NOTHING,0);
 }
 
 
@@ -305,7 +307,6 @@ AVSValue __cdecl Create_Letterbox(AVSValue args, void*, IScriptEnvironment* env)
     env->ThrowError("LetterBox: Width must be divideable with 2 (Left side)");
   if (vi.IsYUY2() && (right&1))
     env->ThrowError("LetterBox: Width must be divideable with 2 (Right side)");
-
   return new AddBorders(left, top, right, bot, new Crop(left, top, vi.width-left-right, vi.height-top-bot, clip, env));
 }
 
