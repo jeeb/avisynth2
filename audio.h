@@ -75,11 +75,37 @@ class ConvertAudioTo16bit : public GenericVideoFilter
 {
 public:
   ConvertAudioTo16bit(PClip _clip);
-  void __stdcall GetAudio(void* buf, int start, int count, IScriptEnvironment* env);
+  void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env);
 
   static PClip Create(PClip clip);
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment*);
 };
+
+class ConvertAudio : public GenericVideoFilter 
+/**
+  * Class to convert audio to any format
+ **/
+{
+public:
+  ConvertAudio(PClip _clip, int prefered_format);
+  void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env);
+
+  static PClip Create(PClip clip, int sample_type, int prefered_type);
+//  static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment*);
+  virtual ~ConvertAudio()
+  {if (tempbuffer_size) {delete[] tempbuffer;tempbuffer_size=0;}}
+private:
+void ConvertAudio::convertToFloat(char* inbuf, float* outbuf, char sample_type, int count);
+void ConvertAudio::convertFromFloat(float* inbuf, void* outbuf, char sample_type, int count);
+
+  char src_format;
+  char dst_format;
+  int src_bps;
+  char *tempbuffer;
+  SFLOAT *floatbuffer;
+  int tempbuffer_size;
+};
+
 
 class ConvertToMono : public GenericVideoFilter 
 /**
@@ -212,7 +238,7 @@ private:
     return (short)n;
   }
 
-  static inline double dBtoScaleFactor(double dB) 
+  static __inline double dBtoScaleFactor(double dB) 
     { return pow(10.0, dB/10.0); }
 };
 
@@ -271,13 +297,13 @@ public:
 
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
   static AVSValue __cdecl Create_dB(AVSValue args, void*, IScriptEnvironment* env);
-
+  
 
 private:
   int left_factor, right_factor;
   int max_volume;
 
-  static inline short Saturate(int n) {
+  static __inline short Saturate(int n) {
     if (n <= -32768) return -32768;
     if (n >= 32767) return 32767;
     return (short)n;
@@ -310,7 +336,7 @@ private:
     return (short)n;
   }
 
-  static inline double dBtoScaleFactor(double dB) 
+  static __inline double dBtoScaleFactor(double dB) 
     { return pow(10.0, dB/10.0); }
 };
 

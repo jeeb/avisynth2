@@ -28,6 +28,8 @@ enum { AVISYNTH_INTERFACE_VERSION = 2 };
 // so I now set the Avisynth struct alignment explicitly here.
 #pragma pack(push,8)
 
+#define FRAME_ALIGN 16 
+// Default frame alignment is 16 bytes, to help P4, when using SSE2
 
 // The VideoInfo struct holds global information about a clip (i.e.
 // information that does not depend on the frame number).  The GetVideoInfo
@@ -38,8 +40,9 @@ typedef float SFLOAT;
 
 enum {SAMPLE_INT8  = 1<<0,
         SAMPLE_INT16 = 1<<1, 
-        SAMPLE_INT32 = 1<<2,
-        SAMPLE_FLOAT = 1<<3};
+        SAMPLE_INT24 = 1<<2,    // Int24 is a very stupid thing to code, but it's supported by some hardware.
+        SAMPLE_INT32 = 1<<3,
+        SAMPLE_FLOAT = 1<<4};
 
 struct VideoInfo {
   int width, height;    // width=0 means no video
@@ -83,10 +86,12 @@ struct VideoInfo {
       return sizeof(signed char);
     case SAMPLE_INT16:
       return sizeof(signed short);
+    case SAMPLE_INT24:
+      return 3;
     case SAMPLE_INT32:
       return sizeof(signed int);
     case SAMPLE_FLOAT:
-      return sizeof(float);
+      return sizeof(SFLOAT);
     default:
       _ASSERTE("Sample type not recognized!");
       return 0;
@@ -413,7 +418,7 @@ public:
   virtual void __stdcall PopContext() = 0;
 
   // align should be 4 or 8
-  virtual PVideoFrame __stdcall NewVideoFrame(const VideoInfo& vi, int align=8) = 0;
+  virtual PVideoFrame __stdcall NewVideoFrame(const VideoInfo& vi, int align=FRAME_ALIGN) = 0;
 
   virtual bool __stdcall MakeWritable(PVideoFrame* pvf) = 0;
 
@@ -427,6 +432,7 @@ public:
   virtual PVideoFrame __stdcall Subframe(PVideoFrame src, int rel_offset, int new_pitch, int new_row_size, int new_height) = 0;
 
 	virtual int __stdcall SetMemoryMax(int mem) = 0;
+
 };
 
 
