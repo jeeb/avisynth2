@@ -169,9 +169,10 @@ int* GetResamplingPatternYUV( int original_width, double subrange_start, double 
   double filter_support = func->support() / filter_step;
   int fir_filter_size = int(ceil(filter_support*2));
   int fir_fs_mmx = (fir_filter_size / 2) +1;  // number of loops in MMX code
+  int target_width_a=(target_width+15)&(~15);
   int* result = luma ?
-    (int*) _aligned_malloc(2*4 + target_width*(1+fir_fs_mmx)*8, 8) :
-    (int*) _aligned_malloc(2*4 + target_width*(1+fir_filter_size)*8, 8);
+    (int*) _aligned_malloc(2*4 + target_width_a*(1+fir_fs_mmx)*8, 8) :
+    (int*) _aligned_malloc(2*4 + target_width_a*(1+fir_filter_size)*8, 8);
 
   int* cur[2] = { result +2, result +3 };
   *result = luma ? fir_fs_mmx : fir_filter_size;
@@ -179,8 +180,7 @@ int* GetResamplingPatternYUV( int original_width, double subrange_start, double 
   double pos_step = subrange_width / target_width;
   // the following translates such that the image center remains fixed
   double pos = subrange_start + ((subrange_width - target_width) / (target_width*2));
-
-  for (int i=0; i<target_width; ++i) {
+  for (int i=0; i<target_width_a; ++i) {
     int end_pos = int(pos + filter_support);
     if (end_pos > original_width-1)
       end_pos = original_width-1;

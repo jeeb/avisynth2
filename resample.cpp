@@ -62,8 +62,8 @@ FilteredResizeH::FilteredResizeH( PClip _child, double subrange_left, double sub
   {
     if (target_width&1)
       env->ThrowError("Resize: YUY2 width must be even");
-    tempY = (BYTE*) _aligned_malloc(original_width*2+4, 64);   // aligned for Athlon cache line
-    tempUV = (BYTE*) _aligned_malloc(original_width*4+8, 64);  // aligned for Athlon cache line
+    tempY = (BYTE*) _aligned_malloc(original_width*2+4+32, 64);   // aligned for Athlon cache line
+    tempUV = (BYTE*) _aligned_malloc(original_width*4+8+32, 64);  // aligned for Athlon cache line
     if (vi.IsYV12()) {
       pattern_chroma = GetResamplingPatternYUV( vi.width>>1, subrange_left/2, subrange_width/2,
         target_width>>1, func, true, tempY );
@@ -90,7 +90,8 @@ PVideoFrame __stdcall FilteredResizeH::GetFrame(int n, IScriptEnvironment* env)
   if (vi.IsYV12()) {
       int plane = 0;
         while (plane++<3) {
-        int org_width = (plane==1) ? original_width : (original_width>>1) ;
+//        int org_width = (plane==1) ? original_width : (original_width+1)>>1;
+        int org_width = (plane==1) ? src->GetRowSize(PLANAR_Y_ALIGNED) : src->GetRowSize(PLANAR_V_ALIGNED);
         int dst_height= (plane==1) ? dst->GetHeight() : dst->GetHeight(PLANAR_U);
         int* array = (plane==1) ? pattern_luma : pattern_chroma;
         int dst_width = (plane==1) ? dst->GetRowSize(PLANAR_Y_ALIGNED) : dst->GetRowSize(PLANAR_U_ALIGNED);
@@ -99,13 +100,13 @@ PVideoFrame __stdcall FilteredResizeH::GetFrame(int n, IScriptEnvironment* env)
         srcp = src->GetReadPtr(PLANAR_U);
         dstp = dst->GetWritePtr(PLANAR_U);
         src_pitch = src->GetPitch(PLANAR_U);
-        dst_pitch = dst->GetPitch(PLANAR_V);
+        dst_pitch = dst->GetPitch(PLANAR_U);
         break;
       case 3:
         srcp = src->GetReadPtr(PLANAR_V);
         dstp = dst->GetWritePtr(PLANAR_V);
         src_pitch = src->GetPitch(PLANAR_U);
-        dst_pitch = dst->GetPitch(PLANAR_V);
+        dst_pitch = dst->GetPitch(PLANAR_U);
         }
       int fir_filter_size_luma = array[0];
       int* temp_dst;

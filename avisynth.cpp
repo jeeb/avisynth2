@@ -714,6 +714,8 @@ PVideoFrame __stdcall ScriptEnvironment::NewVideoFrame(const VideoInfo& vi, int 
     } else {
       align = max(align,FRAME_ALIGN);
     }
+    if ((vi.height&3)||(vi.width&3))
+      ThrowError("Filter Error: Attempted to request an YV12 frame that wasn't mod4 in width and height!");
     return ScriptEnvironment::NewPlanarVideoFrame(vi.width, vi.height, align, !vi.IsVPlaneFirst());  // If planar, maybe swap U&V
   } else {
     if (align<0) {
