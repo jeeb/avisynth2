@@ -124,7 +124,7 @@ public:
   static AVSValue __cdecl Create24(AVSValue args, void*, IScriptEnvironment* env);
 
 private:
-  bool use_mmx, rec709;
+  bool use_mmx, rec709, is_yv12;
 
 };
 
