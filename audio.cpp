@@ -122,7 +122,7 @@ void __stdcall ConvertToMono::GetAudio(void* buf, __int64 start, __int64 count, 
       SFLOAT tsample=0.0f;    
       for (int j=0;j<channels;j++) 
         tsample+=tempsamples[i*channels+j]; // Accumulate samples
-      samples[i] =(short)(tsample/f_channels);
+      samples[i] =(tsample/f_channels);
     }
   }
 }
