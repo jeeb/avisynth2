@@ -357,15 +357,19 @@ ConvertToYV12::ConvertToYV12(PClip _child, IScriptEnvironment* env)
 PVideoFrame __stdcall ConvertToYV12::GetFrame(int n, IScriptEnvironment* env) {
   PVideoFrame src = child->GetFrame(n, env);
   if (isRGB32) {
-    PVideoFrame dst = env->NewVideoFrame(vi,-4);
+    PVideoFrame dst = env->NewVideoFrame(vi,-8);
     rgb32_to_yv12_mmx(dst->GetWritePtr(PLANAR_Y),dst->GetWritePtr(PLANAR_U),dst->GetWritePtr(PLANAR_V),src->GetReadPtr(),src->GetRowSize()/4,src->GetHeight(),src->GetPitch()/4);
     return dst;
   } else if (isRGB24) {
-    PVideoFrame dst = env->NewVideoFrame(vi,-4);
+    PVideoFrame dst = env->NewVideoFrame(vi,-8);
     rgb24_to_yv12_mmx(dst->GetWritePtr(PLANAR_Y),dst->GetWritePtr(PLANAR_U),dst->GetWritePtr(PLANAR_V),src->GetReadPtr(),src->GetRowSize()/3,src->GetHeight(),src->GetPitch()/3);
     return dst;
   }
-  PVideoFrame dst = env->NewVideoFrame(vi);
+  
+  PVideoFrame dst = env->NewVideoFrame(vi,-8);
+  yuyv_to_yv12_mmx(dst->GetWritePtr(PLANAR_Y),dst->GetWritePtr(PLANAR_U),dst->GetWritePtr(PLANAR_V),src->GetReadPtr(),src->GetRowSize()/2,src->GetHeight(),src->GetRowSize()/2);
+  return dst;
+/*
   int* srcp = (int*)src->GetReadPtr();
   int* dstpY = (int*)dst->GetWritePtr(PLANAR_Y);
   short* dstpV = (short*)dst->GetWritePtr(PLANAR_V);
@@ -392,6 +396,7 @@ PVideoFrame __stdcall ConvertToYV12::GetFrame(int n, IScriptEnvironment* env) {
     dstpV+=(dst_pitchUV);
   }
   return dst;
+  */
 
 }
 
