@@ -920,7 +920,7 @@ FilteredResizeV::FilteredResizeV( PClip _child, double subrange_top, double subr
     env->ThrowError("Resize: YV12 destination size must be multiple of 4.");
   if (vi.IsRGB())
     subrange_top = vi.height - subrange_top - subrange_height;
-  resampling_pattern = GetResamplingPatternRGB(vi.height, subrange_top, subrange_height, target_height, func);
+  resampling_pattern = GetResamplingPatternRGB(vi.height-1, subrange_top, subrange_height, target_height, func);
   vi.height = target_height;
 
   PVideoFrame src = child->GetFrame(0, env);
@@ -930,7 +930,7 @@ FilteredResizeV::FilteredResizeV( PClip _child, double subrange_top, double subr
 
   int shUV = src->GetHeight(PLANAR_U);
   yOfsUV = new int[shUV];
-  for (i = 0; i < shUV; i++) yOfsUV[i] = src->GetPitch(PLANAR_U) * i;
+  for (i = 0; i < shUV; i++) yOfsUV[i] = src->GetPitch(PLANAR_U) * (i);
 }
 
 

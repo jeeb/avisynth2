@@ -32,6 +32,7 @@ AVSFunction Levels_filters[] = {
   { "HSIAdjust", "cffifi", HSIAdjust::Create },  // H, S, min, gamma, max
   { "RGBAdjust", "cffff", RGBAdjust::Create },   // R, G, B, A
   { "Tweak", "c[hue]f[sat]f[bright]f[cont]f", Tweak::Create },  // hue, sat, bright, contrast
+  { "Limiter", "c[min_luma]i[max_luma]i[min_chroma]i[max_chroma]i", Limiter::Create },
   { 0 }
 };
 
@@ -491,4 +492,127 @@ AVSValue __cdecl Tweak::FilterInfo(int request) {
       return AVSValue("Adjusts color and light levels of your picture depending on your parameters."); 
   }
   return AVSValue(-1);
+}
+
+
+
+Limiter::Limiter(PClip _child, int _min_luma, int _max_luma, int _min_chroma, int _max_chroma, IScriptEnvironment* env)
+	: GenericVideoFilter(_child),
+  min_luma(_min_luma),
+  max_luma(_max_luma),
+  min_chroma(_min_chroma),
+  max_chroma(_max_chroma) {
+	if(!vi.IsYUV())
+		env->ThrowError("Limiter: Source must be YUV");
+
+  if ((min_luma<0)||(min_luma>255))
+      env->ThrowError("Limiter: Invalid minimum luma");
+  // TODO: 3 more
+}
+
+PVideoFrame __stdcall Limiter::GetFrame(int n, IScriptEnvironment* env) {
+	PVideoFrame frame = child->GetFrame(n, env);
+	env->MakeWritable(&frame);
+	unsigned char* srcp = frame->GetWritePtr();
+	int pitch = frame->GetPitch();
+  int row_size = frame->GetRowSize();
+  int height = frame->GetHeight();
+  if (vi.IsYUY2()) {
+    if (env->GetCPUFlags() & CPUF_INTEGER_SSE) {
+      isse_limiter((BYTE*)srcp, row_size, height, pitch-row_size, min_luma|(min_chroma<<8), max_luma|(max_chroma<<8));
+    }
+	  for(int y = 0; y < height; y++) {
+      for(int x = 0; x < row_size; x++) {
+        if(srcp[x] < min_luma )
+          srcp[x++] = min_luma;
+        else if(srcp[x] > max_luma)
+          srcp[x++] = max_luma;
+        else
+          x++;
+        if(srcp[x] < min_chroma)
+          srcp[x] = min_chroma;
+        else if(srcp[x] > max_chroma)
+          srcp[x] = max_chroma;
+      }
+      srcp += pitch;
+    }  
+  } else if(vi.IsYV12()) {
+  if (env->GetCPUFlags() & CPUF_INTEGER_SSE) {
+    isse_limiter((BYTE*)srcp, row_size, height, pitch-row_size, min_luma|(min_luma<<8), max_luma|(max_luma<<8));
+
+    srcp = frame->GetWritePtr(PLANAR_U);
+    row_size = frame->GetRowSize(PLANAR_U_ALIGNED);
+    pitch = frame->GetPitch(PLANAR_U);
+    height = frame->GetHeight(PLANAR_U);
+
+    isse_limiter((BYTE*)srcp, row_size, height, pitch-row_size, min_chroma|(min_chroma<<8), max_chroma|(max_chroma<<8));
+
+    srcp = frame->GetWritePtr(PLANAR_V);
+    isse_limiter((BYTE*)srcp, row_size, height, pitch-row_size, min_chroma|(min_chroma<<8), max_chroma|(max_chroma<<8));
+    return frame;
+  }
+
+  for(int y = 0; y < height; y++) {
+      for(int x = 0; x < row_size; x++) {
+        if(srcp[x] < min_luma )
+          srcp[x] = min_luma;
+        else if(srcp[x] > max_luma)
+          srcp[x] = max_luma;        
+      }
+      srcp += pitch;
+    }
+    srcp = frame->GetWritePtr(PLANAR_U);
+	  unsigned char* srcpV = frame->GetWritePtr(PLANAR_V);
+    row_size = frame->GetRowSize(PLANAR_U);
+    height = frame->GetHeight(PLANAR_U);
+    pitch = frame->GetPitch(PLANAR_U);
+	  for(y = 0; y < height; y++) {
+      for(int x = 0; x < row_size; x++) {
+        if(srcp[x] < min_chroma)
+          srcp[x] = min_chroma;
+        else if(srcp[x] > max_chroma)
+          srcp[x] = max_chroma;
+        if(srcpV[x] < min_chroma)
+          srcpV[x] = min_chroma;
+        else if(srcpV[x] > max_chroma)
+          srcpV[x] = max_chroma;
+      }
+      srcp += pitch;
+      srcpV += pitch;
+    }
+  }
+    return frame;
+}
+
+void Limiter::isse_limiter(BYTE* p, int row_size, int height, int modulo, int cmin, int cmax) {
+  __asm {
+    mov eax, [height]
+    mov ebx, p
+    mov ecx, modulo
+    movd mm7,[cmax]
+    movd mm6,[cmin]
+    pshufw mm7,mm7,0
+    pshufw mm6,mm6,0
+yloop:
+    mov edx,[row_size]
+    align 16
+xloop:
+    prefetchnta [ebx+256]
+    movd mm0,[ebx]
+    pminub mm0,mm7
+    pmaxub mm0,mm6
+    movd [ebx],mm0
+    add ebx,4
+    sub edx,4
+    jnz xloop
+    add ebx,ecx;
+    dec height
+    jnz yloop
+    emms
+  }
+}
+
+AVSValue __cdecl Limiter::Create(AVSValue args, void* user_data, IScriptEnvironment* env)
+{
+	return new Limiter(args[0].AsClip(), args[1].AsInt(16), args[2].AsInt(235), args[3].AsInt(16), args[4].AsInt(240), env);
 }
