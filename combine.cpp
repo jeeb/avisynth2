@@ -100,14 +100,28 @@ PVideoFrame __stdcall StackVertical::GetFrame(int n, IScriptEnvironment* env)
   BYTE* dstp2U = dstpU + dst_pitchUV * src1->GetHeight(PLANAR_U);
   BYTE* dstp2V = dstpV + dst_pitchUV * src1->GetHeight(PLANAR_V);
 
-  BitBlt(dstp, dst_pitch, src1p, src1_pitch, row_size, src1_height);
-  BitBlt(dstp2, dst_pitch, src2p, src2_pitch, row_size, src2_height);
+  if (vi.IsYV12())
+  {
+    // Copy YV12 upside-down
+    BitBlt(dstp, dst_pitch, src2p, src1_pitch, row_size, src1_height);
+    BitBlt(dstp2, dst_pitch, src1p, src2_pitch, row_size, src2_height);
 
-  BitBlt(dstpU, dst_pitchUV, src1pU, src1_pitchUV, row_sizeUV, src1_heightUV);
-  BitBlt(dstp2U, dst_pitchUV, src2pU, src2_pitchUV, row_sizeUV, src2_heightUV);
+    BitBlt(dstpU, dst_pitchUV, src2pU, src1_pitchUV, row_sizeUV, src1_heightUV);
+    BitBlt(dstp2U, dst_pitchUV, src1pU, src2_pitchUV, row_sizeUV, src2_heightUV);
 
-  BitBlt(dstpV, dst_pitchUV, src1pV, src1_pitchUV, row_sizeUV, src1_heightUV);
-  BitBlt(dstp2V, dst_pitchUV, src2pV, src2_pitchUV, row_sizeUV, src2_heightUV);
+    BitBlt(dstpV, dst_pitchUV, src2pV, src1_pitchUV, row_sizeUV, src1_heightUV);
+    BitBlt(dstp2V, dst_pitchUV, src1pV, src2_pitchUV, row_sizeUV, src2_heightUV);
+  } else {
+    // I'll leave the planar BitBlts (no-ops) in for compatibility with future planar formats
+    BitBlt(dstp, dst_pitch, src1p, src1_pitch, row_size, src1_height);
+    BitBlt(dstp2, dst_pitch, src2p, src2_pitch, row_size, src2_height);
+
+    BitBlt(dstpU, dst_pitchUV, src1pU, src1_pitchUV, row_sizeUV, src1_heightUV);
+    BitBlt(dstp2U, dst_pitchUV, src2pU, src2_pitchUV, row_sizeUV, src2_heightUV);
+
+    BitBlt(dstpV, dst_pitchUV, src1pV, src1_pitchUV, row_sizeUV, src1_heightUV);
+    BitBlt(dstp2V, dst_pitchUV, src2pV, src2_pitchUV, row_sizeUV, src2_heightUV);
+  }
   return dst;
 }
 
