@@ -673,9 +673,9 @@ PVideoFrame ScriptEnvironment::NewPlanarVideoFrame(int width, int height, int al
     }
   }
 #endif
-  int offset = (-int(vfb->GetWritePtr())) & (align-1);  // align first line offset
-  int Uoffset = offset + pitch * height;  // UV offset will also be aligned
-  int Voffset = offset + pitch * height + UVpitch * (height>>1);  // UV offset will also be aligned
+  int offset = (-int(vfb->GetWritePtr())) & (FRAME_ALIGN-1);  // align first line offset
+  int Uoffset = offset + pitch * height;
+  int Voffset = offset + pitch * height + UVpitch * (height>>1);
   return new VideoFrame(vfb, offset, pitch, width, height, Uoffset, Voffset, UVpitch);
 }
 
@@ -1073,7 +1073,7 @@ __inline int ConvertAudio::Saturate_int32(float n) {
 // If not, the current clip will be converted to the prefered type.
 PClip ConvertAudio::Create(PClip clip, int sample_type, int prefered_type) 
 {
-  if (clip->GetVideoInfo().SampleType()&sample_type) {  // Sample type is already ok!
+  if ((!clip->GetVideoInfo().HasAudio()) || clip->GetVideoInfo().SampleType()&sample_type) {  // Sample type is already ok!
     return clip;
   }
   else 

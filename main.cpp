@@ -454,7 +454,7 @@ bool CAVIFileSynth::DelayInit() {
         AVSValue return_val = env->Invoke("Import", szScriptName);
         // store the script's return value (a video clip)
         if (return_val.IsClip())
-          filter_graph = return_val.AsClip();
+          filter_graph = ConvertAudio::Create(return_val.AsClip(), SAMPLE_INT8|SAMPLE_INT16|SAMPLE_INT24|SAMPLE_INT32, SAMPLE_INT16);  // Ensure samples are int     [filter_graph = return_val.AsClip();]
         else
           throw AvisynthError("The script's return value was not a video clip");
         if (!filter_graph)
@@ -710,7 +710,7 @@ void CAVIStreamSynth::ReadFrame(void* lpBuffer, int n) {
   BitBlt((BYTE*)lpBuffer, out_pitch, frame->GetReadPtr(), pitch, row_size, frame->GetHeight());
   // TODO: Make the following more eyepleasing
   BitBlt((BYTE*)lpBuffer+(out_pitch*frame->GetHeight()), out_pitch/2, frame->GetReadPtr(PLANAR_U), frame->GetPitch(PLANAR_U), frame->GetRowSize(PLANAR_U), frame->GetHeight(PLANAR_U));
-  BitBlt((BYTE*)lpBuffer+(out_pitch*frame->GetHeight()+frame->GetHeight(PLANAR_V)*pitch/2), out_pitch/2, frame->GetReadPtr(PLANAR_V), frame->GetPitch(PLANAR_V), frame->GetRowSize(PLANAR_V), frame->GetHeight(PLANAR_V));
+  BitBlt((BYTE*)lpBuffer+(out_pitch*frame->GetHeight()+frame->GetHeight(PLANAR_V)*out_pitch/2), out_pitch/2, frame->GetReadPtr(PLANAR_V), frame->GetPitch(PLANAR_V), frame->GetRowSize(PLANAR_V), frame->GetHeight(PLANAR_V));
 }
 
 

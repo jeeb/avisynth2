@@ -233,8 +233,11 @@ public:
     return IsWritable() ? (vfb->GetWritePtr() + offset) : 0;
   }
 
-  BYTE* GetWritePtr(int plane) const {
-    return IsWritable() ? (vfb->GetWritePtr() + GetOffset(plane)) : 0;
+  BYTE* GetWritePtr(int plane) const {  // We disable refcounts for UV planes, so they can be written to seperately.
+    if (plane==PLANAR_Y) {
+      return GetWritePtr();
+    }
+    return vfb->GetWritePtr() + GetOffset(plane);
   }
 
   ~VideoFrame() { --vfb->refcount; }

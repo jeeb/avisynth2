@@ -274,7 +274,6 @@ AVISource::AVISource(const char filename[], bool fAudio, const char pixel_type[]
           _RPT0(0,"AVISource: Opening as YV12.\n");
         } else {
           biDst.biSizeImage = ((vi.width*2+3)&~3) * vi.height;
-          biDst.biPlanes = 1;
           biDst.biCompression = '2YUY';
           biDst.biBitCount = 16;
           if (fYUY2 && ICERR_OK == ICDecompressQuery(hic, pbiSrc, &biDst)) {
@@ -1108,8 +1107,8 @@ public:
     PBYTE buf;
     pSamples->GetPointer(&buf);
     if (!vi.IsPlanar()) {
-    env->BitBlt(pvf->GetWritePtr(), pvf->GetPitch(), buf,
-      pvf->GetPitch(), pvf->GetRowSize(), pvf->GetHeight());
+      env->BitBlt(pvf->GetWritePtr(), pvf->GetPitch(), buf,
+        pvf->GetPitch(), pvf->GetRowSize(), pvf->GetHeight());
     } else {
     env->BitBlt(pvf->GetWritePtr(PLANAR_Y), pvf->GetPitch(PLANAR_Y), buf,
       pvf->GetPitch(PLANAR_Y), pvf->GetRowSize(PLANAR_Y), pvf->GetHeight(PLANAR_Y));
