@@ -48,7 +48,8 @@ AVSFunction Audio_filters[] = {
   { 0 }
 };
 
-
+// Note - floats should not be clipped - they will be clipped, when they are converted back to ints.
+// Vdub can handle 8/16 bit, and reads 32bit, but cannot play/convert it. Floats doesn't make sense in AVI. So for now convert back to 16 bit always
 // FIXME: Most int64's are often cropped to ints - count is ok to be int, but not start
  
  
@@ -57,6 +58,7 @@ AVSFunction Audio_filters[] = {
  ******************************************/
 
 // Fixme: Implement 24 bit samples
+// FIXME: 8 bit output not working for some reason - giving heavily distorted sound.
 // Optme: Could be made onepass, but that would make it immensely complex
 ConvertAudio::ConvertAudio(PClip _clip, int _sample_type) 
   : GenericVideoFilter(_clip)
