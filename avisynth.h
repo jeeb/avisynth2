@@ -62,6 +62,8 @@ struct VideoInfo {
 
   // Colorspace properties.
   enum {
+    CS_BFF = 1<<25,
+    CS_TFF = 1<<26,
     CS_FIELDBASED = 1<<27,
     CS_BGR = 1<<28,  
     CS_YUV = 1<<29,
@@ -94,8 +96,14 @@ struct VideoInfo {
   bool IsYUV() const { return !!(pixel_type&CS_YUV ); }
   bool IsYUY2() const { return (pixel_type & CS_YUY2) == CS_YUY2; }  
   bool IsYV12() const { return ((pixel_type & CS_YV12) == CS_YV12)||((pixel_type & CS_I420) == CS_I420); }
+  bool IsColorSpace(int c_space) const { return ((pixel_type & c_space) == c_space); }
+  bool Is(int property) const { return ((pixel_type & property)==property ); }
   bool IsPlanar() const { return !!(pixel_type & CS_PLANAR); }
   bool IsFieldBased() const { return !!(pixel_type & CS_FIELDBASED); }
+  bool IsParityKnown() const { return ((pixel_type & CS_FIELDBASED)&&(pixel_type & (CS_BFF||CS_TFF))); }
+  bool IsBFF() const { return !!(pixel_type & CS_BFF); }
+  bool IsTFF() const { return !!(pixel_type & CS_TFF); }
+  
   bool IsVPlaneFirst() const {return ((pixel_type & CS_YV12) == CS_YV12); }  // Don't use this 
   int BytesFromPixels(int pixels) const { return pixels * (BitsPerPixel()>>3); }   // Will not work on planar images, but will return only luma planes
   int RowSize() const { return BytesFromPixels(width); }  // Also only returns first plane on planar images
@@ -109,6 +117,9 @@ struct VideoInfo {
   int SamplesPerSecond() const { return audio_samples_per_second; }
   int BytesPerAudioSample() const { return nchannels*BytesPerChannelSample();}
   void SetFieldBased(bool isfieldbased)  { if (isfieldbased) pixel_type|=CS_FIELDBASED; else  pixel_type&=~CS_FIELDBASED; }
+  void Set(int property)  { pixel_type|=property; }
+  void Clear(int property)  { pixel_type&=~property; }
+
   int BitsPerPixel() const { 
     switch (pixel_type) {
       case CS_BGR24:
@@ -486,9 +497,8 @@ enum {
   CPUF_X86_64       = 0xA0,   // Hammer (note: equiv. to 3DNow + SSE2, which only Hammer
                               //         will have anyway)
 };
-
-#define MAX_INT (((__int64)1<<30)-1)   
-#define MIN_INT -(((__int64)1<<30))
+#define MAX_INT 0x7fffffff
+#define MIN_INT 0x80000000
 
 
 class ConvertAudio : public GenericVideoFilter 

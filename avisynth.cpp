@@ -665,6 +665,8 @@ PVideoFrame ScriptEnvironment::NewPlanarVideoFrame(int width, int height, int al
   int UVpitch = pitch>>1;  // UV plane, width = 1/2 byte per pixel
   int size = pitch * height + UVpitch * height;
   VideoFrameBuffer* vfb = GetFrameBuffer(size+(FRAME_ALIGN*4));
+  if (!vfb)
+    ThrowError("NewPlanarVideoFrame: Returned 0 size image!");
 #ifdef _DEBUG
   {
     static const BYTE filler[] = { 0x0A, 0x11, 0x0C, 0xA7, 0xED };

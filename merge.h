@@ -14,6 +14,26 @@
 /****************************************************
 ****************************************************/
 
+class Swap : public GenericVideoFilter
+/**
+  * Swaps planar channels
+ **/
+{
+public:
+  Swap(PClip _child, PClip _clip, int _mode, IScriptEnvironment* env);  
+  PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
+
+  static AVSValue __cdecl CreateUV(AVSValue args, void* user_data, IScriptEnvironment* env);
+  static AVSValue __cdecl CreateUToY(AVSValue args, void* user_data, IScriptEnvironment* env);
+  static AVSValue __cdecl CreateVToY(AVSValue args, void* user_data, IScriptEnvironment* env);
+  static AVSValue __cdecl CreateYToUV(AVSValue args, void* user_data, IScriptEnvironment* env);
+
+private:
+  PClip clip;
+  int mode;
+};
+
+
 
 class MergeChroma : public GenericVideoFilter
 /**

@@ -60,6 +60,8 @@ SeparateFields::SeparateFields(PClip _child, IScriptEnvironment* env)
 {
   if (vi.height & 1)
     env->ThrowError("SeparateFields: height must be even");
+  if (vi.IsYV12() && vi.height & 3)
+    env->ThrowError("SeparateFields: YV12 height must be multiple of 4");
   vi.height >>= 1;
   vi.fps_numerator *= 2;
   vi.num_frames *= 2;
@@ -71,16 +73,21 @@ PVideoFrame SeparateFields::GetFrame(int n, IScriptEnvironment* env)
 {
   PVideoFrame frame = child->GetFrame(n>>1, env);
   if (vi.IsPlanar()) {
-    bool topfield = child->GetParity(n);
+    bool topfield = (child->GetParity(n)+n)&1;
     int UVoffset = topfield ? frame->GetPitch(PLANAR_U) : 0;
     int Yoffset = topfield ? frame->GetPitch(PLANAR_Y) : 0;
+#if 0  // For some reason the following doesn't work.
     return frame->Subframe(Yoffset, frame->GetPitch()*2, frame->GetRowSize(), frame->GetHeight()>>1, UVoffset, UVoffset, frame->GetPitch(PLANAR_U)*2);
-//  VideoFrame* Subframe(int rel_offset, int new_pitch, int new_row_size, int new_height, int rel_offsetU, int rel_offsetV, int pitchUV) const;
-
+#else // This also makes it crash :((
+    PVideoFrame dst = env->NewVideoFrame(vi);
+    env->BitBlt(dst->GetWritePtr(PLANAR_Y),dst->GetPitch(PLANAR_Y),frame->GetReadPtr(PLANAR_Y)+Yoffset,frame->GetPitch(PLANAR_Y)*2,frame->GetRowSize(PLANAR_Y),dst->GetHeight(PLANAR_Y));
+    env->BitBlt(dst->GetWritePtr(PLANAR_U),dst->GetPitch(PLANAR_U),frame->GetReadPtr(PLANAR_U)+UVoffset,frame->GetPitch(PLANAR_U)*2,frame->GetRowSize(PLANAR_U),dst->GetHeight(PLANAR_U));
+    env->BitBlt(dst->GetWritePtr(PLANAR_V),dst->GetPitch(PLANAR_V),frame->GetReadPtr(PLANAR_V)+UVoffset,frame->GetPitch(PLANAR_V)*2,frame->GetRowSize(PLANAR_V),dst->GetHeight(PLANAR_V));
+    return dst;
+#endif
   }
   return frame->Subframe((GetParity(n) ^ vi.IsYUY2()) * frame->GetPitch(),
-    frame->GetPitch()*2, frame->GetRowSize(), frame->GetHeight()>>1);
-  
+    frame->GetPitch()*2, frame->GetRowSize(), frame->GetHeight()>>1);  
 }
 
 

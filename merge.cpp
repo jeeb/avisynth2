@@ -15,11 +15,127 @@
 AVSFunction Merge_filters[] = {
   { "MergeChroma", "cc[chromaweight]f", MergeChroma::Create },  // src, chroma src, weight
   { "MergeLuma", "cc[lumaweight]f", MergeLuma::Create },      // src, luma src, weight
+  {  "SwapUV","c", Swap::CreateUV },
+  {  "UToY","c", Swap::CreateUToY },
+  {  "VToY","c", Swap::CreateVToY },
+  {  "YToUV","cc", Swap::CreateYToUV },
   { 0 }
 };
 
 
+/**************************************
+ *  Swap - swaps UV on planar maps
+ **************************************/
 
+
+AVSValue __cdecl Swap::CreateUV(AVSValue args, void* user_data, IScriptEnvironment* env) {
+  return new Swap(args[0].AsClip(), args[0].AsClip(), 1 , env);
+}
+
+AVSValue __cdecl Swap::CreateUToY(AVSValue args, void* user_data, IScriptEnvironment* env) {
+  return new Swap(args[0].AsClip(), args[0].AsClip(), 2 , env);
+}
+
+AVSValue __cdecl Swap::CreateVToY(AVSValue args, void* user_data, IScriptEnvironment* env) {
+  return new Swap(args[0].AsClip(), args[0].AsClip(), 3 , env);
+}
+
+AVSValue __cdecl Swap::CreateYToUV(AVSValue args, void* user_data, IScriptEnvironment* env) {
+  return new Swap(args[0].AsClip(), args[1].AsClip(), 4 , env);
+}
+
+Swap::Swap(PClip _child, PClip _clip, int _mode, IScriptEnvironment* env) 
+  : GenericVideoFilter(_child), clip(_clip), mode(_mode) {
+    VideoInfo vi2=clip->GetVideoInfo();
+  if (!vi.IsYV12() || !vi2.IsYV12()) 
+    env->ThrowError("Plane swapper: YV12 data only!");  // Todo: report correct filter
+  switch (mode) {
+  case 1:
+    break;
+  case 2:
+  case 3:
+    vi.height >>=1;
+    vi.width >>=1;
+    break;
+  case 4:
+    if (vi.height!=vi2.height)
+      env->ThrowError("YToUV: Clips does not have the same height!");
+    if (vi.width!=vi2.width)
+      env->ThrowError("YToUV: Clips does not have the same width!");
+    vi.height <<=1;
+    vi.width <<=1;
+    break;
+  }
+}
+
+PVideoFrame __stdcall Swap::GetFrame(int n, IScriptEnvironment* env) {
+  PVideoFrame src = child->GetFrame(n, env);
+  if (mode==1) {  // SwapUV
+    env->MakeWritable(&src);
+    const int xpixels=src->GetRowSize(PLANAR_U_ALIGNED)>>2; // Ints
+    const int yloops=src->GetHeight(PLANAR_U);
+    int* srcpU=(int*)src->GetWritePtr(PLANAR_Y);  // Y Plane must be touched!
+    int* srcpV=(int*)src->GetWritePtr(PLANAR_V);
+    srcpU=(int*)src->GetWritePtr(PLANAR_U);  // U is now correct!
+
+    for (int y=0;y<yloops;y++) { //todo: mmx me
+      for (int x=0;x<xpixels;x++) {
+        int t=srcpU[x];
+        srcpU[x]=srcpV[x];
+        srcpV[x]=t;
+      }
+      srcpU+=src->GetPitch(PLANAR_U)/4;
+      srcpV+=src->GetPitch(PLANAR_U)/4;
+    }
+    return src;
+  }
+  if (mode==2 || mode ==3) {  // U to Y or V to Y
+    PVideoFrame dst = env->NewVideoFrame(vi);
+    if (mode==2) {  // U To Y
+      env->BitBlt(dst->GetWritePtr(PLANAR_Y),dst->GetPitch(PLANAR_Y),src->GetReadPtr(PLANAR_U),src->GetPitch(PLANAR_U),dst->GetRowSize(),dst->GetHeight());
+    } else if (mode==3) {
+      env->BitBlt(dst->GetWritePtr(PLANAR_Y),dst->GetPitch(PLANAR_Y),src->GetReadPtr(PLANAR_V),src->GetPitch(PLANAR_V),dst->GetRowSize(),dst->GetHeight());
+    }
+    // Clear chroma
+    int pitch = dst->GetPitch(PLANAR_U)/4;
+    int *srcpUV = (int*)dst->GetWritePtr(PLANAR_U);
+    int myx = dst->GetRowSize(PLANAR_U_ALIGNED)/4;
+    int myy = dst->GetHeight(PLANAR_U);
+	  for (int y=0; y<myy; y++) {
+      for (int x=0; x<myx; x++) {
+		    srcpUV[x] = 0x7f7f7f7f;  // mod 8
+      }
+		  srcpUV += pitch;
+	  }
+    srcpUV = (int*)dst->GetWritePtr(PLANAR_V);
+	  for (y=0; y<myy; ++y) {
+      for (int x=0; x<myx; x++) {
+		    srcpUV[x] = 0x7f7f7f7f;  // mod 8
+      }
+		  srcpUV += pitch;
+	  }
+    return dst;
+  }
+  if (mode==4) {  // Merge UV  U=child V=clip
+    PVideoFrame dst = env->NewVideoFrame(vi);
+    env->BitBlt(dst->GetWritePtr(PLANAR_U),dst->GetPitch(PLANAR_U),src->GetReadPtr(PLANAR_Y),src->GetPitch(PLANAR_Y),src->GetRowSize(PLANAR_Y),src->GetHeight(PLANAR_Y));
+    src = clip->GetFrame(n, env);
+    env->BitBlt(dst->GetWritePtr(PLANAR_V),dst->GetPitch(PLANAR_V),src->GetReadPtr(PLANAR_Y),src->GetPitch(PLANAR_Y),src->GetRowSize(PLANAR_Y),src->GetHeight(PLANAR_Y));
+    // Luma = 128
+    int pitch = dst->GetPitch(PLANAR_Y)/4;
+    int *srcpY = (int*)dst->GetWritePtr(PLANAR_Y);
+    int myx = dst->GetRowSize(PLANAR_Y_ALIGNED)/4;
+    int myy = dst->GetHeight(PLANAR_Y);
+	  for (int y=0; y<myy; y++) {
+      for (int x=0; x<myx; x++) {
+		    srcpY[x] = 0x80808080;  // mod 4
+      }
+		  srcpY += pitch;
+	  }
+    return dst;
+  }
+  return src;
+}
 
 
 /****************************
