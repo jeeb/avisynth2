@@ -229,18 +229,13 @@ public:
       vi.audio_samples_per_second = stream_info.dwRate / stream_info.dwScale;
       vi.num_audio_samples = stream_info.dwLengthL;
       vi.nchannels = stream_info.dwChannels;
-/*
-      if (stream_info.dwChannels == 1)
-        vi.nchannels = 1;
-      else if (stream_info.dwChannels == 2)
-        vi.nchannels = 2;
-      else
-        env->ThrowError("VFAPIPluginProxy: plugin returned invalid number of audio channels (%d)", stream_info.dwChannels);
-*/
+
       if (stream_info.dwBitsPerSample == 8)
         vi.sample_type = SAMPLE_INT8;
       else if (stream_info.dwBitsPerSample == 16)
         vi.sample_type = SAMPLE_INT16;
+      else if (stream_info.dwBitsPerSample == 24)
+        vi.sample_type = SAMPLE_INT24;
       else if (stream_info.dwBitsPerSample == 32)
         vi.sample_type = SAMPLE_INT32;
       else

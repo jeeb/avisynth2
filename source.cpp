@@ -336,6 +336,8 @@ AVISource::AVISource(const char filename[], bool fAudio, const char pixel_type[]
       vi.sample_type = SAMPLE_INT16;
     } else if (pwfx->wBitsPerSample == 8) {
       vi.sample_type = SAMPLE_INT8;
+    } else if (pwfx->wBitsPerSample == 24) {
+      vi.sample_type = SAMPLE_INT24;
     } else if (pwfx->wBitsPerSample == 32) {
       vi.sample_type = SAMPLE_INT32;
     }
@@ -1009,7 +1011,10 @@ public:
       return S_FALSE;
     }
 
-    if (pmt->subtype == MEDIASUBTYPE_YUY2) {
+    if (pmt->subtype == MEDIASUBTYPE_YV12) {  // Not tested
+      vi.pixel_type = VideoInfo::CS_YUV|VideoInfo::CS_PLANAR;
+      vi.bits_per_pixel = 12;
+    } else if (pmt->subtype == MEDIASUBTYPE_YUY2) {
       vi.pixel_type = VideoInfo::CS_YUV|VideoInfo::CS_INTERLEAVED;
       vi.bits_per_pixel = 16;
     } else if (pmt->subtype == MEDIASUBTYPE_RGB24) {
