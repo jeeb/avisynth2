@@ -743,7 +743,7 @@ bool ScriptEnvironment::MakeWritable(PVideoFrame* pvf) {
   // copy the data into it.  Then modify the passed PVideoFrame
   // to point to the new buffer.
   else {    
-    const int row_size = vf->GetRowSize(PLANAR_Y_ALIGNED);
+    const int row_size = vf->GetRowSize(); 
     const int height = vf->GetHeight();
     PVideoFrame dst;
     if (vf->GetPitch(PLANAR_U)) {  // we have no videoinfo, so we can only assume that it is Planar
@@ -753,8 +753,8 @@ bool ScriptEnvironment::MakeWritable(PVideoFrame* pvf) {
     }
     BitBlt(dst->GetWritePtr(), dst->GetPitch(), vf->GetReadPtr(), vf->GetPitch(), row_size, height);
     // Blit More planes (pitch, rowsize and height should be 0, if none is present)
-    BitBlt(dst->GetWritePtr(PLANAR_V), dst->GetPitch(PLANAR_V), vf->GetReadPtr(PLANAR_V), vf->GetPitch(PLANAR_V), vf->GetRowSize(PLANAR_V_ALIGNED), vf->GetHeight(PLANAR_V));
-    BitBlt(dst->GetWritePtr(PLANAR_U), dst->GetPitch(PLANAR_U), vf->GetReadPtr(PLANAR_U), vf->GetPitch(PLANAR_U), vf->GetRowSize(PLANAR_U_ALIGNED), vf->GetHeight(PLANAR_U));
+    BitBlt(dst->GetWritePtr(PLANAR_V), dst->GetPitch(PLANAR_V), vf->GetReadPtr(PLANAR_V), vf->GetPitch(PLANAR_V), vf->GetRowSize(PLANAR_V), vf->GetHeight(PLANAR_V));
+    BitBlt(dst->GetWritePtr(PLANAR_U), dst->GetPitch(PLANAR_U), vf->GetReadPtr(PLANAR_U), vf->GetPitch(PLANAR_U), vf->GetRowSize(PLANAR_U), vf->GetHeight(PLANAR_U));
 
     *pvf = dst;
     return true;
