@@ -148,7 +148,7 @@ public:
     { return vi; }
   inline PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env)
     { return child_array[n % num_children]->GetFrame(n / num_children, env); }
-  inline void __stdcall GetAudio(void* buf, int start, int count, IScriptEnvironment* env) 
+  inline void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) 
     { child_array[0]->GetAudio(buf, start, count, env);  }
   inline bool __stdcall GetParity(int n) 
     { return child_array[n % num_children]->GetParity(n / num_children); }

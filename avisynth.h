@@ -21,7 +21,7 @@
 #define __AVISYNTH_H__
 
 
-enum { AVISYNTH_INTERFACE_VERSION = 1 };
+enum { AVISYNTH_INTERFACE_VERSION = 2 };
 
 
 // I had problems with Premiere wanting 1-byte alignment for its structures,
@@ -33,6 +33,14 @@ enum { AVISYNTH_INTERFACE_VERSION = 1 };
 // information that does not depend on the frame number).  The GetVideoInfo
 // method in IClip returns this struct.
 
+// Audio Sample information
+typedef float SFLOAT;
+
+enum {SAMPLE_INT8  = 1<<0,
+        SAMPLE_INT16 = 1<<1, 
+        SAMPLE_INT32 = 1<<2,
+        SAMPLE_FLOAT = 1<<3};
+
 struct VideoInfo {
   int width, height;    // width=0 means no video
   unsigned fps_numerator, fps_denominator;
@@ -41,9 +49,11 @@ struct VideoInfo {
   BYTE pixel_type;
   bool field_based;
 
+
   int audio_samples_per_second;   // 0 means no audio
-  int num_audio_samples;
-  bool stereo, sixteen_bit;
+  int sample_type;
+  __int64 num_audio_samples;
+  int nchannels;
 
   // useful functions of the above
   //bool HasVideo() const { return !!width; }
@@ -59,11 +69,29 @@ struct VideoInfo {
   int RowSize() const { return BytesFromPixels(width); }
   int BitsPerPixel() const { return (pixel_type&7) * 8; }
   int BMPSize() const { return height * ((RowSize()+3) & -4); }
-  int AudioSamplesFromFrames(int frames) const { return int(__int64(frames) * audio_samples_per_second * fps_denominator / fps_numerator); }
-  int FramesFromAudioSamples(int samples) const { return int(__int64(samples) * fps_numerator / fps_denominator / audio_samples_per_second); }
-  int AudioSamplesFromBytes(int bytes) const { return bytes >> (stereo + sixteen_bit); }
-  int BytesFromAudioSamples(int samples) const { return samples << (stereo + sixteen_bit); }
-  int BytesPerAudioSample() const { return BytesFromAudioSamples(1); }
+  __int64 AudioSamplesFromFrames(__int64 frames) const { return (__int64(frames) * audio_samples_per_second * fps_denominator / fps_numerator); }
+  __int64 FramesFromAudioSamples(__int64 samples) const { return (__int64(samples) * fps_numerator / fps_denominator / audio_samples_per_second); }
+  __int64 AudioSamplesFromBytes(__int64 bytes) const { return bytes / BytesPerAudioSample(); }
+  __int64 BytesFromAudioSamples(__int64 samples) const { return samples * BytesPerAudioSample(); }
+  int AudioChannels() const { return nchannels; }
+  int SampleType() const{ return sample_type;}
+  int SamplesPerSecond() const { return audio_samples_per_second; }
+  int BytesPerAudioSample() const { return nchannels*BytesPerChannelSample();}
+  int BytesPerChannelSample() const { 
+    switch (sample_type) {
+    case SAMPLE_INT8:
+      return sizeof(signed char);
+    case SAMPLE_INT16:
+      return sizeof(signed short);
+    case SAMPLE_INT32:
+      return sizeof(signed int);
+    case SAMPLE_FLOAT:
+      return sizeof(float);
+    default:
+      _ASSERTE("Sample type not recognized!");
+      return 0;
+    }
+  }
 
   // useful mutator
   void SetFPS(unsigned numerator, unsigned denominator) {
@@ -171,7 +199,7 @@ public:
 
   virtual PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env) = 0;
   virtual bool __stdcall GetParity(int n) = 0;  // return field parity if field_based, else parity of first field in frame
-  virtual void __stdcall GetAudio(void* buf, int start, int count, IScriptEnvironment* env) = 0;  // start and count are in samples
+  virtual void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) = 0;  // start and count are in samples
   virtual const VideoInfo& __stdcall GetVideoInfo() = 0;
   virtual __stdcall ~IClip() {}
 };
@@ -253,6 +281,7 @@ public:
   AVSValue(const PClip& c) { type = 'c'; clip = c.GetPointerWithAddRef(); }
   AVSValue(bool b) { type = 'b'; boolean = b; }
   AVSValue(int i) { type = 'i'; integer = i; }
+//  AVSValue(__int64 l) { type = 'l'; longlong = l; }
   AVSValue(float f) { type = 'f'; floating_pt = f; }
   AVSValue(double f) { type = 'f'; floating_pt = float(f); }
   AVSValue(const char* s) { type = 's'; string = s; }
@@ -269,13 +298,15 @@ public:
   bool IsClip() const { return type == 'c'; }
   bool IsBool() const { return type == 'b'; }
   bool IsInt() const { return type == 'i'; }
+//  bool IsLong() const { return (type == 'l'|| type == 'i'); }
   bool IsFloat() const { return type == 'f' || type == 'i'; }
   bool IsString() const { return type == 's'; }
   bool IsArray() const { return type == 'a'; }
 
   PClip AsClip() const { _ASSERTE(IsClip()); return IsClip()?clip:0; }
   bool AsBool() const { _ASSERTE(IsBool()); return boolean; }
-  int AsInt() const { _ASSERTE(IsInt()); return integer; }
+  int AsInt() const { _ASSERTE(IsInt()); return integer; }   
+//  int AsLong() const { _ASSERTE(IsLong()); return longlong; } 
   const char* AsString() const { _ASSERTE(IsString()); return IsString()?string:0; }
   double AsFloat() const { _ASSERTE(IsFloat()); return IsInt()?integer:floating_pt; }
 
@@ -292,7 +323,7 @@ public:
 
 private:
 
-  short type;  // 'a'rray, 'c'lip, 'b'ool, 'i'nt, 'f'loat, 's'tring, or 'v'oid
+  short type;  // 'a'rray, 'c'lip, 'b'ool, 'i'nt, 'f'loat, 's'tring, 'v'oid, or 'l'ong
   short array_size;
   union {
     IClip* clip;
@@ -301,6 +332,7 @@ private:
     float floating_pt;
     const char* string;
     const AVSValue* array;
+//    __int64 longlong;
   };
 
   void Assign(const AVSValue* src, bool init) {
@@ -323,7 +355,7 @@ protected:
 public:
   GenericVideoFilter(PClip _child) : child(_child) { vi = child->GetVideoInfo(); }
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env) { return child->GetFrame(n, env); }
-  void __stdcall GetAudio(void* buf, int start, int count, IScriptEnvironment* env) { child->GetAudio(buf, start, count, env); }
+  void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) { child->GetAudio(buf, start, count, env); }
   const VideoInfo& __stdcall GetVideoInfo() { return vi; }
   bool __stdcall GetParity(int n) { return child->GetParity(n); }
 };

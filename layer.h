@@ -34,7 +34,7 @@ public:
   Mask(PClip _child1, PClip _child2, IScriptEnvironment* env);
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
 
-  inline virtual void __stdcall GetAudio(void* buf, int start, int count, IScriptEnvironment* env)
+  inline virtual void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env)
     { child1->GetAudio(buf, start, count, env); }
   inline virtual const VideoInfo& __stdcall GetVideoInfo() 
     { return vi; }
@@ -94,7 +94,7 @@ public:
          int _t, bool _chroma, IScriptEnvironment* env );
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
 
-  inline virtual void __stdcall GetAudio(void* buf, int start, int count, IScriptEnvironment* env) 
+  inline virtual void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) 
     { child1->GetAudio(buf, start, count, env); }
   inline virtual const VideoInfo& __stdcall GetVideoInfo() 
     { return vi; }
@@ -124,7 +124,7 @@ public:
   Subtract(PClip _child1, PClip _child2, IScriptEnvironment* env);
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
 
-  inline virtual void __stdcall GetAudio(void* buf, int start, int count, IScriptEnvironment* env) 
+  inline virtual void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) 
     { child1->GetAudio(buf, start, count, env);  }
   inline virtual const VideoInfo& __stdcall GetVideoInfo() 
     { return vi; }

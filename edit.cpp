@@ -204,7 +204,7 @@ Splice::Splice(PClip _child1, PClip _child2, bool realign_sound, IScriptEnvironm
       env->ThrowError("Splice: video formats don't match");
   }
   if (vi.HasAudio()) {
-    if (vi.stereo != vi2.stereo || vi.sixteen_bit != vi2.sixteen_bit)
+    if (vi.AudioChannels() != vi2.AudioChannels() || vi.SampleType() != vi2.SampleType())
       env->ThrowError("Splice: sound formats don't match");
   }
 
@@ -287,6 +287,8 @@ AVSValue __cdecl Splice::CreateAligned(AVSValue args, void*, IScriptEnvironment*
  *******   Dissolve Filter  ******
  *********************************/
 
+// Fixme: Add float samples
+
 AVSValue __cdecl Dissolve::Create(AVSValue args, void*, IScriptEnvironment* env) 
 {
   const int overlap = args[2].AsInt();
@@ -314,7 +316,7 @@ Dissolve::Dissolve(PClip _child1, PClip _child2, int _overlap, IScriptEnvironmen
       env->ThrowError("Dissolve: video formats don't match");
   }
   if (vi.HasAudio()) {
-    if (vi.stereo != vi2.stereo || vi.sixteen_bit != vi2.sixteen_bit)
+    if (vi.AudioChannels() != vi2.AudioChannels() || vi.SampleType() != vi2.SampleType())
       env->ThrowError("Dissolve: sound formats don't match");
   }
 
@@ -382,9 +384,9 @@ void Dissolve::GetAudio(void* buf, int start, int count, IScriptEnvironment* env
 
     int denominator = (audio_fade_end - audio_fade_start);
     int numerator = (audio_fade_end - start);
-    if (vi.sixteen_bit) {
+    if (vi.SampleType()==SAMPLE_INT16) {
       short *a = (short*)buf, *b = (short*)audbuffer;
-      if (vi.stereo) {
+      if (vi.AudioChannels()==2) {
         for (int i=0; i<count*2; i+=2) {
           if (numerator <= 0) {
             a[i] = b[i];
@@ -395,7 +397,7 @@ void Dissolve::GetAudio(void* buf, int start, int count, IScriptEnvironment* env
           }
           numerator--;
         }
-      } else {
+      } else if (vi.AudioChannels()==1) {
         for (int i=0; i<count; ++i) {
           if (numerator <= 0)
             a[i] = b[i];
@@ -404,14 +406,14 @@ void Dissolve::GetAudio(void* buf, int start, int count, IScriptEnvironment* env
           numerator--;
         }
       }
-    } else {
+    } else if (vi.SampleType()==SAMPLE_INT8) { 
       BYTE *a = (BYTE*)buf, *b = (BYTE*)audbuffer;
       for (int i=0; i<count; ++i) {
         if (numerator <= 0)
           a[i] = b[i];
         else if (numerator < denominator)
           a[i] = b[i] + MulDiv(a[i]-b[i], numerator, denominator);
-        numerator -= ((i&1) | !vi.stereo);
+        numerator -= ((i&1) | (vi.AudioChannels()==1));
       }
     }
   }
@@ -453,8 +455,8 @@ AudioDub::AudioDub(PClip child1, PClip child2, IScriptEnvironment* env)
   vi = *vi_video;
   vi.audio_samples_per_second = vi_audio->audio_samples_per_second;
   vi.num_audio_samples = vi_audio->num_audio_samples;
-  vi.sixteen_bit = vi_audio->sixteen_bit;
-  vi.stereo = vi_audio->stereo;
+  vi.sample_type = vi_audio->sample_type;
+  vi.nchannels = vi_audio->nchannels;
 }
 
 
@@ -476,7 +478,7 @@ bool AudioDub::GetParity(int n)
 }
 
 
-void AudioDub::GetAudio(void* buf, int start, int count, IScriptEnvironment* env) 
+void AudioDub::GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) 
 {
   achild->GetAudio(buf, start, count, env);
 }
@@ -558,7 +560,7 @@ Loop::Loop(PClip _child, int _times, int _start, int _end, IScriptEnvironment* e
   }
 
   if (vi.audio_samples_per_second) {
-    if (!vi.sixteen_bit)
+    if (vi.SampleType()!=SAMPLE_INT16)   // FIXME: Implement better handling!!!
       env->ThrowError("Loop: Sound must be 16 bits, use ConvertAudioTo16bit() or KillAudio()");
 
     start_samples = (((start*vi.audio_samples_per_second)*vi.fps_denominator)/ vi.fps_numerator);
@@ -595,8 +597,8 @@ void Loop::GetAudio(void* buf, int s_start, int count, IScriptEnvironment* env) 
   } 
 
   signed short* samples = (signed short*)buf;
-  int s_pitch=1;
-  if (vi.stereo) s_pitch=2;
+  int s_pitch=vi.AudioChannels();
+//  if (vi.stereo) s_pitch=2;
  
   int in_loop_start=s_start-start_samples;  // This is the offset within the loop
   int fetch_at_sample = (in_loop_start%loop_len_samples); // This is the first sample to get.

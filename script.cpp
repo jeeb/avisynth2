@@ -47,7 +47,7 @@ AVSFunction Script_functions[] = {
   { "framecount", "c", FrameCount },
   { "framerate", "c", FrameRate },
   { "audiorate", "c", AudioRate },
-  { "audiolength", "c", AudioLength },
+//  { "audiolength", "c", AudioLength },      // DISABLED!!   FIXME: Support int64 as AVSValue
   { "audiochannels", "c", AudioChannels },
   { "audiobits", "c", AudioBits },
   { "IsRGB", "c", IsRGB },
@@ -247,9 +247,9 @@ AVSValue Height(AVSValue args, void*, IScriptEnvironment* env) { return VI(args[
 AVSValue FrameCount(AVSValue args, void*, IScriptEnvironment* env) { return VI(args[0]).num_frames; }
 AVSValue FrameRate(AVSValue args, void*, IScriptEnvironment* env) { const VideoInfo& vi = VI(args[0]); return float(vi.fps_numerator) / float(vi.fps_denominator); }
 AVSValue AudioRate(AVSValue args, void*, IScriptEnvironment* env) { return VI(args[0]).audio_samples_per_second; }
-AVSValue AudioLength(AVSValue args, void*, IScriptEnvironment* env) { return VI(args[0]).num_audio_samples; }
-AVSValue AudioChannels(AVSValue args, void*, IScriptEnvironment* env) { return VI(args[0]).stereo ? 2 : 1; }
-AVSValue AudioBits(AVSValue args, void*, IScriptEnvironment* env) { return VI(args[0]).sixteen_bit ? 16 : 8; }
+//AVSValue AudioLength(AVSValue args, void*, IScriptEnvironment* env) { return VI(args[0]).num_audio_samples; }
+AVSValue AudioChannels(AVSValue args, void*, IScriptEnvironment* env) { return VI(args[0]).nchannels; }
+AVSValue AudioBits(AVSValue args, void*, IScriptEnvironment* env) { return VI(args[0]).BytesPerChannelSample(); }
 AVSValue IsRGB(AVSValue args, void*, IScriptEnvironment* env) { return VI(args[0]).IsRGB(); }
 AVSValue IsYUY2(AVSValue args, void*, IScriptEnvironment* env) { return VI(args[0]).IsYUY2(); }
 AVSValue IsFieldBased(AVSValue args, void*, IScriptEnvironment* env) { return VI(args[0]).field_based; }

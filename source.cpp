@@ -62,7 +62,7 @@ public:
   ~AVISource();
   const VideoInfo& __stdcall GetVideoInfo();
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
-  void __stdcall GetAudio(void* buf, int start, int count, IScriptEnvironment* env);
+  void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) ;
   bool __stdcall GetParity(int n);
 
   static AVSValue __cdecl Create(AVSValue args, void* user_data, IScriptEnvironment* env) {
@@ -301,34 +301,43 @@ AVISource::AVISource(const char filename[], bool fAudio, const char pixel_type[]
     WAVEFORMATEX* pwfx; 
     pwfx = audioStreamSource->GetFormat();
     vi.audio_samples_per_second = pwfx->nSamplesPerSec;
-    vi.stereo = (pwfx->nChannels == 2);
-    vi.sixteen_bit = (pwfx->wBitsPerSample == 16);
+//    vi.stereo = (pwfx->nChannels == 2);
+    vi.nchannels = pwfx->nChannels;
+    if (pwfx->wBitsPerSample == 16) {
+      vi.sample_type = SAMPLE_INT16;
+    } else if (pwfx->wBitsPerSample == 8) {
+      vi.sample_type = SAMPLE_INT8;
+    } else if (pwfx->wBitsPerSample == 32) {
+      vi.sample_type = SAMPLE_INT32;
+    }
     vi.num_audio_samples = audioStreamSource->GetLength();
 
     audio_stream_pos = 0;
   }
-  // try to decompress frame 0.
-  int keyframe = pvideo->NearestKeyFrame(0);
-  PVideoFrame frame = env->NewVideoFrame(vi, 4);
-  LRESULT error = DecompressFrame(keyframe, true, frame->GetWritePtr());
-  if (error != ICERR_OK || (!frame)||(dropped_frame)) {   // shutdown, if init not succesful.
-    if (hic) {
-      !ex ? ICDecompressEnd(hic) : ICDecompressExEnd(hic);
-      ICClose(hic);
+  // try to decompress frame 0 if not audio only.
+  if (mode!=3) {
+    int keyframe = pvideo->NearestKeyFrame(0);
+    PVideoFrame frame = env->NewVideoFrame(vi, 4);
+    LRESULT error = DecompressFrame(keyframe, true, frame->GetWritePtr());
+    if (error != ICERR_OK || (!frame)||(dropped_frame)) {   // shutdown, if init not succesful.
+      if (hic) {
+        !ex ? ICDecompressEnd(hic) : ICDecompressExEnd(hic);
+        ICClose(hic);
+      }
+      if (pvideo) delete pvideo;
+      if (aSrc) delete aSrc;
+      if (audioStreamSource) delete audioStreamSource;
+      if (pfile)
+        pfile->Release();
+      AVIFileExit();
+      if (pbiSrc)
+        free(pbiSrc);
+      env->ThrowError("AviSource: Could not decompress frame 0");
+      
     }
-    if (pvideo) delete pvideo;
-    if (aSrc) delete aSrc;
-    if (audioStreamSource) delete audioStreamSource;
-    if (pfile)
-      pfile->Release();
-    AVIFileExit();
-    if (pbiSrc)
-      free(pbiSrc);
-    env->ThrowError("AviSource: Could not decompress frame 0");
-  
+    last_frame_no=0;
+    last_frame=frame;
   }
-  last_frame_no=0;
-  last_frame=frame;
 }
 
 AVISource::~AVISource() {
@@ -386,7 +395,7 @@ PVideoFrame AVISource::GetFrame(int n, IScriptEnvironment* env) {
   return last_frame;
 }
 
-void AVISource::GetAudio(void* buf, int start, int count, IScriptEnvironment* env) {
+void AVISource::GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) {
   LONG bytes_read=0, samples_read=0;
 
   if (start < 0) {
@@ -424,7 +433,7 @@ public:
   StaticImage(const VideoInfo& _vi, const PVideoFrame& _frame)
     : vi(_vi), frame(_frame) {}
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env) { return frame; }
-  void __stdcall GetAudio(void* buf, int start, int count, IScriptEnvironment* env) {
+  void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) {
     memset(buf, 0, vi.BytesFromAudioSamples(count));
   }
   const VideoInfo& __stdcall GetVideoInfo() { return vi; }
@@ -454,7 +463,7 @@ static PVideoFrame CreateBlankFrame(const VideoInfo& vi, int color, IScriptEnvir
 }
 
 static AVSValue __cdecl Create_BlankClip(AVSValue args, void*, IScriptEnvironment* env) {
-  VideoInfo vi_default = { 640, 480, 24, 1, 240, VideoInfo::BGR32, false, 44100, 0, true, true };
+  VideoInfo vi_default = { 640, 480, 24, 1, 240, VideoInfo::BGR32, false, 44100, 0, 2, SAMPLE_INT16 };  /// fixme: AUDIO is probably not correct!!!!
   VideoInfo vi;
   if (args[0].Defined()) {
     vi_default = args[0].AsClip()->GetVideoInfo();
@@ -484,8 +493,8 @@ static AVSValue __cdecl Create_BlankClip(AVSValue args, void*, IScriptEnvironmen
   }
   vi.field_based = vi_default.field_based;
   vi.audio_samples_per_second = args[7].AsInt(vi_default.audio_samples_per_second);
-  vi.stereo = args[8].AsBool(vi_default.stereo);
-  vi.sixteen_bit = args[9].AsBool(vi_default.sixteen_bit);
+  vi.nchannels = args[8].AsInt(vi_default.nchannels);
+  vi.sample_type = args[9].AsInt(vi_default.sample_type);
   vi.num_audio_samples = vi.AudioSamplesFromFrames(vi.num_frames);
   int color = args[10].AsInt(0);
   return new StaticImage(vi, CreateBlankFrame(vi, color, env));
@@ -564,8 +573,8 @@ public:
     vi.num_frames = 107892;   // 1 hour
     vi.pixel_type = VideoInfo::BGR32;
     vi.field_based = false;
-    vi.sixteen_bit = true;
-    vi.stereo = true;
+    vi.sample_type = SAMPLE_INT16;
+    vi.nchannels = 2;
     vi.audio_samples_per_second = 48000;
     vi.num_audio_samples=(60*60)*vi.audio_samples_per_second;
 
@@ -618,7 +627,7 @@ public:
   bool __stdcall GetParity(int n) { return false; }
   const VideoInfo& __stdcall GetVideoInfo() { return vi; }
 
-  void __stdcall GetAudio(void* buf, int start, int count, IScriptEnvironment*) {
+  void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) {
     double Hz=440;
     double add_per_sample=Hz/(double)vi.audio_samples_per_second;
     double second_offset=(double)start*add_per_sample;
@@ -760,7 +769,7 @@ public:
     mc->Run();
     mc->Release();
     _RPT0(0,"StartGraph() waiting for new sample...\n");
-    WaitForSingleObject(evtNewSampleReady, INFINITE);
+    WaitForSingleObject(evtNewSampleReady, 5000);    // MAX wait time = 5000ms!
     _RPT0(0,"...StartGraph() finished waiting for new sample\n");
 
   }
@@ -789,14 +798,42 @@ public:
 
   HRESULT SeekTo(__int64 pos) {
     PauseGraph();
-
+    HRESULT hr;
     IMediaSeeking* ms;
     filter_graph->QueryInterface(&ms);
-    HRESULT hr = ms->SetPositions(&pos, AM_SEEKING_AbsolutePositioning, NULL, 0);
-    ms->Release();
 
+    LONGLONG pStop=-1;
+    LONGLONG pCurrent=-1;
+    _RPT0(0,"SeekTo() seeking to new position\n");
+
+    DWORD pCapabilities = AM_SEEKING_CanGetCurrentPos;
+    HRESULT canDo = ms->CheckCapabilities(&pCapabilities);
+    if (canDo) {
+      HRESULT hr2 = ms->GetPositions(&pStop,&pCurrent);
+    }
+
+    pCapabilities = AM_SEEKING_CanSeekAbsolute;
+    canDo = ms->CheckCapabilities(&pCapabilities);
+
+    if (canDo) {
+       hr = ms->SetPositions(&pos, AM_SEEKING_AbsolutePositioning, 0, 0);
+    } else {
+      pCapabilities = AM_SEEKING_CanSeekForwards;
+      canDo = ms->CheckCapabilities(&pCapabilities);
+      if (canDo && (pCurrent!=-1)) {
+        pCurrent-=pos;
+        hr = ms->SetPositions(&pCurrent, AM_SEEKING_RelativePositioning, 0, 0);
+      } else {
+        // No way of seeking
+        ms->Release();
+        StartGraph();
+        return S_FALSE;
+      }
+    }
+    ms->Release();
     StartGraph();
-    return hr;
+
+    return S_OK;  // Seek ok
   }
 
   void NextSample() {
@@ -929,6 +966,9 @@ public:
     if (!pmt) return E_POINTER;
 
     if (pmt->majortype != MEDIATYPE_Video) {
+      if (pmt->majortype == MEDIATYPE_Audio) {
+        _RPT0(0, "*** Found majortype Audio\n");
+      }
       _RPT0(0, "*** majortype was not video\n");
       return S_FALSE;
     }
@@ -1176,7 +1216,7 @@ class DirectShowSource : public IClip {
   int avg_time_per_frame;
   __int64 base_sample_time;
   int cur_frame;
-
+  bool no_search;
   IScriptEnvironment* const env;
 
   void CheckHresult(HRESULT hr, const char* msg, const char* msg2 = "");
@@ -1236,6 +1276,7 @@ public:
 
     cur_frame = 0;
     base_sample_time = 0;
+    no_search = false;
   }
 
   ~DirectShowSource() { get_sample.StopGraph(); gb->Release(); }
@@ -1246,8 +1287,17 @@ public:
     n = max(min(n, vi.num_frames-1), 0);
     if (frame_units) {
       if (n < cur_frame || n > cur_frame+10) {
-        CheckHresult(get_sample.SeekTo(n), "unable to seek in stream (using frames)");
-        cur_frame = n;
+        if ( no_search || get_sample.SeekTo(n)!=S_OK) {
+          no_search=true;
+          if (cur_frame < n) {
+            while (cur_frame < n) {
+              get_sample.NextSample();
+              cur_frame++;
+            } // end while
+          } // end if curframe<n  fail, if n is behind cur_frame and no seek.
+        } else { // seek ok!
+          cur_frame = n;
+        }
       } else {
         while (cur_frame < n) {
           get_sample.NextSample();
@@ -1256,22 +1306,35 @@ public:
       }
     } else {
       __int64 sample_time = __int64(n) * avg_time_per_frame + (avg_time_per_frame>>1);
-      if (n < cur_frame || n > cur_frame+10) {
-        CheckHresult(get_sample.SeekTo(sample_time), "unable to seek in stream");
-        base_sample_time = sample_time - (avg_time_per_frame>>1) - get_sample.GetSampleStartTime();
+      if (n > cur_frame || n > cur_frame+10) {
+        if (get_sample.SeekTo(sample_time)!=S_OK) {
+          if (cur_frame<n) {  // seek manually
+            while (get_sample.GetSampleEndTime()+base_sample_time <= sample_time) {
+              get_sample.NextSample();
+            }
+            cur_frame = n;
+          } // end if curframe<n  fail, if n is behind cur_frame and no seek.
+        } else { // seek ok!
+          base_sample_time = sample_time - (avg_time_per_frame>>1) - get_sample.GetSampleStartTime();
+          cur_frame = n;
+        }
       } else {
-        while (get_sample.GetSampleEndTime()+base_sample_time <= sample_time) {
+        while (cur_frame < n) {
           get_sample.NextSample();
+          cur_frame++;
         }
       }
-      cur_frame = n;
     }
-    return get_sample.GetCurrentFrame();
+    PVideoFrame v = get_sample.GetCurrentFrame();
+    if ((cur_frame!=n) && (n%10>4)) {
+      env->MakeWritable(&v);
+      ApplyMessage(&v, vi, "Video Desync!",256,0xffffff,0,0,env);
+    }
+    return v;
   }
-
   bool __stdcall GetParity(int n) { return vi.field_based ? (n&1) : false; }
 
-  void __stdcall GetAudio(void*, int, int, IScriptEnvironment*) {}
+  void __stdcall GetAudio(void*, __int64, __int64, IScriptEnvironment*) {}
 };
 
 
@@ -1304,7 +1367,7 @@ public:
 //    foo();
   }
   PVideoFrame GetFrame(int n, IScriptEnvironment* env) {}
-  void GetAudio(void* buf, int start, int count, IScriptEnvironment* env) {}
+  void GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) {}
   const VideoInfo& GetVideoInfo() {}
   bool GetParity(int n) { return false; }
 

@@ -46,7 +46,7 @@ AVSFunction Audio_filters[] = {
 
 
 
-
+ 
 
  
 /******************************************
@@ -56,7 +56,7 @@ AVSFunction Audio_filters[] = {
 ConvertAudioTo16bit::ConvertAudioTo16bit(PClip _clip) 
   : GenericVideoFilter(_clip)
 {
-  vi.sixteen_bit = true;
+  vi.sample_type = SAMPLE_INT16;
 }
 
 
@@ -73,9 +73,9 @@ void __stdcall ConvertAudioTo16bit::GetAudio(void* buf, int start, int count, IS
 
 PClip ConvertAudioTo16bit::Create(PClip clip) 
 {
-  if (clip->GetVideoInfo().sixteen_bit)
+  if (clip->GetVideoInfo().SampleType()==SAMPLE_INT16)
     return clip;
-  else
+  else 
     return new ConvertAudioTo16bit(clip);
 }
 
@@ -95,33 +95,38 @@ ConvertToMono::ConvertToMono(PClip _clip)
   : GenericVideoFilter(ConvertAudioTo16bit::Create(_clip))
 {
 	
-  vi.stereo = false;
+  vi.nchannels = 1;
   tempbuffer_size=0;
 }
 
 
 void __stdcall ConvertToMono::GetAudio(void* buf, int start, int count, IScriptEnvironment* env) 
 {
+  int channels=vi.AudioChannels();
   if (tempbuffer_size) {
     if (tempbuffer_size<count) {
       delete[] tempbuffer;
-      tempbuffer=new signed short[count*2];
+      tempbuffer=new signed short[count*channels];
       tempbuffer_size=count;
     }
   } else {
-    tempbuffer=new signed short[count*2];
+    tempbuffer=new signed short[count*channels];
     tempbuffer_size=count;
   }
   child->GetAudio(tempbuffer, start, count, env);
   signed short* samples = (signed short*)buf;
-  for (int i=0; i<count; i++)
-    samples[i] = (tempbuffer[i*2] + tempbuffer[i*2+1])>>1;
+  for (int i=0; i<count; i++) {
+    int tsample=0;    
+    for (int j=0;j<channels;j++) 
+      tsample+=tempbuffer[i*channels+j]; // Accumulate samples
+    samples[i] =(short)(tsample/channels);
+  }
 }
 
 
 PClip ConvertToMono::Create(PClip clip) 
 {
-  if (!clip->GetVideoInfo().stereo)
+  if (clip->GetVideoInfo().AudioChannels()==1)
     return clip;
   else
     return new ConvertToMono(clip);
@@ -185,7 +190,7 @@ MonoToStereo::MonoToStereo(PClip _child, PClip _clip, IScriptEnvironment* env)
   : GenericVideoFilter(ConvertAudioTo16bit::Create(_child)),
 	right(ConvertAudioTo16bit::Create(_clip))
 {
-	const VideoInfo& vi2 = right->GetVideoInfo();
+/*	const VideoInfo& vi2 = right->GetVideoInfo();
 
 	if (vi.audio_samples_per_second!=vi2.audio_samples_per_second) 
 		env->ThrowError("MixAudio: Clips must have same sample rate! Use ResampleAudio()!");  // Could be removed for fun :)
@@ -195,12 +200,13 @@ MonoToStereo::MonoToStereo(PClip _child, PClip _clip, IScriptEnvironment* env)
 
   vi.stereo = true;
   tempbuffer_size=0;
+  */
 }
 
 
 void __stdcall MonoToStereo::GetAudio(void* buf, int start, int count, IScriptEnvironment* env) 
 {
-  if (tempbuffer_size) {
+/*  if (tempbuffer_size) {
     if (tempbuffer_size<(count*4)) {
       delete[] tempbuffer;
       tempbuffer=new signed short[count*4];
@@ -244,6 +250,7 @@ void __stdcall MonoToStereo::GetAudio(void* buf, int start, int count, IScriptEn
 			}
 		}
 	}
+  */
 }
 
 
@@ -258,11 +265,14 @@ AVSValue __cdecl MonoToStereo::Create(AVSValue args, void*, IScriptEnvironment* 
  *******    channel from a stereo source     *******
  ***************************************************/
 
-GetChannel::GetChannel(PClip _clip, bool _left) 
+
+// FIXME: Support float samples
+
+GetChannel::GetChannel(PClip _clip, int _channel) 
   : GenericVideoFilter(ConvertAudioTo16bit::Create(_clip)),
-		left(_left)
+		channel(_channel)
 {	
-  vi.stereo = false;
+  vi.nchannels = 1;
   tempbuffer_size=0;
 }
 
@@ -281,30 +291,33 @@ void __stdcall GetChannel::GetAudio(void* buf, int start, int count, IScriptEnvi
   }
   child->GetAudio(tempbuffer, start, count, env);
   signed short* samples = (signed short*)buf;
-	if (left) {
-		for (int i=0; i<count; i++)
-			samples[i] = tempbuffer[i*2];
-	} else {
-		for (int i=0; i<count; i++)
-			samples[i] = tempbuffer[i*2+1];
-	}
+  for (int i=0; i<count; i++)
+		samples[i] = tempbuffer[i*2+channel];
 }
 
 
 PClip GetChannel::Create_left(PClip clip) 
 {
-  if (!clip->GetVideoInfo().stereo)
+  if (clip->GetVideoInfo().AudioChannels()==1)
     return clip;
   else
-    return new GetChannel(clip,true);
+    return new GetChannel(clip,0);
 }
 
 PClip GetChannel::Create_right(PClip clip) 
 {
-  if (!clip->GetVideoInfo().stereo)
+  if (clip->GetVideoInfo().AudioChannels()==1)
     return clip;
   else
-    return new GetChannel(clip,false);
+    return new GetChannel(clip,1);
+}
+
+PClip GetChannel::Create_n(PClip clip, int n) 
+{
+  if (clip->GetVideoInfo().AudioChannels()==1)
+    return clip;
+  else
+    return new GetChannel(clip,n);
 }
 
 AVSValue __cdecl GetChannel::Create_left(AVSValue args, void*, IScriptEnvironment*) 
@@ -317,6 +330,10 @@ AVSValue __cdecl GetChannel::Create_right(AVSValue args, void*, IScriptEnvironme
   return Create_right(args[0].AsClip());
 }
 
+AVSValue __cdecl GetChannel::Create_n(AVSValue args, void*, IScriptEnvironment*) 
+{
+  return Create_n(args[0].AsClip(), args[1].AsInt(0));
+}
 
 /******************************
  *******   Kill Audio  ********
@@ -367,6 +384,7 @@ AVSValue __cdecl DelayAudio::Create(AVSValue args, void*, IScriptEnvironment* en
 /********************************
  *******   Amplify Audio   ******
  *******************************/
+// Fixme: Support float
 
 Amplify::Amplify(PClip _child, double _left_factor, double _right_factor)
   : GenericVideoFilter(ConvertAudioTo16bit::Create(_child)),
@@ -378,16 +396,12 @@ void __stdcall Amplify::GetAudio(void* buf, int start, int count, IScriptEnviron
 {
   child->GetAudio(buf, start, count, env);
   short* samples = (short*)buf;
-  if (vi.stereo) {
-    for (int i=0; i<count; ++i) {
-      samples[i*2] = Saturate(int(Int32x32To64(samples[i*2],left_factor) >> 16));
-      samples[i*2+1] = Saturate(int(Int32x32To64(samples[i*2+1],right_factor) >> 16));
+  int channels=vi.AudioChannels();
+  for (int i=0; i<count; ++i) {
+   for (int j=0;j<channels;j++) {
+      samples[i*channels+j] = Saturate(int(Int32x32To64(samples[i*channels+j],left_factor) >> 16));
     }
   } 
-  else {
-    for (int i=0; i<count; ++i)
-      samples[i] = Saturate(int(Int32x32To64(samples[i],left_factor) >> 16));
-  }
 }
 
 
@@ -411,7 +425,7 @@ AVSValue __cdecl Amplify::Create_dB(AVSValue args, void*, IScriptEnvironment* en
 /*****************************
  ***** Normalize audio  ******
 ******************************/
-
+// Fixme: Support float
 
 Normalize::Normalize(PClip _child, double _left_factor, double _right_factor)
   : GenericVideoFilter(ConvertAudioTo16bit::Create(_child)),
@@ -427,7 +441,7 @@ void __stdcall Normalize::GetAudio(void* buf, int start, int count, IScriptEnvir
   if (max_volume==-1) {
     int passes=vi.num_audio_samples/count;
     int num_samples=count;
-    if (vi.stereo) num_samples*=2;
+    num_samples*=vi.AudioChannels();
     // Read samples into buffer and test them
     for (int i=0;i<passes;i++) {
         child->GetAudio(buf, num_samples*i, count, env);
@@ -437,7 +451,7 @@ void __stdcall Normalize::GetAudio(void* buf, int start, int count, IScriptEnvir
     }     
     // Remaining samples
     int rem_samples=vi.num_audio_samples%count;
-    if (vi.stereo) rem_samples*=2;
+    rem_samples*=vi.AudioChannels();
     child->GetAudio(buf, num_samples*passes, rem_samples, env);
     for (i=0;i<rem_samples;i++) {
       max_volume=max(abs(samples[i]),max_volume);
@@ -448,16 +462,12 @@ void __stdcall Normalize::GetAudio(void* buf, int start, int count, IScriptEnvir
     right_factor=(int)((double)right_factor*volume);
   } 
   child->GetAudio(buf, start, count, env); 
-  if (vi.stereo) {
-    for (int i=0; i<count; ++i) {
-      samples[i*2] = Saturate(int(Int32x32To64(samples[i*2],left_factor) >> 16));
-      samples[i*2+1] = Saturate(int(Int32x32To64(samples[i*2+1],right_factor) >> 16));
+  int channels=vi.AudioChannels();
+  for (int i=0; i<count; ++i) {
+   for (int j=0;j<channels;j++) {
+      samples[i*channels+j] = Saturate(int(Int32x32To64(samples[i*channels+j],left_factor) >> 16));
     }
   } 
-  else {
-    for (int i=0; i<count; ++i)
-      samples[i] = int(Int32x32To64(samples[i],left_factor) >> 16);
-  }
 }
 
 
@@ -484,7 +494,7 @@ MixAudio::MixAudio(PClip _child, PClip _clip, double _track1_factor, double _tra
 		if (vi.audio_samples_per_second!=vi2.audio_samples_per_second) 
 			env->ThrowError("MixAudio: Clips must have same sample rate! Use ResampleAudio()!");  // Could be removed for fun :)
 
-		if (vi.stereo!=vi2.stereo) 
+		if (vi.AudioChannels()!=vi2.AudioChannels()) 
 			env->ThrowError("MixAudio: Clips must have same number of channels! Use ConvertToMono() or MonoToStereo()!");
 
 		tempbuffer_size=0;
@@ -508,20 +518,12 @@ void __stdcall MixAudio::GetAudio(void* buf, int start, int count, IScriptEnviro
   clip->GetAudio(tempbuffer, start, count, env);
   short* samples = (short*)buf;
   short* clip_samples = (short*)tempbuffer;
-
-  if (vi.stereo) {
-    for (int i=0; i<count; ++i) {
-      samples[i*2] = Saturate( int(Int32x32To64(samples[i*2],track1_factor) >> 16) +
-				int(Int32x32To64(clip_samples[i*2],track2_factor) >> 16) );
-      samples[i*2+1] = Saturate( int(Int32x32To64(samples[i*2+1],track1_factor) >> 16) +
-				int(Int32x32To64(clip_samples[i*2+1],track2_factor) >> 16) );
+  int channels=vi.AudioChannels();
+  for (int i=0; i<count; ++i) {
+    for (int j=0;j<channels;j++) {
+      samples[i*channels+j] = Saturate( int(Int32x32To64(samples[i*channels+j],track1_factor) >> 16) +
+				int(Int32x32To64(clip_samples[i*channels+j],track2_factor) >> 16) );
     }
-  } 
-  else {
-    for (int i=0; i<count; ++i) {
-      samples[i] = Saturate( int(Int32x32To64(samples[i],track1_factor) >> 16) +
-				int(Int32x32To64(clip_samples[i],track2_factor) >> 16) );
-		}
   }
 }
 
@@ -556,7 +558,6 @@ FilterAudio::FilterAudio(PClip _child, int _cutoff, float _rez, int _lowpass)
       r_vibraspeed = 0;
       lastsample=-1;
       tempbuffer_size=0;
-
 } 
 
 
@@ -593,7 +594,7 @@ void __stdcall FilterAudio::GetAudio(void* buf, int start, int count, IScriptEnv
       b2 = ( 1.0 - rez * c + c * c) * a1;  
     }
     short* samples = (short*)buf;
-    if (vi.stereo) {
+    if (vi.AudioChannels()==2) {
       
       if (lastsample!=start) {  // Streaming has just started here.
         last_1=tempbuffer[3];
@@ -619,7 +620,7 @@ void __stdcall FilterAudio::GetAudio(void* buf, int start, int count, IScriptEnv
       last_4=samples[count*2-4];
       lastsample=start+count;
     } 
-    else { 
+    else if (vi.AudioChannels()==1) { 
       if (lastsample!=start) {
         last_1=tempbuffer[1];
         last_2=tempbuffer[0];
@@ -657,7 +658,7 @@ void __stdcall FilterAudio::GetAudio(void* buf, int start, int count, IScriptEnv
     float c = r+1.0-2.0*cos(w)*q;
     float temp;
     short* samples = (short*)buf;
-    if (vi.stereo) {
+    if (vi.AudioChannels()==2) {
       for (unsigned int i=0; i<count; ++i) { 
         
         // Accelerate vibra by signal-vibra, multiplied by lowpasscutoff 
@@ -689,7 +690,7 @@ void __stdcall FilterAudio::GetAudio(void* buf, int start, int count, IScriptEnv
         // Store new value  
         samples[i*2+1] = (short)temp; 
       }
-    } else {
+    } else if (vi.AudioChannels()==1) {
       for (unsigned int i=0; i<count; ++i) { 
         
         // Accelerate vibra by signal-vibra, multiplied by lowpasscutoff 
@@ -799,7 +800,7 @@ void __stdcall ResampleAudio::GetAudio(void* buf, int start, int count, IScriptE
   int pos_end = int(src_end) - (int(src_start) & ~Pmask) + (Xoff << Np);
   short* dst = (short*)buf;
 
-  if (!vi.stereo) {
+  if (vi.AudioChannels()==1) {
     while (pos < pos_end) 
     {
       short* Xp = &srcbuffer[pos>>Np];
@@ -811,7 +812,7 @@ void __stdcall ResampleAudio::GetAudio(void* buf, int start, int count, IScriptE
       pos += dtb;       /* Move to next sample by time increment */
     }
   }
-  else {
+  else if (vi.AudioChannels()==2) {
     while (pos < pos_end) 
     {
       short* Xp = &srcbuffer[(pos>>Np)*2];

@@ -800,9 +800,10 @@ STDMETHODIMP CAVIStreamSynth::ReadFormat(LONG lPos, LPVOID lpFormat, LONG *lpcbF
     WAVEFORMATEX wfx;
     memset(&wfx, 0, sizeof(wfx));
     wfx.wFormatTag = 1;
-    wfx.nChannels = vi->stereo ? 2 : 1;
-    wfx.nSamplesPerSec = vi->audio_samples_per_second;
-    wfx.wBitsPerSample = vi->sixteen_bit ? 16 : 8;
+//    wfx.nChannels = vi->stereo ? 2 : 1;
+    wfx.nChannels = vi->AudioChannels();  // Perhaps max out at 2?
+    wfx.nSamplesPerSec = vi->SamplesPerSecond();
+    wfx.wBitsPerSample = vi->BytesPerChannelSample() * 8;
     wfx.nBlockAlign = vi->BytesPerAudioSample();
     wfx.nAvgBytesPerSec = wfx.nSamplesPerSec * wfx.nBlockAlign;
     memcpy(lpFormat, &wfx, min(size_t(*lpcbFormat), sizeof(wfx)));

@@ -86,12 +86,17 @@ AVSValue LoadPlugin(AVSValue args, void* user_data, IScriptEnvironment* env) {
       if (!AvisynthPluginInit) {
         if (GetProcAddress(plugin, "AvisynthPluginGetInfo"))
           env->ThrowError("LoadPlugin: \"%s\" is an Avisynth 0.x plugin, and is not compatible with version 1.x", plugin_name);
-        else if (quiet)
+        else if (quiet) {
           FreeLibrary(plugin);
-        else
+          // remove the last handle from the list
+          HMODULE* loaded_plugins = (HMODULE*)env->GetVar("$Plugins$").AsString();
+          int j=0;
+          while (loaded_plugins[j+1]) j++;
+          loaded_plugins[j] = 0;
+        } else
           env->ThrowError("LoadPlugin: \"%s\" is not an Avisynth 1.0 plugin", plugin_name);
-      }
-      result = AvisynthPluginInit(env);
+      } else
+        result = AvisynthPluginInit(env);
     }
   }
   return result ? AVSValue(result) : AVSValue();
@@ -220,16 +225,21 @@ public:
       CheckHresult(env, plugin_func->GetStreamInfo(h, VF_STREAM_AUDIO, &stream_info));
       vi.audio_samples_per_second = stream_info.dwRate / stream_info.dwScale;
       vi.num_audio_samples = stream_info.dwLengthL;
+      vi.nchannels = stream_info.dwChannels;
+/*
       if (stream_info.dwChannels == 1)
-        vi.stereo = false;
+        vi.nchannels = 1;
       else if (stream_info.dwChannels == 2)
-        vi.stereo = true;
+        vi.nchannels = 2;
       else
         env->ThrowError("VFAPIPluginProxy: plugin returned invalid number of audio channels (%d)", stream_info.dwChannels);
+*/
       if (stream_info.dwBitsPerSample == 8)
-        vi.sixteen_bit = false;
+        vi.sample_type = SAMPLE_INT8;
       else if (stream_info.dwBitsPerSample == 16)
-        vi.sixteen_bit = true;
+        vi.sample_type = SAMPLE_INT16;
+      else if (stream_info.dwBitsPerSample == 32)
+        vi.sample_type = SAMPLE_INT32;
       else
         env->ThrowError("VFAPIPluginProxy: plugin returned invalid audio sample depth (%d)", stream_info.dwBitsPerSample);
     }
@@ -248,7 +258,7 @@ public:
     return result;
   }
 
-  void __stdcall GetAudio(void* buf, int start, int count, IScriptEnvironment* env) {
+  void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) {
     if (start < 0) {
       int bytes = vi.BytesFromAudioSamples(-start);
       memset(buf, 0, bytes);

@@ -35,7 +35,7 @@ public:
   StackVertical(PClip _child1, PClip _child2, IScriptEnvironment* env);
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
   
-  inline void __stdcall GetAudio(void* buf, int start, int count, IScriptEnvironment* env) 
+  inline void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) 
     { child1->GetAudio(buf, start, count, env); }
   inline const VideoInfo& __stdcall GetVideoInfo() 
     { return vi; }
@@ -61,7 +61,7 @@ public:
   StackHorizontal(PClip _child1, PClip _child2, IScriptEnvironment* env);
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
 
-  inline void __stdcall GetAudio(void* buf, int start, int count, IScriptEnvironment* env) 
+  inline void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) 
     { child1->GetAudio(buf, start, count, env); }
   inline const VideoInfo& __stdcall GetVideoInfo() 
     { return vi; }
@@ -88,7 +88,7 @@ public:
   ShowFiveVersions(PClip* children, IScriptEnvironment* env);
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
 
-  inline void __stdcall GetAudio(void* buf, int start, int count, IScriptEnvironment* env) 
+  inline void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) 
     { child[0]->GetAudio(buf, start, count, env); }
   inline const VideoInfo& __stdcall GetVideoInfo() 
     { return vi; }
@@ -124,7 +124,7 @@ public:
     { delete[] args_before; }
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
 
-  inline void __stdcall GetAudio(void* buf, int start, int count, IScriptEnvironment* env) 
+  inline void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) 
     { cache[0]->GetAudio(buf, start, count, env); } // this could be implemented better...
   inline const VideoInfo& __stdcall GetVideoInfo() 
     { return cache[0]->GetVideoInfo(); }
