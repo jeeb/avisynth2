@@ -152,9 +152,9 @@ SectionEnd
 !define ass_mediaplayer 6
 
 Function .onInit
-  MessageBox MB_YESNO|MB_ICONQUESTION   "This will install AviSynth 2.0.8 beta. Do you wish to continue ?" IDYES NoAbort
-		Abort
-	NoAbort:
+;  MessageBox MB_YESNO|MB_ICONQUESTION   "This will install AviSynth 2.0.8 beta. Do you wish to continue ?" IDYES NoAbort
+;		Abort
+;	NoAbort:
   SectionGetFlags ${ass_notepad} $6
   SectionGetFlags ${ass_mediaplayer} $7
   IntOp $6 $6 | ${SECTION_ON}
