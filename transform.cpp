@@ -107,8 +107,10 @@ Crop::Crop(int _left, int _top, int _width, int _height, PClip _child, IScriptEn
     _left = _left & -2;
     _width = (_width+1) & -2;
     if (vi.IsYV12())  { //YV12 can only crop height to multiple of 2
-      _height = _height & -2;
-      _top = _top & -2;
+      _height = _height & -4;
+      _top = _top & -4;
+      _left = _left & -4;
+      _width = (_width+3) & -4;
     }
   } else {
     // RGB is upside-down
@@ -160,8 +162,10 @@ AddBorders::AddBorders(int _left, int _top, int _right, int _bot, PClip _child)
     left = left & -2;
     right = (right+1) & -2;
     if (vi.IsYV12()) {
-      top=top& -2;
-      bot=bot+1& -2;
+      top=top& -4;
+      bot=(bot+3)& -4;
+      left = left & -4;
+      right = (right+3) & -4;
     }
   } else {
     // RGB is upside-down
