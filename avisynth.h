@@ -92,7 +92,7 @@ struct VideoInfo {
   bool IsYUY2() const { return (pixel_type & CS_YUY2) == CS_YUY2; }  
   bool IsYV12() const { return (pixel_type & CS_YV12) == CS_YV12; }
   bool IsFieldBased() const { return !!(pixel_type & CS_FIELDBASED); }
-  int VideoPlanes() {return (pixel_type&CS_PLANAR) ? 3 : 1;}
+//  int VideoPlanes() {return (pixel_type&CS_PLANAR) ? 3 : 1;}
   int BytesFromPixels(int pixels) const { return pixels * (BitsPerPixel()>>3); }   // Will not work on planar images, but will return only luma planes
   int RowSize() const { return BytesFromPixels(width); }
   int BMPSize() const { return height * ((RowSize()+3) & -4); }
@@ -192,7 +192,7 @@ class AVSValue;
 class VideoFrame {
   int refcount;
   VideoFrameBuffer* const vfb;
-  const int offset, pitch, row_size, height;
+  const int offset, pitch, row_size, height, offsetU, offsetV;  // U&V offsets are from top of picture.
 
   friend class PVideoFrame;
   void AddRef() { ++refcount; }
@@ -202,6 +202,7 @@ class VideoFrame {
   friend class Cache;
 
   VideoFrame(VideoFrameBuffer* _vfb, int _offset, int _pitch, int _row_size, int _height);
+  VideoFrame(VideoFrameBuffer* _vfb, int _offset, int _pitch, int _row_size, int _height, int _offsetU, int _offsetV);
 
   void* operator new(unsigned size);
 
@@ -213,9 +214,11 @@ public:
   // generally you shouldn't use these two 
   VideoFrameBuffer* GetFrameBuffer() const { return vfb; }
   int GetOffset() const { return offset; }
+  int GetOffset(int plane) const { switch (plane) {case PLANAR_U: return offsetU;case PLANAR_V: return offsetV;default: return offset;}; }
 
   // in plugins use env->SubFrame()
   VideoFrame* Subframe(int rel_offset, int new_pitch, int new_row_size, int new_height) const;
+  VideoFrame* Subframe(int rel_offset, int new_pitch, int new_row_size, int new_height, int rel_offsetU, int rel_offsetV) const;
 
   const BYTE* GetReadPtr() const { return vfb->GetReadPtr() + offset; }
 

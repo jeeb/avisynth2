@@ -1002,7 +1002,7 @@ public:
       return S_FALSE;
     }
 
-    if (pmt->subtype == MEDIASUBTYPE_YV12) {  // Not tested
+    if (pmt->subtype == MEDIASUBTYPE_YV12) {  // Not tested, but it is accepted
       vi.pixel_type = VideoInfo::CS_YV12;
     } else if (pmt->subtype == MEDIASUBTYPE_YUY2) {
       vi.pixel_type = VideoInfo::CS_YUY2;
@@ -1021,7 +1021,6 @@ public:
       VIDEOINFOHEADER* vih = (VIDEOINFOHEADER*)pmt->pbFormat;
       avg_time_per_frame = unsigned(vih->AvgTimePerFrame);
       pbi = &vih->bmiHeader;
-//      vi.field_based = false;
     } else if (pmt->formattype == FORMAT_VideoInfo2) {
       VIDEOINFOHEADER2* vih = (VIDEOINFOHEADER2*)pmt->pbFormat;
       avg_time_per_frame = unsigned(vih->AvgTimePerFrame);

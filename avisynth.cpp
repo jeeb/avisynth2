@@ -84,13 +84,23 @@ void* VideoFrame::operator new(unsigned) {
 
 
 VideoFrame::VideoFrame(VideoFrameBuffer* _vfb, int _offset, int _pitch, int _row_size, int _height)
-  : refcount(0), vfb(_vfb), offset(_offset), pitch(_pitch), row_size(_row_size), height(_height)
+  : refcount(0), vfb(_vfb), offset(_offset), pitch(_pitch), row_size(_row_size), height(_height),offsetU(_offset),offsetV(_offset)
+{
+  InterlockedIncrement(&vfb->refcount);
+}
+
+VideoFrame::VideoFrame(VideoFrameBuffer* _vfb, int _offset, int _pitch, int _row_size, int _height, int _offsetU, int _offsetV)
+  : refcount(0), vfb(_vfb), offset(_offset), pitch(_pitch), row_size(_row_size), height(_height),offsetU(_offsetU),offsetV(_offsetV)
 {
   InterlockedIncrement(&vfb->refcount);
 }
 
 VideoFrame* VideoFrame::Subframe(int rel_offset, int new_pitch, int new_row_size, int new_height) const {
   return new VideoFrame(vfb, offset+rel_offset, new_pitch, new_row_size, new_height);
+}
+
+VideoFrame* VideoFrame::Subframe(int rel_offset, int new_pitch, int new_row_size, int new_height, int rel_offsetU, int rel_offsetV) const {
+  return new VideoFrame(vfb, offset+rel_offset, new_pitch, new_row_size, new_height, rel_offsetU+offsetU, rel_offsetV+offsetV);
 }
 
 
@@ -897,7 +907,6 @@ IScriptEnvironment* __stdcall CreateScriptEnvironment(int version) {
  ******************************************/
 
 // Fixme: Implement 24 bit samples
-// FIXME: 8 bit output not working for some reason - giving heavily distorted sound.
 // Optme: Could be made onepass, but that would make it immensely complex
 ConvertAudio::ConvertAudio(PClip _clip, int _sample_type) 
   : GenericVideoFilter(_clip)
