@@ -44,6 +44,7 @@ AVSFunction Focus_filters[] = {
  ***  Originally by Ben R.G.         ***
  ***  MMX code by Marc FD            ***
  ***  Adaptation and bugfixes sh0dan ***
+ ***  Code actually requires ISSE!   ***
  ***************************************/
 
 AdjustFocusV::AdjustFocusV(double _amount, PClip _child)
@@ -73,7 +74,7 @@ PVideoFrame __stdcall AdjustFocusV::GetFrame(int n, IScriptEnvironment* env)
 			int height = frame->GetHeight(plane)-2;
 			memcpy(line, buf, row_size);
 			uc* p = buf + pitch;
-			if (env->GetCPUFlags() & CPUF_MMX) {
+			if (env->GetCPUFlags() & CPUF_INTEGER_SSE) {
 				AFV_MMX(line,p,height,pitch,row_size,amount);
 			} else {
 				AFV_C(line,p,height,pitch,row_size,amount);
@@ -89,7 +90,7 @@ PVideoFrame __stdcall AdjustFocusV::GetFrame(int n, IScriptEnvironment* env)
 		int height = vi.height-2;
 		memcpy(line, buf, row_size);
 		uc* p = buf + pitch;
-		if (env->GetCPUFlags() & CPUF_MMX) {
+		if (env->GetCPUFlags() & CPUF_INTEGER_SSE) {
 			AFV_MMX(line,p,height,pitch,row_size,amount);
 		} else {
 			AFV_C(line,p,height,pitch,row_size,amount);
@@ -220,7 +221,7 @@ PVideoFrame __stdcall AdjustFocusH::GetFrame(int n, IScriptEnvironment* env)
 			uc* q = frame->GetWritePtr(plane);
 			const int pitch = frame->GetPitch(plane);
 			int height = frame->GetHeight(plane);
-			if (env->GetCPUFlags() & CPUF_MMX) {
+			if (env->GetCPUFlags() & CPUF_INTEGER_SSE) {
 				AFH_YV12_MMX(q,height,pitch,row_size,amount);
 			} else {
 				AFH_YV12_C(q,height,pitch,row_size,amount);
@@ -231,14 +232,14 @@ PVideoFrame __stdcall AdjustFocusH::GetFrame(int n, IScriptEnvironment* env)
 		uc* q = frame->GetWritePtr();
 		const int pitch = frame->GetPitch();
 		if (vi.IsYUY2()) {
-			if (env->GetCPUFlags() & CPUF_MMX) {
+			if (env->GetCPUFlags() & CPUF_INTEGER_SSE) {
 				AFH_YUY2_MMX(q,vi.height,pitch,vi.width,amount);
 			} else {
 				AFH_YUY2_C(q,vi.height,pitch,vi.width,amount);
 			}
 		} 
 		else if (vi.IsRGB32()) {
-			if (env->GetCPUFlags() & CPUF_MMX) {
+			if (env->GetCPUFlags() & CPUF_INTEGER_SSE) {
 				AFH_RGB32_MMX(q,vi.height,pitch,vi.width,amount);
 			} else {
 				AFH_RGB32_C(q,vi.height,pitch,vi.width,amount);

@@ -125,6 +125,7 @@ public:
 
 private:
   bool use_mmx, rec709, is_yv12;
+  int yv12_width;
 
 };
 

@@ -255,6 +255,7 @@ PVideoFrame AddBorders::GetFrame(int n, IScriptEnvironment* env)
       *(unsigned char*)(dstp+c) = VBlack;
 
   } else if (vi.IsYUY2()) {
+    BitBlt(dstp+initial_black, dst_pitch, srcp, src_pitch, src_row_size, src_height);
     const unsigned int colr = RGB2YUV(clr);
     const unsigned __int32 black = (colr>>16) * 0x010001 + ((colr>>8)&255) * 0x0100 + (colr&255) * 0x01000000;
 //    const unsigned __int32 black = 0x80108010;
@@ -270,6 +271,7 @@ PVideoFrame AddBorders::GetFrame(int n, IScriptEnvironment* env)
       *(unsigned __int32*)(dstp+c) = black;
   } else {
     if (vi.IsRGB24()){
+      BitBlt(dstp+initial_black, dst_pitch, srcp, src_pitch, src_row_size, src_height);
       const int ofs = dst_pitch - dst_row_size;
       const unsigned char clr0 = (clr & 0xFF);
       const unsigned short clr1 = (clr >> 8);
@@ -293,6 +295,7 @@ PVideoFrame AddBorders::GetFrame(int n, IScriptEnvironment* env)
        } // for i
        } // if vi.IsRGB24
    else {
+    BitBlt(dstp+initial_black, dst_pitch, srcp, src_pitch, src_row_size, src_height);
       for (int i=0; i<initial_black; i+=4) {
        *(unsigned __int32*)(dstp+i) = clr;
        } // for i
