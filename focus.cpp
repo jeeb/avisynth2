@@ -22,7 +22,7 @@
 
 
 
-
+ 
 /********************************************************************
 ***** Declare index of new filters for Avisynth's filter engine *****
 ********************************************************************/
@@ -686,8 +686,9 @@ AVSValue __cdecl Create_Blur(AVSValue args, void*, IScriptEnvironment* env)
  * - All frames are loaded (we rely on the cache for this, which is why it has to be rewritten)
  * - Pointer array is given to the mmx function for planes.
  * - One line of each planes is one after one compared to the current frame. 
- * - Accumulated values are stored in two separate arrays. (as bytes/shorts)
- * - The accumulated line is looked up.
+ * - Accumulated values are stored in an arrays. (as shorts)
+ * - The divisor is stored in a separate array (as bytes)
+ * - The divisor is looked up.
  * - Result is stored.
  **/
 
@@ -727,19 +728,26 @@ TemporalSoften::TemporalSoften( PClip _child, unsigned radius, unsigned luma_thr
     env->ThrowError("TemporalSoften: requires YUV input");
 
   child->SetCacheHints(CACHE_RANGE,kernel);
-
-  if (vi.IsYV12()) {
+  if ((vi.IsYUY2()) && (vi.width&7)) {
+    env->ThrowError("Temporalsoften: YUY2 source must be multiple of 8 in width.");
+  }
+  if (vi.IsYUV()) {
     planes = new int[8];
     planeP = new const BYTE*[16];
     divtab = new int[16]; // First index = x/1
     for (int i = 0; i<16;i++)
       divtab[i] = 32768/(i+1);
     int c = 0;
-    if (luma_thresh>0) {planes[c++] = PLANAR_Y; planes[c++] = luma_thresh;}
-    if (chroma_thresh>0) { planes[c++] = PLANAR_V;planes[c++] =chroma_thresh;planes[c++] = PLANAR_U;planes[c++] =chroma_thresh;}
+    if (vi.IsYV12()) {
+      if (luma_thresh>=0) {planes[c++] = PLANAR_Y; planes[c++] = luma_thresh;}
+      if (chroma_thresh>=0) { planes[c++] = PLANAR_V;planes[c++] =chroma_thresh;planes[c++] = PLANAR_U;planes[c++] =chroma_thresh;}
+    } else {
+      planes[c++]=0;
+      planes[c++]=luma_thresh|(chroma_thresh<<8);
+    }
     planes[c]=0;
-    accum_line=(int*)_aligned_malloc(((vi.width+FRAME_ALIGN-1)/8)*16,8);
-    div_line=(int*)_aligned_malloc(((vi.width+FRAME_ALIGN-1)/8)*16,8);
+    accum_line=(int*)_aligned_malloc(((vi.width*vi.BytesFromPixels(1)+FRAME_ALIGN-1)/8)*16,8);
+    div_line=(int*)_aligned_malloc(((vi.width*vi.BytesFromPixels(1)+FRAME_ALIGN-1)/8)*16,8);
     return;
   }
 
@@ -768,7 +776,7 @@ TemporalSoften::TemporalSoften( PClip _child, unsigned radius, unsigned luma_thr
 
 TemporalSoften::~TemporalSoften(void) 
 {
-  if (vi.IsYUY2()) {
+  if (!vi.IsYUV()) {
     delete[] accu;
     delete[] scaletab_MMX;
   } else {
@@ -784,8 +792,10 @@ TemporalSoften::~TemporalSoften(void)
 
 PVideoFrame TemporalSoften::GetFrame(int n, IScriptEnvironment* env) 
 {
-  __declspec(align(8)) static __int64 i64_thresholds = 0x1000010000100001i64;
-  if (vi.IsYV12()) {
+  __int64 i64_thresholds = 0x1000010000100001i64;
+  // planes[] holds [plane_nr][plane_threshold][plane2_nr][plane2_threshold]... and so on.
+  // planeP[] holds current plane pointers for all frames. [frame0_ptr][frame2_ptr]
+//  if (vi.IsYUV()) {
     PVideoFrame frame;
     int radius = (kernel-1) / 2 ;
     int c=0;
@@ -795,14 +805,11 @@ PVideoFrame TemporalSoften::GetFrame(int n, IScriptEnvironment* env)
       int d=0;
       for (int i = radius;i>=1;i--) { // Fetch all planes sequencially
 	      PVideoFrame tframe = child->GetFrame(min(vi.num_frames-1,max(n-i,1)), env);
-//        _RPT1(0,"f:%i\n",n-i);
         planeP[d++] = tframe->GetReadPtr(planes[c]);
       }
   	  frame = child->GetFrame(n, env);          // get the new frame
-//        _RPT1(0,"f:%i\n",n);
       const BYTE* c_plane= frame->GetReadPtr(planes[c]);
       for (i = 1;i<=radius;i++) { // Fetch all planes sequencially
-//        _RPT1(0,"f:%i\n",n+i);
 	      PVideoFrame tframe = child->GetFrame(min(vi.num_frames-1,max(n+i,1)), env);
         planeP[d++] = tframe->GetReadPtr(planes[c]);
       }
@@ -811,31 +818,39 @@ PVideoFrame TemporalSoften::GetFrame(int n, IScriptEnvironment* env)
       int h = frame->GetHeight(planes[c]);
       int w=frame->GetRowSize(planes[c]); // Non-aligned
       int pitch = frame->GetPitch(planes[c]);
-      i64_thresholds = (__int64)c_thresh | (__int64)(c_thresh<<16) | (((__int64)c_thresh)<<32) | (((__int64)c_thresh)<<48);
-      i64_thresholds |= (i64_thresholds<<8);
+      i64_thresholds = (__int64)c_thresh | (__int64)(c_thresh<<8) | (((__int64)c_thresh)<<16) | (((__int64)c_thresh)<<24);
+      if (vi.IsYUY2()) { 
+        i64_thresholds = (__int64)luma_threshold | (__int64)(chroma_threshold<<8) | ((__int64)(luma_threshold)<<16) | ((__int64)(chroma_threshold)<<24);
+      }
+      i64_thresholds |= (i64_thresholds<<32);
       BYTE* dstp = dst->GetWritePtr(planes[c]);
-      for (int y=0;y<h;y++) { // One line at the time
-        if ((env->GetCPUFlags() & CPUF_INTEGER_SSE)) {
-          isse_accumulate_line(c_plane, planeP, d-1, rowsize,&i64_thresholds);
-        } else {
-          mmx_accumulate_line(c_plane, planeP, d-1, rowsize,&i64_thresholds);
+
+      if (c_thresh) {
+        for (int y=0;y<h;y++) { // One line at the time
+          if ((env->GetCPUFlags() & CPUF_INTEGER_SSE)) {
+            isse_accumulate_line(c_plane, planeP, d-1, rowsize,&i64_thresholds);
+          } else {
+            mmx_accumulate_line(c_plane, planeP, d-1, rowsize,&i64_thresholds);
+          }
+          short* s_accum_line = (short*)accum_line;
+          BYTE* b_div_line = (BYTE*)div_line;
+          for (int i=0;i<w;i++) {
+            int div=divtab[b_div_line[i]];
+            dstp[i]=(div*(int)s_accum_line[i]+(div>>1))>>15; //Todo: Attempt asm/mmx mix - maybe faster
+          }
+          for (int p=0;p<d;p++)
+            planeP[p] += pitch;
+          dstp+=dst->GetPitch(planes[c]);
+          c_plane += pitch;
         }
-        short* s_accum_line = (short*)accum_line;
-        BYTE* b_div_line = (BYTE*)div_line;
-        for (int i=0;i<w;i++) {
-          int div=divtab[b_div_line[i]];
-          dstp[i]=(div*(int)s_accum_line[i]+(div>>1))>>15; //Todo: Attempt asm/mmx mix - maybe faster
-        }
-        for (int p=0;p<d;p++)
-          planeP[p] += pitch;
-        dstp+=dst->GetPitch(planes[c]);
-        c_plane += pitch;
+      } else { // Just copy the plane
+        env->BitBlt(dstp, dst->GetPitch(planes[c]), c_plane, pitch, rowsize, h);
       }
       c+=2;
     } while (planes[c]);
     return dst;
-  }
- 
+//  }
+ /*
   int noffset = n % kernel;                             // offset of the frame not yet in the buffer
   int coffset = (noffset + (kernel / 2) + 1) % kernel;  // center offset, offset of the frame to be returned 
   
@@ -858,6 +873,7 @@ PVideoFrame TemporalSoften::GetFrame(int n, IScriptEnvironment* env)
     run_C(pframe, rowsize, height, modulo, noffset, coffset);
 
   return frame;
+*/  
 }
 
 
@@ -874,7 +890,7 @@ void TemporalSoften::mmx_accumulate_line(const BYTE* c_plane, const BYTE** plane
 testplane:
     mov ebx,[rowsize]
     cmp ebx, eax
-    jl outloop
+    jle outloop
 
     movq mm0,[esi+eax]  // Load current frame pixels
      pxor mm2,mm2        // Clear mm2
@@ -950,7 +966,7 @@ void TemporalSoften::isse_accumulate_line(const BYTE* c_plane, const BYTE** plan
 testplane:
     mov ebx,[rowsize]
     cmp ebx, eax
-    jl outloop
+    jle outloop
 
     movq mm0,[esi+eax]  // Load current frame pixels
      pxor mm2,mm2        // Clear mm2
@@ -975,9 +991,9 @@ kernel_loop:
      pminub mm1,mm0
     psubusb mm2,mm1
      movq mm3,[t2]          // Using t also gives funny results
-    PSUBUSB mm2,mm3
+    PSUBUSB mm2,mm3         // Subtrack threshold (unsigned, so all below threshold will give 0)
      movq mm1,mm5
-    PCMPEQB mm2,mm4
+    PCMPEQB mm2,mm4         // Compare values to 0
      prefetchnta [edx+eax+64]
     movq mm3,mm2
      movq mm6,mm2           // Store mask for accumulation
