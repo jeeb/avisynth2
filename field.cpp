@@ -76,7 +76,7 @@ PVideoFrame SeparateFields::GetFrame(int n, IScriptEnvironment* env)
     bool topfield = (child->GetParity(n)+n)&1;
     int UVoffset = topfield ? frame->GetPitch(PLANAR_U) : 0;
     int Yoffset = topfield ? frame->GetPitch(PLANAR_Y) : 0;
-#if 0  // For some reason the following doesn't work.
+#if 1  // For some reason the following doesn't work.
     return frame->Subframe(Yoffset, frame->GetPitch()*2, frame->GetRowSize(), frame->GetHeight()>>1, UVoffset, UVoffset, frame->GetPitch(PLANAR_U)*2);
 #else // This also makes it crash :((
     PVideoFrame dst = env->NewVideoFrame(vi);

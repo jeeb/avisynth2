@@ -1,4 +1,4 @@
-// Avisynth filter: YUV merge
+// Avisynth filter: YUV merge / Swap planes
 // by Klaus Post (kp@interact.dk)
 // adapted by Richard Berg (avisynth-dev@richardberg.net)
 //
@@ -194,10 +194,16 @@ PVideoFrame __stdcall MergeChroma::GetFrame(int n, IScriptEnvironment* env)
 
       int iweight=(int)(weight*65536.0f);
       int invweight = 65536-(int)(weight*65536.0f);
+
       int* srcpU = (int*)src->GetReadPtr(PLANAR_U);
       int* chromapU = (int*)chroma->GetWritePtr(PLANAR_U);
       int* srcpV = (int*)src->GetReadPtr(PLANAR_V);
       int* chromapV = (int*)chroma->GetWritePtr(PLANAR_V);
+      if (env->GetCPUFlags() & CPUF_MMX) {
+        mmx_weigh_yv12((BYTE*)srcpU,(BYTE*)chromapU,src->GetPitch(PLANAR_U),chroma->GetPitch(PLANAR_U),src->GetRowSize(PLANAR_U_ALIGNED),src->GetHeight(PLANAR_U),(int)(weight*32767.0f),32767-(int)(weight*32767.0f));
+        mmx_weigh_yv12((BYTE*)srcpV,(BYTE*)chromapV,src->GetPitch(PLANAR_U),chroma->GetPitch(PLANAR_U),src->GetRowSize(PLANAR_V_ALIGNED),src->GetHeight(PLANAR_U),(int)(weight*32767.0f),32767-(int)(weight*32767.0f));
+        return src;
+      }
       const int isrc_pitch = (src->GetPitch(PLANAR_U))>>2;  // int pitch (one pitch=two pixels)
       const int ichroma_pitch = (chroma->GetPitch(PLANAR_U))>>2;  // Ints
       const int xpixels=src->GetRowSize(PLANAR_U_ALIGNED)>>2; // Ints
@@ -325,11 +331,15 @@ PVideoFrame __stdcall MergeLuma::GetFrame(int n, IScriptEnvironment* env)
     int invweight = 65535-(int)(weight*65535.0f);
     int* srcpY = (int*)src->GetWritePtr(PLANAR_Y);
     int* lumapY = (int*)luma->GetReadPtr(PLANAR_Y);
+    if (env->GetCPUFlags() & CPUF_MMX) {
+      mmx_weigh_yv12((BYTE*)srcpY,(BYTE*)lumapY,src->GetPitch(PLANAR_Y),luma->GetPitch(PLANAR_Y),src->GetRowSize(PLANAR_Y_ALIGNED),src->GetHeight(PLANAR_Y),(int)(weight*32767.0f),32767-(int)(weight*32767.0f));
+      return src;
+    }
+
     const int isrc_pitch = (src->GetPitch())>>2;  // int pitch (one pitch=two pixels)
     const int iluma_pitch = (luma->GetPitch())>>2;  // Ints
     const int xpixels=src->GetRowSize(PLANAR_Y_ALIGNED)>>2; // Ints
     const int yloops=src->GetHeight(PLANAR_Y);
-
     for (int y=0;y<yloops;y++) {
       for (int x=0;x<xpixels;x++) {
         int srcY = srcpY[x];
@@ -442,7 +452,7 @@ void mmx_merge_luma( unsigned int *src, unsigned int *luma, int pitch,
 		
 	__asm {
 		mov eax,src
-		mov ecx,0
+		xor ecx,ecx
 		mov ebx,luma
 		jmp afterloop
 		align 16
@@ -519,7 +529,7 @@ void isse_weigh_luma(unsigned int *src,unsigned int *luma, int pitch,
 		
 	__asm {
 		mov eax,src
-		mov ecx,0
+		xor ecx,ecx
 		mov ebx,luma
 		jmp afterloop
 		align 16
@@ -579,7 +589,6 @@ exitloop:
 
 
 
-
 void isse_weigh_chroma( unsigned int *src,unsigned int *chroma, int pitch, 
                      int chroma_pitch,int width, int height, int weight, int invweight ) 
 {
@@ -606,7 +615,7 @@ void isse_weigh_chroma( unsigned int *src,unsigned int *chroma, int pitch,
 		
 	__asm {
 		mov eax,src
-		mov ecx,0
+		xor ecx,ecx
 		mov ebx,chroma
 		jmp afterloop
 		align 16
@@ -662,5 +671,69 @@ exitloop:
 		src += pitch;
 		chroma += chroma_pitch;
 	} // end for y
+  __asm {emms};
+}
+
+/*******************
+ * Blends two planes.
+ * A weight between the two planes are given.
+ * Has rather ok pairing, 
+ * and has very little memory usage.
+ * Processes four pixels per loop, so rowsize must be mod 4.
+ * (c) 2002 by sh0dan.
+ ********/
+
+void mmx_weigh_yv12(BYTE *p1,BYTE *p2, int p1_pitch, int p2_pitch,int rowsize, int height, int weight, int invweight) {
+  __int64 weight64  = (__int64)weight | (((__int64)invweight)<<16) | (((__int64)weight)<<32) |(((__int64)invweight)<<48);
+	__int64 rounder = 0x0000400000004000;		// (0.5)<<15 in each dword
+  __asm {
+      movq mm5,[rounder]
+      pxor mm6,mm6
+      movq mm7,[weight64]
+      mov ebx,[rowsize]
+  }
+	for (int y=0;y<height;y++) {
+    __asm {
+      mov esi,[p1]
+      mov edi,[p2]
+      xor eax, eax
+testloop:
+      cmp ebx, eax
+      jl outloop
+      punpcklbw mm0,[esi+eax]  // 4 pixels
+       pxor mm3,mm3
+      punpcklbw mm1,[edi+eax]  // y300 y200 y100 y000
+       psrlw mm0,8              // 00y3 00y2 00y1 00y0
+      psrlw mm1,8              // 00y3 00y2 00y1 00y0  
+       pxor mm2,mm2
+      movq mm4,mm1
+       punpcklwd mm2,mm0
+      punpckhwd mm3,mm0  
+       punpcklwd mm4,mm6
+      punpckhwd mm1,mm6
+       por mm2,mm4
+      por mm3,mm1
+       pmaddwd mm2,mm7     // Multiply pixels by weights.  pixel = img1*weight + img2*invweight (twice)
+      pmaddwd mm3,mm7      // Stalls 1 cycle (multiply unit stall)
+       paddd mm2,mm5       // Add rounder
+      paddd mm3,mm5
+       psrld mm2,15        // Shift down, so there is no fraction.
+      psrld mm3,15        
+		   packssdw mm2,mm2    // double words to words
+		  packssdw mm3,mm3    
+		   packuswb mm2,mm2    // words to bytes
+		  packuswb mm3,mm3
+       psrlq mm2,48        // Align final pixels
+      psllq mm3,16        
+      por mm2,mm3
+      movd [esi+eax],mm2
+      add eax,4
+      jmp testloop
+      align 16
+outloop:
+    } // end asm
+    p1+=p1_pitch;
+    p2+=p2_pitch;
+  } // end for y
   __asm {emms};
 }

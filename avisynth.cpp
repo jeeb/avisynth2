@@ -24,7 +24,6 @@
 #include "internal.h"
 #include "script.h"
 
-
 #ifdef _MSC_VER
   #define strnicmp(a,b,c) _strnicmp(a,b,c)
   #define strdup(a) _strdup(a)
@@ -502,6 +501,7 @@ private:
   const char* GetPluginDirectory();
   bool LoadPluginsMatching(const char* pattern);
   void PrescanPlugins();
+
 };
 
 
@@ -660,8 +660,6 @@ void ScriptEnvironment::PrescanPlugins()
 PVideoFrame ScriptEnvironment::NewPlanarVideoFrame(int width, int height, int align, bool U_first) {
   int pitch = (width+align-1) / align * align;  // Y plane, width = 1 byte per pixel
 //  int UVpitch = ((width>>1)+align-1) / align * align;  // UV plane, width = 1/2 byte per pixel - can't align UV planes seperately.
-//  if (align==16) 
-//    pitch=pitch+1-1;
   int UVpitch = pitch>>1;  // UV plane, width = 1/2 byte per pixel
   int size = pitch * height + UVpitch * height;
   VideoFrameBuffer* vfb = GetFrameBuffer(size+(FRAME_ALIGN*4));
@@ -914,6 +912,10 @@ bool ScriptEnvironment::FunctionExists(const char* name) {
 
 
 void BitBlt(BYTE* dstp, int dst_pitch, const BYTE* srcp, int src_pitch, int row_size, int height) {
+  if (GetCPUFlags() & CPUF_MMX) {
+    asm_BitBlt(dstp,dst_pitch,srcp,src_pitch,row_size,height);
+    return;
+  }
   if (dst_pitch == src_pitch && src_pitch == row_size) {
     memcpy(dstp, srcp, src_pitch * height);
   } else {
@@ -925,6 +927,103 @@ void BitBlt(BYTE* dstp, int dst_pitch, const BYTE* srcp, int src_pitch, int row_
   }
 }
 
+
+void asm_BitBlt(BYTE* dstp, int dst_pitch, const BYTE* srcp, int src_pitch, int row_size, int height) {
+  int bytesleft=0;
+  if (row_size&15) {
+    int a=(row_size+15)&~15;
+    if ((a<=src_pitch) && (a<dst_pitch)) {
+      row_size=a;
+    } else {
+      bytesleft=(row_size&15);
+      row_size&=~15;
+    }
+  }
+  int src_modulo = src_pitch - (row_size+bytesleft);
+  int dst_modulo = dst_pitch - (row_size+bytesleft);
+  if (height==0 || row_size==0) return;
+  if ((GetCPUFlags() & CPUF_INTEGER_SSE)) {  // ISSE ~10-15% faster on K7 in reallife tests
+    __asm {
+      mov edi,[dstp]
+      mov esi,[srcp]
+      xor eax, eax;  // Height counter
+      xor ebx, ebx;  // Row counter
+      mov edx, [row_size]
+new_line_sse:
+      mov ecx,[bytesleft]
+      cmp ebx,edx
+      jge nextline_sse
+      align 16
+nextpixels_sse:
+      prefetchnta [esi+ebx+256]  // Prefetch a few cache lines ahead (~1% faster)
+      movq mm0,[esi+ebx]
+      movq mm1,[esi+ebx+8]
+      movntq [edi+ebx],mm0      // Is faster in reallife on K7 (~4 %)
+      movntq [edi+ebx+8],mm1
+      add ebx,16
+      cmp ebx,edx
+      jl nextpixels_sse
+      align 16
+nextline_sse:
+      add esi,ebx
+      add edi,ebx
+      cmp ecx,0
+      jz do_next_line_sse
+      rep movsb         ; the last 1-15 bytes
+
+      align 16
+do_next_line_sse:
+      add esi, [src_modulo]
+      add edi, [dst_modulo]
+      xor ebx, ebx;  // Row counter
+      inc eax
+      cmp eax,[height]
+      jl new_line_sse
+      sfence
+    }
+  } else {  // Plain MMX ~ 5% faster on K7 in real life
+    __asm {
+      mov edi,[dstp]
+      mov esi,[srcp]
+      xor eax, eax;  // Height counter
+      xor ebx, ebx;  // Row counter
+      mov edx, [row_size]
+new_line_mmx:
+      mov ecx,[bytesleft]
+      cmp ebx,edx
+      jge nextline_mmx
+      align 16
+nextpixels_mmx:
+      movq mm0,[esi+ebx]
+      movq mm1,[esi+ebx+8]
+      movq [edi+ebx],mm0
+      movq [edi+ebx+8],mm1
+      add ebx,16
+      cmp ebx,edx
+      jl nextpixels_mmx
+      align 16
+nextline_mmx:
+      add esi,edx
+      add edi,edx
+      cmp ecx,0
+      jz do_next_line_mmx
+      rep movsb         ; the last 1-7 bytes
+
+      align 16
+do_next_line_mmx:
+      add esi, [src_modulo]
+      add edi, [dst_modulo]
+      xor ebx, ebx;  // Row counter
+      inc eax
+      cmp eax,[height]
+      jl new_line_mmx
+    }
+  }
+  __asm {emms};
+}
+
+void asm_BitBltNC(BYTE* dstp, int dst_pitch, const BYTE* srcp, int src_pitch, int row_size, int height) {
+}
 
 void ScriptEnvironment::BitBlt(BYTE* dstp, int dst_pitch, const BYTE* srcp, int src_pitch, int row_size, int height) {
   ::BitBlt(dstp, dst_pitch, srcp, src_pitch, row_size, height);

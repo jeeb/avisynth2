@@ -331,6 +331,10 @@ PVideoFrame HorizontalReduceBy2::GetFrame(int n, IScriptEnvironment* env)
   return dst;
 }
 
+/*
+0102 0304 0506 0708
+*/
+
 
 /************************************
  **** Horizontal 2:1 Reduction ******

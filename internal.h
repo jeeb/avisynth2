@@ -82,6 +82,9 @@ PClip new_AssumeFrameBased(PClip _child);
 void BitBlt(BYTE* dstp, int dst_pitch, const BYTE* srcp, 
             int src_pitch, int row_size, int height);
 
+  void asm_BitBlt(BYTE* dstp, int dst_pitch, const BYTE* srcp, int src_pitch, int row_size, int height);
+  void asm_BitBltNC(BYTE* dstp, int dst_pitch, const BYTE* srcp, int src_pitch, int row_size, int height);
+
 long GetCPUFlags();
 
 

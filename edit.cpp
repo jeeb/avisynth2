@@ -307,7 +307,7 @@ AVSValue __cdecl Dissolve::Create(AVSValue args, void*, IScriptEnvironment* env)
 
 
 Dissolve::Dissolve(PClip _child1, PClip _child2, int _overlap, IScriptEnvironment* env)
- : GenericVideoFilter(_child1), child2(_child2), overlap(_overlap), audbuffer(0), audbufsize(0)
+ : GenericVideoFilter(ConvertAudio::Create(_child1,SAMPLE_INT16,SAMPLE_INT16)), child2(ConvertAudio::Create(_child2,SAMPLE_INT16, SAMPLE_INT16)), overlap(_overlap), audbuffer(0), audbufsize(0)
 {
   const VideoInfo& vi2 = child2->GetVideoInfo();
 
@@ -352,22 +352,41 @@ PVideoFrame Dissolve::GetFrame(int n, IScriptEnvironment* env)
   PVideoFrame c;
   if (!a->IsWritable())
     c = env->NewVideoFrame(vi);
+  if (vi.IsPlanar()) {
+    for (int i=0;i<3;i++) {
+      int p = (i==0) ? PLANAR_Y : PLANAR_U;      
+      p = (i==1) ? PLANAR_V : p;      
+      const BYTE *src1 = a->GetReadPtr(p), *src2 = b->GetReadPtr(p);
+      BYTE* dst = (c?c:a)->GetWritePtr(p);
+      int src1_pitch = a->GetPitch(p), src2_pitch = b->GetPitch(p), dst_pitch = (c?c:a)->GetPitch(p);
+      const int row_size = a->GetRowSize(p), height = a->GetHeight(p);
 
-  const BYTE *src1 = a->GetReadPtr(), *src2 = b->GetReadPtr();
-  BYTE* dst = (c?c:a)->GetWritePtr();
-  int src1_pitch = a->GetPitch(), src2_pitch = b->GetPitch(), dst_pitch = (c?c:a)->GetPitch();
-  const int row_size = a->GetRowSize(), height = a->GetHeight();
+      for (int y=height; y>0; --y) {
+        for (int x=0; x<row_size; ++x)
+          dst[x] = src1[x] + ((src2[x]-src1[x]) * multiplier + (overlap>>1)) / (overlap+1);
+        dst += dst_pitch;
+        src1 += src1_pitch;
+        src2 += src2_pitch;
+      }
+    }    
+  } else {
+    const BYTE *src1 = a->GetReadPtr(), *src2 = b->GetReadPtr();
+    BYTE* dst = (c?c:a)->GetWritePtr();
+    int src1_pitch = a->GetPitch(), src2_pitch = b->GetPitch(), dst_pitch = (c?c:a)->GetPitch();
+    const int row_size = a->GetRowSize(), height = a->GetHeight();
 
-  for (int y=height; y>0; --y) {
-    for (int x=0; x<row_size; ++x)
-      dst[x] = src1[x] + ((src2[x]-src1[x]) * multiplier + (overlap>>1)) / (overlap+1);
-    dst += dst_pitch;
-    src1 += src1_pitch;
-    src2 += src2_pitch;
+    for (int y=height; y>0; --y) {
+      for (int x=0; x<row_size; ++x)
+        dst[x] = src1[x] + ((src2[x]-src1[x]) * multiplier + (overlap>>1)) / (overlap+1);
+      dst += dst_pitch;
+      src1 += src1_pitch;
+      src2 += src2_pitch;
+    }
   }
 
   return (c?c:a);
 }
+
 
 
 void Dissolve::GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) 
@@ -505,7 +524,7 @@ AVSValue __cdecl AudioDub::Create(AVSValue args, void*, IScriptEnvironment* env)
 
 
 /*******************************
- *******   Revese Filter  ******
+ *******   Reverse Filter  ******
  *******************************/
 
 Reverse::Reverse(PClip _child) : GenericVideoFilter(_child) {}

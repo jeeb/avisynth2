@@ -686,9 +686,9 @@ AVSValue __cdecl Create_Blur(AVSValue args, void*, IScriptEnvironment* env)
  * - All frames are loaded (we rely on the cache for this, which is why it has to be rewritten)
  * - Pointer array is given to the mmx function for planes.
  * - One line of each planes is one after one compared to the current frame. 
- * - Accumulated values are stored in two separate arrays. (as shorts)
+ * - Accumulated values are stored in two separate arrays. (as bytes/shorts)
  * - The accumulated line is looked up.
- * - Result is stored (in original image plane).
+ * - Result is stored.
  **/
 
 
@@ -789,6 +789,7 @@ PVideoFrame TemporalSoften::GetFrame(int n, IScriptEnvironment* env)
     PVideoFrame frame;
     int radius = (kernel-1) / 2 ;
     int c=0;
+    PVideoFrame dst = env->NewVideoFrame(vi);
     do {
       int c_thresh = planes[c+1];  // Threshold for current plane.
       int d=0;
@@ -799,8 +800,7 @@ PVideoFrame TemporalSoften::GetFrame(int n, IScriptEnvironment* env)
       }
   	  frame = child->GetFrame(n, env);          // get the new frame
 //        _RPT1(0,"f:%i\n",n);
-	    env->MakeWritable(&frame);
-      BYTE* c_plane= frame->GetWritePtr(planes[c]);
+      const BYTE* c_plane= frame->GetReadPtr(planes[c]);
       for (i = 1;i<=radius;i++) { // Fetch all planes sequencially
 //        _RPT1(0,"f:%i\n",n+i);
 	      PVideoFrame tframe = child->GetFrame(min(vi.num_frames-1,max(n+i,1)), env);
@@ -813,6 +813,7 @@ PVideoFrame TemporalSoften::GetFrame(int n, IScriptEnvironment* env)
       int pitch = frame->GetPitch(planes[c]);
       i64_thresholds = (__int64)c_thresh | (__int64)(c_thresh<<16) | (((__int64)c_thresh)<<32) | (((__int64)c_thresh)<<48);
       i64_thresholds |= (i64_thresholds<<8);
+      BYTE* dstp = dst->GetWritePtr(planes[c]);
       for (int y=0;y<h;y++) { // One line at the time
         if ((env->GetCPUFlags() & CPUF_INTEGER_SSE)) {
           isse_accumulate_line(c_plane, planeP, d-1, rowsize,&i64_thresholds);
@@ -823,15 +824,16 @@ PVideoFrame TemporalSoften::GetFrame(int n, IScriptEnvironment* env)
         BYTE* b_div_line = (BYTE*)div_line;
         for (int i=0;i<w;i++) {
           int div=divtab[b_div_line[i]];
-          c_plane[i]=(div*(int)s_accum_line[i]+(div>>1))>>15; //Todo: Attempt asm/mmx mix - maybe faster
+          dstp[i]=(div*(int)s_accum_line[i]+(div>>1))>>15; //Todo: Attempt asm/mmx mix - maybe faster
         }
         for (int p=0;p<d;p++)
           planeP[p] += pitch;
+        dstp+=dst->GetPitch(planes[c]);
         c_plane += pitch;
       }
       c+=2;
     } while (planes[c]);
-    return frame;
+    return dst;
   }
  
   int noffset = n % kernel;                             // offset of the frame not yet in the buffer
@@ -859,7 +861,7 @@ PVideoFrame TemporalSoften::GetFrame(int n, IScriptEnvironment* env)
 }
 
 
-void TemporalSoften::mmx_accumulate_line(BYTE* c_plane, const BYTE** planeP, int planes, int rowsize, __int64* t) {
+void TemporalSoften::mmx_accumulate_line(const BYTE* c_plane, const BYTE** planeP, int planes, int rowsize, __int64* t) {
   __declspec(align(8)) static const __int64 indexer = 0x0101010101010101i64;
   __declspec(align(8)) static const __int64 t2 = *t;
   int* _accum_line=accum_line;
@@ -867,7 +869,7 @@ void TemporalSoften::mmx_accumulate_line(BYTE* c_plane, const BYTE** planeP, int
 
   __asm {
     mov esi,c_plane;
-    mov eax,0          // EAX will be plane offset (all planes).
+    xor eax,eax          // EAX will be plane offset (all planes).
     mov ecx,[_accum_line]
 testplane:
     mov ebx,[rowsize]
@@ -935,7 +937,7 @@ outloop:
 }
 
 
-void TemporalSoften::isse_accumulate_line(BYTE* c_plane, const BYTE** planeP, int planes, int rowsize, __int64* t) {
+void TemporalSoften::isse_accumulate_line(const BYTE* c_plane, const BYTE** planeP, int planes, int rowsize, __int64* t) {
   __declspec(align(8)) static const __int64 indexer = 0x0101010101010101i64;
   __declspec(align(8)) static const __int64 t2 = *t;
   int* _accum_line=accum_line;
@@ -943,7 +945,7 @@ void TemporalSoften::isse_accumulate_line(BYTE* c_plane, const BYTE** planeP, in
 
   __asm {
     mov esi,c_plane;
-    mov eax,0          // EAX will be plane offset (all planes).
+    xor eax,eax          // EAX will be plane offset (all planes).
     mov ecx,[_accum_line]
 testplane:
     mov ebx,[rowsize]
