@@ -717,10 +717,10 @@ void CAVIStreamSynth::ReadFrame(void* lpBuffer, int n) {
 void CAVIStreamSynth::ReadHelper(void* lpBuffer, int lStart, int lSamples) {
   // It's illegal to call GetExceptionInformation() inside an __except
   // block!  Hence this variable and the horrible hack below...
+#ifndef _DEBUG
   EXCEPTION_POINTERS* ei;
   DWORD code;
-#ifndef _DEBUG
-  __try {
+  __try { 
 #endif
     if (fAudio)
       parent->filter_graph->GetAudio(lpBuffer, lStart, lSamples, parent->env);

@@ -38,9 +38,11 @@ PExpression ScriptParser::Parse(void)
     catch (AvisynthError) {
       throw;
     }
+#ifndef _DEBUG
     catch (...) {
       env->ThrowError("Unrecognized exception!");
     }
+#endif
   }
   catch (AvisynthError ae) {
     env->ThrowError("%s\n(%s, line %d, column %d)", ae.msg, filename, tokenizer.GetLine(), tokenizer.GetColumn(code));

@@ -58,21 +58,29 @@ FilteredResizeH::FilteredResizeH( PClip _child, double subrange_left, double sub
   if (target_width<4)
     env->ThrowError("Resize: Width must be bigger than or equal to 4.");
 
-  if (vi.IsYUY2())
+  if (vi.IsYUV())
   {
     if (target_width&1)
       env->ThrowError("Resize: YUY2 width must be even");
     tempY = (BYTE*) _aligned_malloc(original_width*2+4, 64);   // aligned for Athlon cache line
     tempUV = (BYTE*) _aligned_malloc(original_width*4+8, 64);  // aligned for Athlon cache line
-    pattern_chroma = GetResamplingPatternYUV( vi.width>>1, subrange_left/2, subrange_width/2,
-      target_width>>1, func, false, tempUV );
+    if (vi.IsYV12()) {
+      pattern_chroma = GetResamplingPatternYUV( vi.width>>1, subrange_left/2, subrange_width/2,
+        target_width>>1, func, true, tempY );
+    } else {
+      pattern_chroma = GetResamplingPatternYUV( vi.width>>1, subrange_left/2, subrange_width/2,
+        target_width>>1, func, false, tempUV );
+    }
     pattern_luma = GetResamplingPatternYUV(vi.width, subrange_left, subrange_width, target_width, func, true, tempY);
   }
   else
     pattern_luma = GetResamplingPatternRGB(vi.width, subrange_left, subrange_width, target_width, func);
   vi.width = target_width;
 }
-
+// YV12 notes: Extemely crappy implementation:
+// Handles only 2 pixels per interation, must be made 4!
+// This leads to all kinds of misalignments and other c**p.
+// Also needs unrolling
 
 PVideoFrame __stdcall FilteredResizeH::GetFrame(int n, IScriptEnvironment* env) 
 {
@@ -80,11 +88,113 @@ PVideoFrame __stdcall FilteredResizeH::GetFrame(int n, IScriptEnvironment* env)
   PVideoFrame dst = env->NewVideoFrame(vi);
   const BYTE* srcp = src->GetReadPtr();
   BYTE* dstp = dst->GetWritePtr();
-  const int src_pitch = src->GetPitch();
-  const int dst_pitch = dst->GetPitch();
+  int src_pitch = src->GetPitch();
+  int dst_pitch = dst->GetPitch();
   if (vi.IsYV12()) {
+    if (env->GetCPUFlags() & CPUF_INTEGER_SSE) {
+      int plane = 0;
+        while (plane++<3) {
+        int org_width = (plane==1) ? original_width : (original_width>>1) ;
+        int dst_height= (plane==1) ? dst->GetHeight() : dst->GetHeight(PLANAR_U);
+        int* array = (plane==1) ? pattern_luma : pattern_chroma;
+        int dst_width = (plane==1) ? dst->GetRowSize() : dst->GetRowSize(PLANAR_U);
+        switch (plane) {
+      case 2:
+        srcp = src->GetReadPtr(PLANAR_U);
+        dstp = dst->GetWritePtr(PLANAR_U);
+        src_pitch = src->GetPitch(PLANAR_U);
+        dst_pitch = dst->GetPitch(PLANAR_V);
+        break;
+      case 3:
+        srcp = src->GetReadPtr(PLANAR_V);
+        dstp = dst->GetWritePtr(PLANAR_V);
+        src_pitch = src->GetPitch(PLANAR_U);
+        dst_pitch = dst->GetPitch(PLANAR_V);
+        }
+      int fir_filter_size_luma = array[0];
+//      int fir_filter_size_chroma = pattern_chroma[0];
+      static const __int64 x0000000000FF00FF = 0x0000000000FF00FF;
+      static const __int64 xFFFF0000FFFF0000 = 0xFFFF0000FFFF0000;
+      static const __int64 FPround =           0x0000200000002000;  // 16384/2
+    __asm {
+      pxor        mm0, mm0
+      movq        mm7, x0000000000FF00FF
+      movq        mm6, FPround
+      movq        mm5, xFFFF0000FFFF0000
 
+    }
+     for (int y=0; y<dst_height; ++y)
+      {
+        int* cur_luma = array+2;
+        int x = dst_width / 2;
 
+        __asm {  // 
+        mov         edi, this
+        mov         ecx, org_width
+        mov         edx, [edi].tempY;
+        mov         esi, srcp
+        mov         eax, -1
+      // deinterleave current line to 
+        align 16
+
+      yv_deintloop:
+        prefetchnta [esi+256]
+        movd        mm1, [esi]          ;mm1 = 00 00 YY YY
+        inc         eax
+        punpcklbw   mm1, mm0            ;mm1 = 0Y 0Y 0Y 0Y
+        movq        [edx+eax*8], mm1    
+        add         esi, 4
+        sub         ecx, 4
+
+        jnz         yv_deintloop
+      // use this as source from now on
+        mov         eax, cur_luma
+        mov         edx, dstp
+        align 16
+      yv_xloopYUV:
+        mov         esi, [eax]          ;esi=&tempY[ofs0]
+        movq        mm1, mm0
+        mov         edi, [eax+4]        ;edi=&tempY[ofs1]
+        mov         ecx, fir_filter_size_luma
+        add         eax, 8              ;cur_luma++
+        align 16
+      yv_aloopY:
+        // Identifiers:
+        // Ya, Yb: Y values in srcp[ofs0]
+        // Ym, Yn: Y values in srcp[ofs1]
+        movd        mm2, [esi]          ;mm2 =  0| 0|Yb|Ya
+        add         esi, 4
+        punpckldq   mm2, [edi]          ;mm2 = Yn|Ym|Yb|Ya
+                                        ;[eax] = COn|COm|COb|COa
+        add         edi, 4
+        pmaddwd     mm2, [eax]          ;mm2 = Y1|Y0 (DWORDs)
+        add         eax, 8              ;cur_luma++
+        dec         ecx
+        paddd       mm1, mm2            ;accumulate
+
+        jnz         yv_aloopY
+        align 16
+//out_i_aloopY:
+
+        
+        paddd       mm1, mm6            ;Y1|Y1|Y0|Y0  (round)
+//        movd        mm2,[edx]
+        psrld       mm1, 14             ;mm1 = 0|y1|0|y0
+        pshufw mm1,mm1,11111000b        ;mm1 = 0|0|y1|y0
+
+        packuswb    mm1, mm1            ;mm1 = ...|0|0|Y1|y0
+        movd        [edx], mm1
+        add         edx, 2
+        dec         x
+        jnz         yv_xloopYUV
+        }
+        srcp += src_pitch;
+        dstp += dst_pitch;
+      }// end asm
+    } // end for y
+   
+  } // end while plane.
+   __asm { emms }
   } else 
   if (vi.IsYUY2())
   {  
@@ -118,7 +228,7 @@ PVideoFrame __stdcall FilteredResizeH::GetFrame(int n, IScriptEnvironment* env)
         align 16
       i_deintloop:
         prefetchnta [esi+256]
-        movd        mm1, [esi]          ;mm1 = 00 00 VY UY
+        movd        mm1, [esi]          ;mm'1 = 00 00 VY UY
         inc         eax
         movq        mm2, mm1
         punpcklbw   mm2, mm0            ;mm2 = 0V 0Y 0U 0Y
