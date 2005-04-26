@@ -147,7 +147,7 @@ public:
 	CAVIStreamSynth(CAVIFileSynth *parentPtr, bool isAudio);
 	~CAVIStreamSynth();
 
-	STDMETHODIMP Create(LONG lParam1, LONG lParam2);
+	STDMETHODIMP Create(LPARAM lParam1, LPARAM lParam2);
 	STDMETHODIMP Delete(LONG lStart, LONG lSamples);
 	STDMETHODIMP_(LONG) Info(AVISTREAMINFOW *psi, LONG lSize);
 	STDMETHODIMP_(LONG) FindSample(LONG lPos, LONG lFlags);
@@ -483,7 +483,11 @@ bool CAVIFileSynth::DelayInit() {
         AVSValue return_val = env->Invoke("Import", szScriptName);
         // store the script's return value (a video clip)
         if (return_val.IsClip())
-          filter_graph = ConvertAudio::Create(return_val.AsClip(), SAMPLE_INT8|SAMPLE_INT16|SAMPLE_INT24|SAMPLE_INT32, SAMPLE_INT16);  // Ensure samples are int     [filter_graph = return_val.AsClip();]
+#ifndef _AMD64_
+         filter_graph = ConvertAudio::Create(return_val.AsClip(), SAMPLE_INT8|SAMPLE_INT16|SAMPLE_INT24|SAMPLE_INT32, SAMPLE_INT16);  // Ensure samples are int     [filter_graph = return_val.AsClip();]
+#else
+		 filter_graph = return_val.AsClip();
+#endif
         else
           throw AvisynthError("The script's return value was not a video clip");
         if (!filter_graph)
@@ -512,24 +516,30 @@ bool CAVIFileSynth::DelayInit() {
       if (szScriptName)
         delete[] szScriptName;
       szScriptName = 0;
-      _clear87();
+#ifndef _AMD64_
+	  _clear87();
       __asm {emms};
       _control87( fp_state, 0xffffffff );
+#endif
       return true;
 #ifndef _DEBUG
     }
     catch (...) {
 	    _RPT0(1,"DelayInit() caught general exception!\n");
+#ifndef _AMD64_
       _clear87();
       __asm {emms};
       _control87( fp_state, 0xffffffff );
+#endif
       return false;
     }
 #endif
   } else {
+#ifndef _AMD64_
     _clear87();
     __asm {emms};
     _control87( fp_state, 0xffffffff );
+#endif
     return (env && filter_graph && vi);
   }
 }
@@ -647,7 +657,7 @@ bool __stdcall CAVIFileSynth::IsFieldBased() {
 //
 ////////////////////////////////////////////////////////////////////////
 
-STDMETHODIMP CAVIStreamSynth::Create(LONG lParam1, LONG lParam2) {
+STDMETHODIMP CAVIStreamSynth::Create(LPARAM lParam1, LPARAM lParam2) {
 	_RPT1(0,"%p->CAVIStreamSynth::Create()\n", this);
 	return AVIERR_READONLY;
 }
@@ -852,15 +862,19 @@ STDMETHODIMP CAVIStreamSynth::Read(LONG lStart, LONG lSamples, LPVOID lpBuffer, 
     }
   }
   catch (...) {
-    _clear87();
+#ifndef _AMD64_
+	  _clear87();
     __asm {emms};
     _control87( fp_state, 0xffffffff );
+#endif
     return E_FAIL;
   }
 #endif
+#ifndef _AMD64_
   _clear87();
     __asm {emms};
   _control87( fp_state, 0xffffffff );
+#endif
   return S_OK;
 }
 

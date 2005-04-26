@@ -187,7 +187,7 @@ int* GetResamplingPatternRGB( int original_width, double subrange_start, double 
     double total = 0.0;
 
     // Ensure that we have a valid position
-    double ok_pos = max(0.0,min(original_width - subrange_start,pos));
+    double ok_pos = max(0.0,min(original_width,pos));
 
     for (int j=0; j<fir_filter_size; ++j) {  // Accumulate all coefficients
       total += func->f((start_pos+j - ok_pos) * filter_step);
@@ -231,10 +231,10 @@ int* GetResamplingPatternYUV( int original_width, double subrange_start, double 
   int fir_fs_mmx = (fir_filter_size / 2) +1;  // number of loops in MMX code
   int target_width_a=(target_width+15)&(~15);
   int* result = luma ?
-                (int*) _aligned_malloc(2*4 + target_width_a*(1+fir_fs_mmx)*8, 64) :
-                (int*) _aligned_malloc(2*4 + target_width_a*(1+fir_filter_size)*8, 64);
+                (int*) _aligned_malloc(2*sizeof(int) + target_width_a*(fir_fs_mmx*8+2*sizeof(BYTE*)), 64) :
+                (int*) _aligned_malloc(2*sizeof(int) + target_width_a*(fir_filter_size*8+2*sizeof(BYTE*)), 64);
 
-  int* cur[2] = { result +2, result +3 };
+  int* cur[2] = { result +2, result+3};
   *result = luma ? fir_fs_mmx : fir_filter_size;
 
   double pos_step = subrange_width / target_width;
@@ -263,20 +263,21 @@ int* GetResamplingPatternYUV( int original_width, double subrange_start, double 
 
     int ii = luma ? i&1 : 0;
 
-    *(cur[ii]) = luma ?   // Write offset of first pixel.
-                 (int)(temp + (start_pos & -2) * 2) :
-                 (int)(temp + start_pos * 8);
-
-    cur[ii] += 2;
+	// Whose idea was it to put pointers in an int array, huh?
+	*((BYTE**)(cur[ii]+(ii*((sizeof(BYTE*)/sizeof(int))-1)))) = luma ?
+		(temp + (start_pos & -2) * 2) :
+		(temp + start_pos * 8);
+	
+    cur[ii] += 2*(sizeof(BYTE*)/sizeof(int));
 
     // the following code ensures that the coefficients add to exactly FPScale
     double total = 0.0;
 
     // Ensure that we have a valid position
-    double ok_pos = max(0.0,min(original_width - subrange_start,pos));
+    double ok_pos = max(0.0,min(original_width, pos)); 
 
     for (int j=0; j<fir_filter_size; ++j) {  // Accumulate all coefficients
-      total += func->f((start_pos+j - ok_pos) * filter_step);
+      total += func->f((start_pos + j - ok_pos) * filter_step);
     }
 
     if (total == 0.0) {

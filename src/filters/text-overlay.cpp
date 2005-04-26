@@ -280,7 +280,8 @@ void Antialiaser::GetAlphaRect() {
 
       alpha1 = alpha2 = 0;
 
-/*      BYTE tmp = 0;
+#ifdef _AMD64_
+	  BYTE tmp = 0;
       for (i=0; i<8; i++) {
         tmp |= src[srcpitch*i];
         tmp |= src[srcpitch*i-1];
@@ -292,7 +293,7 @@ void Antialiaser::GetAlphaRect() {
         tmp |= src[srcpitch*(8+i)-1];
         tmp |= src[srcpitch*(8+i)+1];
       }
-*/
+#else
       DWORD tmp;
       __asm {           // test if the whole area isn't just plain black
         mov edx, srcpitch
@@ -353,7 +354,7 @@ void Antialiaser::GetAlphaRect() {
         and eax, 0x00ffffff
         mov tmp, eax
       }
-
+#endif
       if (tmp != 0) {     // quick exit in a common case
         for (i=0; i<8; i++)
           alpha1 += bitcnt[src[srcpitch*i]];
@@ -928,9 +929,11 @@ PVideoFrame __stdcall Compare::GetFrame(int n, IScriptEnvironment* env)
   double SSD = 0;
   int row_SSD;
 
+#ifndef _AMD64_
   if (((rowsize & 7) && !vi.IsRGB24()) ||       // rowsize must be a multiple or 8 for RGB32 and YUY2
     ((rowsize % 6) && vi.IsRGB24()) ||          // or 6 for RGB24
     !(env->GetCPUFlags() & CPUF_INTEGER_SSE)) { // to use the ISSE routine
+#endif
     for (int y = 0; y < height; y++) {
       row_SSD = 0;
       for (int x = 0; x < rowsize; x += incr) {
@@ -950,6 +953,7 @@ PVideoFrame __stdcall Compare::GetFrame(int n, IScriptEnvironment* env)
       f1ptr += pitch1;
       f2ptr += pitch2;
     }
+#ifndef _AMD64_
   } else {        // ISSE version; rowsize multiple of 8 for RGB32 and YUY2; 6 for RGB24
     const _int64 mask64 = (__int64)mask << (vi.IsRGB24()? 24: 32) | mask;
     const int incr2 = incr * 2;
@@ -1032,6 +1036,7 @@ comp_loopx:
     }
     neg_D = -neg_D;
   }
+#endif
 
   double MAD = (double)SAD / bytecount;
   double MD = (double)SD / bytecount;

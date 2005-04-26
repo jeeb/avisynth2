@@ -60,7 +60,7 @@ AVSFunction Field_filters[] = {
   { "SelectOdd", "c", SelectEvery::Create_SelectOdd },
   { "Interleave", "c+", Interleave::Create },
   { "SwapFields", "c", Create_SwapFields },
-  { "Bob", "c[b]f[c]f[height]i", Create_Bob },
+//  { "Bob", "c[b]f[c]f[height]i", Create_Bob },
   { "SelectRangeEvery", "c[every]i[length]i[offset]i[audio]b", SelectRangeEvery::Create},
   { 0 }
 };
@@ -350,7 +350,7 @@ AVSValue __cdecl Create_SwapFields(AVSValue args, void*, IScriptEnvironment* env
     new SeparateFields(args[0].AsClip(), env))), 2, 0);
 }
 
-
+#if 0 // *AMD64* No filtered Resize yet
 AVSValue __cdecl Create_Bob(AVSValue args, void*, IScriptEnvironment* env)
 {
   PClip clip = args[0].AsClip();
@@ -368,7 +368,7 @@ AVSValue __cdecl Create_Bob(AVSValue args, void*, IScriptEnvironment* env)
 	                                          new FilteredResizeV(clip, +0.25, vi.height, 
                                                 new_height, &filter, env)));	  
 }
-
+#endif
 
 PClip new_SeparateFields(PClip _child, IScriptEnvironment* env) 
 {

@@ -1420,7 +1420,7 @@ struct FrustratedACMOpenData {
 };
 
 
-BOOL CALLBACK ACMStreamOpenCallback(HACMDRIVERID hadid, DWORD dwInstance, DWORD fdwSupport) {
+BOOL CALLBACK ACMStreamOpenCallback(HACMDRIVERID hadid, DWORD_PTR dwInstance, DWORD fdwSupport) {
 	FrustratedACMOpenData *pfad = (FrustratedACMOpenData *)dwInstance;
 
 	// Ignore drivers that don't do format conversion.
@@ -1501,7 +1501,7 @@ AudioCompressor::AudioCompressor(AudioStream *src, WAVEFORMATEX *dst_format, lon
 		fad.oFormat = oFormat;
 		fad.success = false;
 
-		if (!acmDriverEnum(ACMStreamOpenCallback, (DWORD)&fad, 0) && fad.success) {
+		if (!acmDriverEnum(ACMStreamOpenCallback, (DWORD_PTR)&fad, 0) && fad.success) {
 			hADriver = fad.hdrv;
 			break;
 		}

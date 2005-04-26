@@ -32,7 +32,7 @@
 // which is not derived from or based on Avisynth, such as 3rd-party filters,
 // import and export plugins, or graphical user interfaces.
 
-#include "stdafx.h"
+#include "..\stdafx.h"
 
 #include <stdarg.h>
 
@@ -50,7 +50,7 @@ using std::string;
   #define _RPT1(x,y,z) ((void)0)
 #endif
 
-
+/* for the moment, we don't have many of these
 extern AVSFunction Audio_filters[], Combine_filters[], Convert_filters[],
                    Convolution_filters[], Edit_filters[], Field_filters[],
                    Focus_filters[], Fps_filters[], Histogram_filters[],
@@ -77,7 +77,23 @@ AVSFunction* builtin_functions[] = {
                    Plugin_functions, CPlugin_filters, Cache_filters,
                    SSRC_filters, SuperEq_filters, Overlay_filters,
                    Soundtouch_filters };
+*/
+extern AVSFunction Edit_filters[], Focus_filters[], Script_functions[],
+					Source_filters[], Text_filters[], Transform_filters[],
+					Cache_filters[], Plugin_functions[], Audio_filters[],
+					Color_filters[], Combine_filters[], Convolution_filters[],
+					Field_filters[], Fps_filters[], Histogram_filters[],
+					Merge_filters[], Misc_filters[], Turn_filters[],
+					Resample_filters[];
 
+AVSFunction* builtin_functions[] = {
+					Edit_filters, Focus_filters, Script_functions,
+					Source_filters, Text_filters, Transform_filters,
+					Cache_filters, Plugin_functions, Audio_filters,
+					Color_filters, Combine_filters, Convolution_filters,
+					Field_filters, Fps_filters, Histogram_filters,
+					Merge_filters, Misc_filters, Turn_filters,
+					Resample_filters};
 
 
 const HKEY RegRootKey = HKEY_LOCAL_MACHINE;
@@ -101,7 +117,7 @@ public:
 
 static LinkedVideoFrame* g_VideoFrame_recycle_bin = 0;
 
-void* VideoFrame::operator new(unsigned) {
+void* VideoFrame::operator new(size_t) {
   // CriticalSection
   for (LinkedVideoFrame* i = g_VideoFrame_recycle_bin; i; i = i->next)
     if (i->vf.refcount == 0)
@@ -672,7 +688,7 @@ private:
   VarTable* var_table;
 
   LinkedVideoFrameBuffer video_frame_buffers;
-  int memory_max, memory_used;
+  __int64 memory_max, memory_used;
 
   LinkedVideoFrameBuffer* NewFrameBuffer(int size);
 
@@ -694,8 +710,12 @@ private:
 ScriptEnvironment::ScriptEnvironment() : at_exit(This()), function_table(This()), global_var_table(0, 0) {
   MEMORYSTATUS memstatus;
   GlobalMemoryStatus(&memstatus);
-  memory_max = max(memstatus.dwAvailPhys / 4,16*1024*1024);   // Minimum 16MB, otherwise available physical memory/4, no maximum
-  memory_used = 0;
+  // Minimum 16MB, otherwise available physical memory/4, no maximum
+  if (memstatus.dwAvailPhys  > 64*1024*1024)
+    memory_max = (__int64)memstatus.dwAvailPhys >> 2;
+  else
+    memory_max = 16777216i64;
+  memory_used = 0i64;
   var_table = new VarTable(0, &global_var_table);
   global_var_table.Set("true", true);
   global_var_table.Set("false", false);
@@ -719,9 +739,15 @@ ScriptEnvironment::~ScriptEnvironment() {
 
 int ScriptEnvironment::SetMemoryMax(int mem) {
   MEMORYSTATUS memstatus;
+  __int64 mem_limit;
+
   GlobalMemoryStatus(&memstatus);
-  memory_max = min(max(memory_used,mem*1024*1024),memory_used+memstatus.dwAvailPhys-5*1024*1024);
-  return memory_max/(1024*1024);
+  memory_max = mem * 1048576i64;                          // mem as megabytes
+  if (memory_max < memory_used) memory_max = memory_used; // can't be less than we already have
+  mem_limit = memory_used + (__int64)memstatus.dwAvailPhys - 5242880i64;
+  if (memory_max > mem_limit) memory_max = mem_limit;     // can't be more than 5Mb less than total
+  if (memory_max < 16777216i64) memory_max = 16777216i64; // can't be less than 16Mb
+  return (int)(memory_max/1048576i64);
 }
 
 int ScriptEnvironment::SetWorkingDir(const char * newdir) {
@@ -881,9 +907,9 @@ PVideoFrame ScriptEnvironment::NewPlanarVideoFrame(int width, int height, int al
   }
 #endif
 //  int offset = (-int(vfb->GetWritePtr())) & (align-1);  // align first line offset
-  int offset = int(vfb->GetWritePtr()) & (FRAME_ALIGN-1);  // align first line offset
+  INT_PTR offset = (INT_PTR)(vfb->GetWritePtr()) & (FRAME_ALIGN-1);  // align first line offset
   offset = (FRAME_ALIGN - offset)%FRAME_ALIGN;
-  int Uoffset, Voffset;
+  INT_PTR Uoffset, Voffset;
   if (U_first) {
     Uoffset = offset + pitch * height;
     Voffset = offset + pitch * height + UVpitch * (height>>1);
@@ -909,7 +935,7 @@ PVideoFrame ScriptEnvironment::NewVideoFrame(int row_size, int height, int align
     }
   }
 #endif
-  int offset = int(vfb->GetWritePtr()) & (FRAME_ALIGN-1);  // align first line offset
+  INT_PTR offset = (INT_PTR)(vfb->GetWritePtr()) & (FRAME_ALIGN-1);  // align first line offset
   offset = (FRAME_ALIGN - offset)%FRAME_ALIGN;
 //  int offset = (-int(vfb->GetWritePtr())) & (align-1);  // align first line offset  (alignment is free here!)
   return new VideoFrame(vfb, offset, pitch, row_size, height);
@@ -996,7 +1022,7 @@ PVideoFrame __stdcall ScriptEnvironment::Subframe(PVideoFrame src, int rel_offse
 
 LinkedVideoFrameBuffer* ScriptEnvironment::NewFrameBuffer(int size) {
   memory_used += size;
-  _RPT1(0, "Frame buffer memory used: %d\n", memory_used);
+  _RPT1(0, "Frame buffer memory used: %I64d\n", memory_used);
   return new LinkedVideoFrameBuffer(size);
 }
 
@@ -1016,18 +1042,26 @@ LinkedVideoFrameBuffer* ScriptEnvironment::GetFrameBuffer2(int size) {
  * a random candidate selection model. (i.e. pick a buffer at random)
  * 
  * Ian Brabham, 11 July 2004
-
+ 
+ * Exercising Plan C exclusively caused problems with uncontrolled memory
+ * usage, probably with heap fragmentation. Restore Plan B until a better
+ * overall model can be developed. This should restore the prior level of
+ * stability and Plan C can now at least be used when required without the
+ * fatality previously experienced.
+ *
+ * Ian Brabham 24 July 2004
+*/
   // Plan B: look for an existing buffer of the appropriate size
 
   for (LinkedVideoFrameBuffer* i = video_frame_buffers.prev; i != &video_frame_buffers; i = i->prev) {
     if (i->GetRefcount() == 0 && i->GetDataSize() == size)
       return i;
   }
-*/
+
   // Plan C:
   // Before we allocate a new frame, check our memory usage, and perhaps delete some unreferenced frames.
 
-  if (memory_used >  memory_max + (memory_max/4) ) {  // Are we more than 25% above allowed usage?
+  if (memory_used >  memory_max + (memory_max >> 3) ) {  // Are we more than 12.5% above allowed usage?
     int freed = 0;
     int freed_count = 0;
     // Deallocate enough unused frames.
@@ -1042,7 +1076,7 @@ LinkedVideoFrameBuffer* ScriptEnvironment::GetFrameBuffer2(int size) {
           freed_count++;
           // Delete data;
           i->~LinkedVideoFrameBuffer();
-	  if ((memory_used-freed) < memory_max)
+	  if ((memory_used - freed) < memory_max)
 	    break; // Stop, we are below 100% utilization
         }
       }
@@ -1167,6 +1201,7 @@ bool ScriptEnvironment::FunctionExists(const char* name) {
 
 void BitBlt(BYTE* dstp, int dst_pitch, const BYTE* srcp, int src_pitch, int row_size, int height) {
   if ( (!height)|| (!row_size)) return;
+/* TODO: Make x86_64 versions
   if (GetCPUFlags() & CPUF_INTEGER_SSE) {
     if (height == 1 || (src_pitch == dst_pitch && dst_pitch == row_size)) {
       memcpy_amd(dstp, srcp, row_size*height);
@@ -1175,6 +1210,7 @@ void BitBlt(BYTE* dstp, int dst_pitch, const BYTE* srcp, int src_pitch, int row_
     }
     return;
   }
+*/
   if (height == 1 || (dst_pitch == src_pitch && src_pitch == row_size)) {
     memcpy(dstp, srcp, src_pitch * height);
   } else {
@@ -1190,7 +1226,7 @@ void BitBlt(BYTE* dstp, int dst_pitch, const BYTE* srcp, int src_pitch, int row_
   * Assembler bitblit by Steady
    *****************************/
 
-
+#if 0 /* TODO: Translate to x86_64 */
 void asm_BitBlt_ISSE(BYTE* dstp, int dst_pitch, const BYTE* srcp, int src_pitch, int row_size, int height) {
 
   if(row_size==0 || height==0) return; //abort on goofs
@@ -1399,7 +1435,7 @@ memoptA_done8:
     return;
   }//end aligned version
 }//end BitBlt_memopt()
-
+#endif
 
 
 void ScriptEnvironment::BitBlt(BYTE* dstp, int dst_pitch, const BYTE* srcp, int src_pitch, int row_size, int height) {

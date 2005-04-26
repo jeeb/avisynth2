@@ -99,15 +99,19 @@ void __stdcall ConvertAudio::GetAudio(void* buf, __int64 start, __int64 count, I
   float* tmp_fb = floatbuffer;
 
   if (src_format != SAMPLE_FLOAT) {  // Skip initial copy, if samples are already float
-    if ((env->GetCPUFlags() & CPUF_3DNOW_EXT)) {
+#ifndef _AMD64_
+	if ((env->GetCPUFlags() & CPUF_3DNOW_EXT)) {
       convertToFloat_3DN(tempbuffer, tmp_fb, src_format, count*channels);
     } else {
       convertToFloat(tempbuffer, tmp_fb, src_format, count*channels);
     }
+#else
+	  convertToFloat(tempbuffer, tmp_fb, src_format, count*channels);
+#endif
   } else {
     tmp_fb = (float*)tempbuffer;
   }
-
+#ifndef _AMD64_
   if ((env->GetCPUFlags() & CPUF_3DNOW_EXT)) {
     convertFromFloat_3DN(tmp_fb, buf, dst_format, count*channels);
   } else if ((env->GetCPUFlags() & CPUF_SSE)) {
@@ -115,6 +119,9 @@ void __stdcall ConvertAudio::GetAudio(void* buf, __int64 start, __int64 count, I
   } else {
     convertFromFloat(tmp_fb, buf, dst_format, count*channels);
   }
+#else
+    convertFromFloat(tmp_fb, buf, dst_format, count*channels);
+#endif
 }
 
 
@@ -162,6 +169,7 @@ void ConvertAudio::convertToFloat(char* inbuf, float* outbuf, char sample_type, 
   }
 }
 
+#ifndef _AMD64_
 void ConvertAudio::convertToFloat_3DN(char* inbuf, float* outbuf, char sample_type, int count) {
   int i;
   switch (sample_type) {
@@ -371,6 +379,7 @@ c32f_loop:
     }
   }
 }
+#endif
 
 void ConvertAudio::convertFromFloat(float* inbuf,void* outbuf, char sample_type, int count) {
   int i;
@@ -417,6 +426,7 @@ void ConvertAudio::convertFromFloat(float* inbuf,void* outbuf, char sample_type,
   }
 }
 
+#ifndef _AMD64_
 void ConvertAudio::convertFromFloat_SSE(float* inbuf,void* outbuf, char sample_type, int count) {
   int i;
 
@@ -524,6 +534,7 @@ cf32_loop:
     }
   }
 }
+#endif
 
 __inline int ConvertAudio::Saturate_int8(float n) {
     if (n <= -128.0f) return -128;

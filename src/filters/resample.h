@@ -38,13 +38,15 @@
 #include "../internal.h"
 #include "resample_functions.h"
 #include "transform.h"
-#include "../core/softwire_helpers.h"
+#include <emmintrin.h>
+// No dynamic assembly for AMD64
+// #include "../core/softwire_helpers.h"
 
 
 
 
-
-class FilteredResizeH : public GenericVideoFilter, public  CodeGenerator
+// No CodeGenerator class for AMD64
+class FilteredResizeH : public GenericVideoFilter  //, public  CodeGenerator
 /**
   * Class to resize in the horizontal direction using a specified sampling filter
   * Helper for resample functions
@@ -55,10 +57,9 @@ public:
                    ResamplingFunction* func, IScriptEnvironment* env );
   virtual ~FilteredResizeH(void);
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
-  DynamicAssembledCode GenerateResizer(int gen_plane, IScriptEnvironment* env);
+  // Not using Dynamic Assembled Code anymore for AMD64 compatibility
+  //void GenerateResizer(int gen_plane, IScriptEnvironment* env);
 private:
-  DynamicAssembledCode assemblerY;
-  DynamicAssembledCode assemblerUV;
   
   int* /*const*/ pattern_luma;
   int* /*const*/ pattern_chroma;

@@ -102,7 +102,7 @@ AVSValue __cdecl Create_Blur(AVSValue args, void*, IScriptEnvironment* env);
 
 
 /*** Soften classes ***/
-
+#ifndef _AMD64_
 class TemporalSoften : public GenericVideoFilter 
 /**
   * Class to soften the focus on the temporal axis
@@ -146,7 +146,7 @@ private:
   enum { MAX_RADIUS=7 };
 
 };
-
+#endif
 
 class SpatialSoften : public GenericVideoFilter 
 /**

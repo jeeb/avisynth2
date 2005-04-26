@@ -301,7 +301,7 @@ class VideoFrame {
   VideoFrame(VideoFrameBuffer* _vfb, int _offset, int _pitch, int _row_size, int _height);
   VideoFrame(VideoFrameBuffer* _vfb, int _offset, int _pitch, int _row_size, int _height, int _offsetU, int _offsetV, int _pitchUV);
 
-  void* operator new(unsigned size);
+  void* operator new(size_t);
 // TESTME: OFFSET U/V may be switched to what could be expected from AVI standard!
 public:
   int GetPitch() const { return pitch; }
@@ -530,8 +530,11 @@ private:
     if (!init && IsClip() && clip)
       clip->Release();
     // make sure this copies the whole struct!
+	/* UGH! what the- ?
     ((__int32*)this)[0] = ((__int32*)src)[0];
     ((__int32*)this)[1] = ((__int32*)src)[1];
+	*/
+	memcpy(this, src, sizeof(AVSValue));
   }
 };
 

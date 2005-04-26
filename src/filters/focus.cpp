@@ -48,7 +48,9 @@
 AVSFunction Focus_filters[] = {
   { "Blur", "cf[]f", Create_Blur },                     // amount [0 - 1]
   { "Sharpen", "cf[]f", Create_Sharpen },               // amount [0 - 1]
+#ifndef _AMD64_ //TemporalSoften uses MMX
   { "TemporalSoften", "ciii[scenechange]i[mode]i", TemporalSoften::Create }, // radius, luma_threshold, chroma_threshold
+#endif
   { "SpatialSoften", "ciii", SpatialSoften::Create },   // radius, luma_threshold, chroma_threshold
   { 0 }
 };
@@ -93,7 +95,9 @@ PVideoFrame __stdcall AdjustFocusV::GetFrame(int n, IScriptEnvironment* env)
 			memcpy(line, buf, row_size);
 			uc* p = buf + pitch;
 			if (env->GetCPUFlags() & CPUF_INTEGER_SSE) {
+#ifndef _AMD64_
 				AFV_MMX(line,p,height,pitch,row_size,amount);
+#endif
 			} else {
 				AFV_C(line,p,height,pitch,row_size,amount);
 			}
@@ -109,7 +113,9 @@ PVideoFrame __stdcall AdjustFocusV::GetFrame(int n, IScriptEnvironment* env)
 		memcpy(line, buf, row_size);
 		uc* p = buf + pitch;
 		if (env->GetCPUFlags() & CPUF_INTEGER_SSE) {
+#ifndef _AMD64_
 			AFV_MMX(line,p,height,pitch,row_size,amount);
+#endif
 		} else {
 			AFV_C(line,p,height,pitch,row_size,amount);
 		}
@@ -131,6 +137,7 @@ void AFV_C(uc* l, uc* p, const int height, const int pitch, const int row_size, 
 	}
 }
 
+#ifndef _AMD64_
 void AFV_MMX(const uc* l, const uc* p, const int height, const int pitch, const int row_size, const int amount) {
 	__declspec(align(8)) static __int64 cw;
 	__asm { 
@@ -220,6 +227,7 @@ row_loop:
 	}
 	__asm emms
 }
+#endif
 
 AdjustFocusH::AdjustFocusH(double _amount, PClip _child)
 : GenericVideoFilter(FillBorder::Create(_child)), amount(int(32768*pow(2.0, _amount)+0.5)) {}
@@ -240,7 +248,9 @@ PVideoFrame __stdcall AdjustFocusH::GetFrame(int n, IScriptEnvironment* env)
 			const int pitch = frame->GetPitch(plane);
 			int height = frame->GetHeight(plane);
 			if (env->GetCPUFlags() & CPUF_INTEGER_SSE) {
+#ifndef _AMD64_
 				AFH_YV12_MMX(q,height,pitch,row_size,amount);
+#endif
 			} else {
 				AFH_YV12_C(q,height,pitch,row_size,amount);
 			} 
@@ -251,14 +261,18 @@ PVideoFrame __stdcall AdjustFocusH::GetFrame(int n, IScriptEnvironment* env)
 		const int pitch = frame->GetPitch();
 		if (vi.IsYUY2()) {
 			if (env->GetCPUFlags() & CPUF_INTEGER_SSE) {
+#ifndef _AMD64_	
 				AFH_YUY2_MMX(q,vi.height,pitch,vi.width,amount);
+#endif
 			} else {
 				AFH_YUY2_C(q,vi.height,pitch,vi.width,amount);
 			}
 		} 
 		else if (vi.IsRGB32()) {
 			if (env->GetCPUFlags() & CPUF_INTEGER_SSE) {
+#ifndef _AMD64_	
 				AFH_RGB32_MMX(q,vi.height,pitch,vi.width,amount);
+#endif
 			} else {
 				AFH_RGB32_C(q,vi.height,pitch,vi.width,amount);
 			}
@@ -295,6 +309,7 @@ void AFH_RGB32_C(uc* p, int height, const int pitch, const int width, const int 
     }
 }
 
+#ifndef _AMD64_
 void AFH_RGB32_MMX(const uc* p, const int height, const int pitch, const int width, const int amount) {
 	__declspec(align(8)) static __int64 cw;
 	__asm { 
@@ -380,6 +395,7 @@ row_loop:
 	}
 	__asm emms
 }
+#endif
 
 void AFH_YUY2_C(uc* p, int height, const int pitch, const int width, const int amount) {
   const int center_weight = amount*2;
@@ -402,7 +418,7 @@ void AFH_YUY2_C(uc* p, int height, const int pitch, const int width, const int a
 		}
 }
 
-
+#ifndef _AMD64_
 void AFH_YUY2_MMX(const uc* p, const int height, const int pitch, const int width, const int amount) {
 	__declspec(align(8)) static __int64 cw;
 	__asm { 
@@ -519,6 +535,7 @@ row_loop:
 	}
 	__asm emms
 }
+#endif
 
 void AFH_RGB24_C(uc* p, int height, const int pitch, const int width, const int amount) {
   const int center_weight = amount*2;
@@ -573,7 +590,7 @@ __asm	paddusw		mmB,r6		\
 __asm	psraw		mmB,6		\
 __asm	paddsw		mmA,mmB
 
-
+#ifndef _AMD64_
 void AFH_YV12_MMX(uc* p, int height, const int pitch, const int row_size, const int amount) 
 {
 	__declspec(align(8)) static __int64 cw;
@@ -667,7 +684,7 @@ out_row_loop:
 	}
 	__asm emms
 }
-
+#endif
 
 
 
@@ -714,7 +731,7 @@ AVSValue __cdecl Create_Blur(AVSValue args, void*, IScriptEnvironment* env)
  **/
 
 
-
+#ifndef _AMD64_ //Uses MMX, needs to be rewritten
 TemporalSoften::TemporalSoften( PClip _child, unsigned radius, unsigned luma_thresh, 
                                 unsigned chroma_thresh, int _scenechange, int _mode, IScriptEnvironment* env )
   : GenericVideoFilter  (_child),
@@ -1350,8 +1367,7 @@ AVSValue __cdecl TemporalSoften::Create(AVSValue args, void*, IScriptEnvironment
                              args[3].AsInt(), args[4].AsInt(0),args[5].AsInt(1),env );
 }
 
-
-
+#endif //Removed for AMD64
 
 
 

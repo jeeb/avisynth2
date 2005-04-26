@@ -29,6 +29,7 @@ static long g_lCPUExtensionsAvailable;
 
 // This is ridiculous.
 
+#ifndef _AMD64_
 static long CPUCheckForSSESupport() {
 	__try {
 //		__asm andps xmm0,xmm0
@@ -41,10 +42,17 @@ static long CPUCheckForSSESupport() {
 		if (GetExceptionCode() == 0xC000001Du) // illegal instruction
 			g_lCPUExtensionsAvailable &= ~(CPUF_SUPPORTS_SSE|CPUF_SUPPORTS_SSE2);
 	}
-
 	return g_lCPUExtensionsAvailable;
 }
+#endif
 
+
+#ifdef _AMD64_
+long CPUCheckForExtensions() {
+	// Bad for EM64T machines - they don't have 3dnow
+	g_lCPUExtensionsAvailable = 0xff;
+	return g_lCPUExtensionsAvailable;
+#else
 long __declspec(naked) CPUCheckForExtensions() {
 	__asm {
 		push	ebp
@@ -139,4 +147,5 @@ nocheck:
 		pop		ebp
 		ret
 	}
+#endif
 }

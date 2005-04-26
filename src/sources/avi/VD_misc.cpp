@@ -20,7 +20,7 @@
 #include "../../filters/misc.h"
 
 extern long CPUCheckForExtensions();  // in cpuaccel.cpp
-
+/*
 long __declspec(naked) MulDivTrunc(long a, long b, long c) {
 	__asm {
 		mov eax,[esp+4]
@@ -42,7 +42,7 @@ unsigned __declspec(naked) __stdcall MulDivUnsigned(unsigned a, unsigned b, unsi
 		ret		12
 	}
 }
-
+*/
 int NearestLongValue(long v, const long *array, int array_size) {
 	int i;
 

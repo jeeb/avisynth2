@@ -405,6 +405,8 @@ PVideoFrame Dissolve::GetFrame(int n, IScriptEnvironment* env)
 
   const int multiplier = n - video_fade_start + 1;
 
+//#ifndef _AMD64_
+#if 0 // Just for the moment, till mmx_weigh_yv12 makes it back in.
   if ((env->GetCPUFlags() & CPUF_MMX) && (!(a->GetRowSize()&4)) ) {  // MMX and Video is mod 4
     int weight = (multiplier * 32767) / (overlap+1);
     int invweight = 32767-weight;
@@ -416,7 +418,7 @@ PVideoFrame Dissolve::GetFrame(int n, IScriptEnvironment* env)
     }
     return a;  
   }
-
+#endif
   
   PVideoFrame c;
   if (!a->IsWritable())
