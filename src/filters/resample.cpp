@@ -222,7 +222,9 @@ PVideoFrame __stdcall FilteredResizeH::GetFrame(int n, IScriptEnvironment* env)
 		}
 */
 		XMM0 = _mm_setzero_si128();
-		XMM6.m128i_u64[0] = XMM6.m128i_u64[1] = FPround;
+//		XMM6.m128i_u64[0] = FPround;
+//		XMM6.m128i_u64[1] = FPround;
+		XMM6 = _mm_set_epi32(8192, 8192, 8192, 8192);
 
 		for(i=0;(i*8)<org_width;i++) {
 			_mm_prefetch((char*)srcp+256+i*4, _MM_HINT_NTA);
@@ -249,8 +251,11 @@ PVideoFrame __stdcall FilteredResizeH::GetFrame(int n, IScriptEnvironment* env)
 		tempcur_luma=(int*)((char*)tempcur_luma+2*filter_offset);
 		XMM1 = _mm_add_epi32(XMM1, XMM6);
 		XMM1 = _mm_srli_epi32(XMM1, 14);
-		XMM1 = _mm_packs_epi32(XMM1, XMM1);
+		XMM1 = _mm_shufflehi_epi16(XMM1, 232);
+		XMM1 = _mm_shufflelo_epi16(XMM1, 232);
 		XMM1 = _mm_packus_epi16(XMM1, XMM1);
+		XMM1 = _mm_shufflelo_epi16(XMM1, 232);
+
 		*temp_dst++=XMM1.m128i_u32[0];
 		} // end while (x--)
 /*		__asm {
@@ -1037,9 +1042,6 @@ FilteredResizeV::FilteredResizeV( PClip _child, double subrange_top, double subr
   resampling_pattern = resampling_patternUV = yOfs = yOfsUV = 0;
   if (target_height<4)
     env->ThrowError("Resize: Height must be bigger than or equal to 4.");
-  if (!vi.IsYV12())
-	  env->ThrowError("Resize: Only YV12 supported at this stage.");
- // Only YV12 converted for _AMD64_
   if (vi.IsYV12() && (target_height&1))
     env->ThrowError("Resize: YV12 destination height must be multiple of 2.");
 /*  if (vi.IsRGB())
@@ -1134,6 +1136,7 @@ PVideoFrame __stdcall FilteredResizeV::GetFrame(int n, IScriptEnvironment* env)
           total += *srcp2 * cur[b];
           srcp2 += src_pitch;
         }
+		total+=8192;
 		int tempsum=total>>14;
         if (tempsum>255) dstp[x]=255;
 		else if (tempsum<0) dstp[x]=0;

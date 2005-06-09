@@ -81,7 +81,7 @@
 				OptimizeForProcessor="3"
 				AdditionalIncludeDirectories=".\"
 				PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS"
-				RuntimeLibrary="4"
+				RuntimeLibrary="2"
 				BufferSecurityCheck="FALSE"
 				EnableEnhancedInstructionSet="2"
 				UsePrecompiledHeader="0"
@@ -192,7 +192,7 @@
 				OptimizeForProcessor="3"
 				AdditionalIncludeDirectories=".\"
 				PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS"
-				RuntimeLibrary="4"
+				RuntimeLibrary="2"
 				BufferSecurityCheck="FALSE"
 				EnableEnhancedInstructionSet="2"
 				UsePrecompiledHeader="0"
@@ -203,7 +203,7 @@
 				Name="VCCustomBuildTool"/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="msacm32.lib vfw32.lib version.lib winmm.lib"
+				AdditionalDependencies="msacm32.lib vfw32.lib version.lib winmm.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib bufferoverflowu.lib $(NOINHERIT)"
 				OutputFile="$(OutDir)/avisynth.dll"
 				LinkIncremental="1"
 				ModuleDefinitionFile=".\core\avisynth.def"
