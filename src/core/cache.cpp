@@ -227,12 +227,14 @@ PVideoFrame __stdcall Cache::GetFrame(int n, IScriptEnvironment* env)
       }
     } // for (int i
 
-    if (foundframe) {   // Frame was found - build a copy and return a (dumb) pointer to it.
+    if (foundframe) {   // Frame was found - build a copy and return it.
 
-      VideoFrame* copy = new VideoFrame(result->vfb, result->offset, result->pitch, result->row_size,
+      PVideoFrame copy = new VideoFrame(result->vfb, result->offset, result->pitch, result->row_size,
                                         result->height, result->offsetU, result->offsetV, result->pitchUV);
       _RPT2(0, "Cache2:%x: using cached copy of frame %d\n", this, n);
       
+      InterlockedDecrement((long*)&result->refcount);
+	  InterlockedDecrement((long*)&copy->refcount);
       return copy;
     }
     else {
@@ -313,7 +315,9 @@ PVideoFrame __stdcall Cache::GetFrame(int n, IScriptEnvironment* env)
 
           if (i->sequence_number == i->vfb->GetSequenceNumber()) {
 		    ++g_Cache_stats.vfb_found;
-			return BuildVideoFrame(i, n);
+			PVideoFrame retval=BuildVideoFrame(i, n);
+			InterlockedDecrement((long*)&retval->refcount);
+			return retval;
           }
 
 		  ++i->faults;

@@ -336,6 +336,9 @@ class VideoFrame {
 
   VideoFrame(VideoFrameBuffer* _vfb, int _offset, int _pitch, int _row_size, int _height);
   VideoFrame(VideoFrameBuffer* _vfb, int _offset, int _pitch, int _row_size, int _height, int _offsetU, int _offsetV, int _pitchUV);
+  // in plugins use env->SubFrame()
+  VideoFrame* Subframe(int rel_offset, int new_pitch, int new_row_size, int new_height) const;//If you really want to use these remember to increase vfb->refcount before calling and decrement it afterwards.
+  VideoFrame* Subframe(int rel_offset, int new_pitch, int new_row_size, int new_height, int rel_offsetU, int rel_offsetV, int pitchUV) const;
 
   void* operator new(unsigned size);
 // TESTME: OFFSET U/V may be switched to what could be expected from AVI standard!
@@ -368,9 +371,6 @@ public:
   int GetOffset() const { return offset; }
   int GetOffset(int plane) const { switch (plane) {case PLANAR_U: return offsetU;case PLANAR_V: return offsetV;default: return offset;}; }
 
-  // in plugins use env->SubFrame()
-  VideoFrame* Subframe(int rel_offset, int new_pitch, int new_row_size, int new_height) const;
-  VideoFrame* Subframe(int rel_offset, int new_pitch, int new_row_size, int new_height, int rel_offsetU, int rel_offsetV, int pitchUV) const;
 
 
   const BYTE* GetReadPtr() const { return vfb->GetReadPtr() + offset; }

@@ -131,42 +131,47 @@ static RecycleBin *g_Bin=0;
 void* VideoFrame::operator new(unsigned) {
   // CriticalSection
   for (LinkedVideoFrame* i = g_Bin->g_VideoFrame_recycle_bin; i; i = i->next)
-    if (i->vf.refcount == 0)
+    if (InterlockedCompareExchange((long*)&i->vf.refcount,1,0) == 0)
       return &i->vf;
   LinkedVideoFrame* result = (LinkedVideoFrame*)::operator new(sizeof(LinkedVideoFrame));
+  result->vf.refcount=1;
   result->next = g_Bin->g_VideoFrame_recycle_bin;
-  g_Bin->g_VideoFrame_recycle_bin = result;
+  result->next = (LinkedVideoFrame*)InterlockedExchangePointer((long*)&g_Bin->g_VideoFrame_recycle_bin,result);//g_VideoFrame_recycle_bin is assigned twice to result->next just in case another thread reads result->next before the last assignment 
   return &result->vf;
 }
 
 
 VideoFrame::VideoFrame(VideoFrameBuffer* _vfb, int _offset, int _pitch, int _row_size, int _height)
-  : refcount(0), vfb(_vfb), offset(_offset), pitch(_pitch), row_size(_row_size), height(_height),offsetU(_offset),offsetV(_offset),pitchUV(0)  // PitchUV=0 so this doesn't take up additional space
+  : refcount(1), vfb(_vfb), offset(_offset), pitch(_pitch), row_size(_row_size), height(_height),offsetU(_offset),offsetV(_offset),pitchUV(0)  // PitchUV=0 so this doesn't take up additional space, refcount=1 to prevent operator new to assign it to another thread
 {
   InterlockedIncrement(&vfb->refcount);
 }
 
 VideoFrame::VideoFrame(VideoFrameBuffer* _vfb, int _offset, int _pitch, int _row_size, int _height, int _offsetU, int _offsetV, int _pitchUV)
-  : refcount(0), vfb(_vfb), offset(_offset), pitch(_pitch), row_size(_row_size), height(_height),offsetU(_offsetU),offsetV(_offsetV),pitchUV(_pitchUV)
+  : refcount(1), vfb(_vfb), offset(_offset), pitch(_pitch), row_size(_row_size), height(_height),offsetU(_offsetU),offsetV(_offsetV),pitchUV(_pitchUV)//refcount=1 to prevent operator new to assign it to another thread
 {
   InterlockedIncrement(&vfb->refcount);
 }
 
 VideoFrame* VideoFrame::Subframe(int rel_offset, int new_pitch, int new_row_size, int new_height) const {
-  return new VideoFrame(vfb, offset+rel_offset, new_pitch, new_row_size, new_height);
+	VideoFrame* Retval=new VideoFrame(vfb, offset+rel_offset, new_pitch, new_row_size, new_height); 
+	InterlockedDecrement((long*)&Retval->refcount);//This is not threadsafe so filters should use IScriptEnviroment->Subframe instead
+	return Retval;
 }
 
 VideoFrame* VideoFrame::Subframe(int rel_offset, int new_pitch, int new_row_size, int new_height, int rel_offsetU, int rel_offsetV, int new_pitchUV) const {
-  return new VideoFrame(vfb, offset+rel_offset, new_pitch, new_row_size, new_height, rel_offsetU+offsetU, rel_offsetV+offsetV, new_pitchUV);
+ 	VideoFrame* Retval=new VideoFrame(vfb, offset+rel_offset, new_pitch, new_row_size, new_height, rel_offsetU+offsetU, rel_offsetV+offsetV, new_pitchUV);
+	InterlockedDecrement((long*)&Retval->refcount);//This is not threadsafe so filters should use IScriptEnviroment->Subframe instead
+	return Retval;
 }
 
 
-VideoFrameBuffer::VideoFrameBuffer() : refcount(0), data(0), data_size(0), sequence_number(0) {}
+VideoFrameBuffer::VideoFrameBuffer() : refcount(1), data(0), data_size(0), sequence_number(0) {}
 
 
 #ifdef _DEBUG  // Add 64 guard bytes front and back -- cache can check them after every GetFrame() call
 VideoFrameBuffer::VideoFrameBuffer(int size) : 
-  refcount(0), 
+  refcount(1), 
   data((new BYTE[size+32])+16), 
   data_size(size), 
   sequence_number(0) {
@@ -194,7 +199,7 @@ VideoFrameBuffer::~VideoFrameBuffer() {
 #else
 
 VideoFrameBuffer::VideoFrameBuffer(int size)
- : refcount(0), data(new BYTE[size]), data_size(size), sequence_number(0) { InterlockedIncrement(&sequence_number); }
+ : refcount(1), data(new BYTE[size]), data_size(size), sequence_number(0) { InterlockedIncrement(&sequence_number); }
 
 VideoFrameBuffer::~VideoFrameBuffer() {
 //  _ASSERTE(refcount == 0);
@@ -764,6 +769,8 @@ private:
   bool PlanarChromaAlignmentState;
 
   static long refcount; // Global to all ScriptEnvironment objects
+
+  CRITICAL_SECTION cs_relink_video_frame_buffer;//tsp June 2005 
 };
 
 long ScriptEnvironment::refcount=0;
@@ -773,6 +780,8 @@ ScriptEnvironment::ScriptEnvironment()
     function_table(This()),
 	global_var_table(0, 0),
 	PlanarChromaAlignmentState(false){ // Change to "true" for 2.5.7
+
+  InitializeCriticalSectionAndSpinCount(&cs_relink_video_frame_buffer, 4000);//tsp June 2005 might have to change the spincount or use InitializeCriticalSection if it should run on WinNT 4 without SP3 or better
 
   if(InterlockedCompareExchange(&refcount, 1, 0) == 0)//tsp June 2005 Initialize Recycle bin
     g_Bin=new RecycleBin();
@@ -816,6 +825,7 @@ ScriptEnvironment::~ScriptEnvironment() {
 	delete g_Bin;//tsp June 2005 Cleans up the heap
 	g_Bin=NULL;
   }
+  DeleteCriticalSection(&cs_relink_video_frame_buffer);//tsp June 2005
 }
 
 int ScriptEnvironment::SetMemoryMax(int mem) {
@@ -1067,7 +1077,10 @@ PVideoFrame __stdcall ScriptEnvironment::NewVideoFrame(const VideoInfo& vi, int 
     }
     if ((vi.height&1)||(vi.width&1))
       ThrowError("Filter Error: Attempted to request an YV12 frame that wasn't mod2 in width and height!");
-    return ScriptEnvironment::NewPlanarVideoFrame(vi.width, vi.height, align, !vi.IsVPlaneFirst());  // If planar, maybe swap U&V
+   	PVideoFrame retval=ScriptEnvironment::NewPlanarVideoFrame(vi.width, vi.height, align, !vi.IsVPlaneFirst());  // If planar, maybe swap U&V
+	InterlockedDecrement((long*)&retval->vfb->refcount);//After the VideoFrame has been assigned to a PVideoFrame it is safe to decrement the refcount (from 2 to 1)
+	InterlockedDecrement((long*)&retval->refcount);
+	return retval;
   } else {
     if ((vi.width&1)&&(vi.IsYUY2()))
       ThrowError("Filter Error: Attempted to request an YUY2 frame that wasn't mod2 in width.");
@@ -1076,7 +1089,10 @@ PVideoFrame __stdcall ScriptEnvironment::NewVideoFrame(const VideoInfo& vi, int 
     } else {
       align = max(align,FRAME_ALIGN);
     }
-    return ScriptEnvironment::NewVideoFrame(vi.RowSize(), vi.height, align);
+    PVideoFrame retval=ScriptEnvironment::NewVideoFrame(vi.RowSize(), vi.height, align);
+	InterlockedDecrement((long*)&retval->vfb->refcount);//After the VideoFrame has been assigned to a PVideoFrame it is safe to decrement the refcount (from 2 to 1)
+	InterlockedDecrement((long*)&retval->refcount);
+	return retval;
   }
 }
 
@@ -1098,6 +1114,8 @@ bool ScriptEnvironment::MakeWritable(PVideoFrame* pvf) {
     } else {
       dst = NewVideoFrame(row_size, height, FRAME_ALIGN);
     }
+	InterlockedDecrement((long*)&dst->vfb->refcount);//After the VideoFrame has been assigned to a PVideoFrame it is safe to decrement the refcount (from 2 to 1)
+	InterlockedDecrement((long*)&dst->refcount);
     BitBlt(dst->GetWritePtr(), dst->GetPitch(), vf->GetReadPtr(), vf->GetPitch(), row_size, height);
     // Blit More planes (pitch, rowsize and height should be 0, if none is present)
     BitBlt(dst->GetWritePtr(PLANAR_V), dst->GetPitch(PLANAR_V), vf->GetReadPtr(PLANAR_V), vf->GetPitch(PLANAR_V), vf->GetRowSize(PLANAR_V), vf->GetHeight(PLANAR_V));
@@ -1122,12 +1140,18 @@ void ScriptEnvironment::PopContext() {
 
 
 PVideoFrame __stdcall ScriptEnvironment::Subframe(PVideoFrame src, int rel_offset, int new_pitch, int new_row_size, int new_height) {
-  return src->Subframe(rel_offset, new_pitch, new_row_size, new_height);
+  //return src->Subframe(rel_offset, new_pitch, new_row_size, new_height); Thread unsafe to do it like this
+	PVideoFrame retval=new VideoFrame(src->vfb, src->offset+rel_offset, new_pitch, new_row_size, new_height);
+	InterlockedDecrement((long*)retval->refcount);
+	return retval;
 }
 
 //tsp June 2005 new function compliments the above function
 PVideoFrame __stdcall ScriptEnvironment::Subframe(PVideoFrame src, int rel_offset, int new_pitch, int new_row_size, int new_height, int rel_offsetU, int rel_offsetV, int new_pitchUV) {
-  return src->Subframe(rel_offset, new_pitch, new_row_size, new_height, rel_offsetU, rel_offsetV, new_pitchUV);
+  //return src->Subframe(rel_offset, new_pitch, new_row_size, new_height, rel_offsetU, rel_offsetV, new_pitchUV);
+	PVideoFrame retval=new VideoFrame(src->vfb, src->offset+rel_offset, new_pitch, new_row_size, new_height, rel_offsetU+src->offsetU, rel_offsetV+src->offsetV, new_pitchUV);
+	InterlockedDecrement((long*)&retval->refcount);
+	return retval;
 }
 
 void* ScriptEnvironment::ManageCache(int key, void* data){
@@ -1151,7 +1175,9 @@ void* ScriptEnvironment::ManageCache(int key, void* data){
 	if ((lvfb->data == 0) || (lvfb->signature != LinkedVideoFrameBuffer::ident)) break;
 
 	// Move unloved VideoFrameBuffer's to the end of the video_frame_buffers LRU list.
+	EnterCriticalSection(&cs_relink_video_frame_buffer);//Don't want to mess up with GetFrameBuffer(2)
 	Relink(video_frame_buffers.prev, (LinkedVideoFrameBuffer*)lvfb, &video_frame_buffers);
+	LeaveCriticalSection(&cs_relink_video_frame_buffer);
 
 	// Flag it as returned, i.e. for immediate reuse.
 	lvfb->returned = true;
@@ -1205,7 +1231,7 @@ LinkedVideoFrameBuffer* ScriptEnvironment::GetFrameBuffer2(int size) {
     int freed_count = 0;
     // Deallocate enough unused frames.
     for (i = video_frame_buffers.prev; i != &video_frame_buffers; i = i->prev) {
-      if (i->GetRefcount() == 0) {
+      if (InterlockedCompareExchange((long*)&i->refcount,1,0)==0) {
         if (i->next != i->prev) {
           // Unlink this one
           i->prev->next = i->next;
@@ -1233,9 +1259,11 @@ LinkedVideoFrameBuffer* ScriptEnvironment::GetFrameBuffer2(int size) {
   if (memory_used + size < memory_max) {
     //   Part 1: look for a returned free buffer of the same size and reuse it
     for (i = video_frame_buffers.prev; i != &video_frame_buffers; i = i->prev) {
-      if (i->returned && (i->GetRefcount() == 0) && (i->GetDataSize() == size)) {
-        ++g_Mem_stats.PlanA1;
-        return i;
+      if (i->returned && (i->GetDataSize() == size)) {
+        if (InterlockedCompareExchange((long*)&i->refcount,1,0)==0) {
+          ++g_Mem_stats.PlanA1;
+          return i;
+        }
       }
     }
     //   Part 2: else just allocate a new buffer
@@ -1246,14 +1274,29 @@ LinkedVideoFrameBuffer* ScriptEnvironment::GetFrameBuffer2(int size) {
   // Plan B: Steal the oldest existing free buffer of the same size
   j = 0;
   for (i = video_frame_buffers.prev; i != &video_frame_buffers; i = i->prev) {
-    if (i->GetRefcount() == 0) {
-      if (i->GetDataSize() == size) {
+    if (InterlockedCompareExchange((long*)&i->refcount,1,0)==0) 
+    {
+      if (i->GetDataSize() == size) 
+      {
         ++g_Mem_stats.PlanB;
+        if(j)
+          InterlockedDecrement((long*)&j->refcount);
         return i;
       }
-      if (i->GetDataSize() > size) {
-        if ((j == 0) || (i->GetDataSize() < j->GetDataSize())) j = i;
+      if (i->GetDataSize() > size) 
+      {
+        if ((j == 0) || (i->GetDataSize() < j->GetDataSize()))
+        {
+          if(j)
+            InterlockedDecrement((long*)&j->refcount);
+          j = i;
+        }
+        else//not usefull so free again
+          InterlockedDecrement((long*)&i->refcount);
       }
+      else//not usefull so free again
+        InterlockedDecrement((long*)&i->refcount);
+
     }
   }
 
@@ -1269,9 +1312,11 @@ LinkedVideoFrameBuffer* ScriptEnvironment::GetFrameBuffer2(int size) {
 }
 
 VideoFrameBuffer* ScriptEnvironment::GetFrameBuffer(int size) {
+  EnterCriticalSection(&cs_relink_video_frame_buffer);
   LinkedVideoFrameBuffer* result = GetFrameBuffer2(size);
   // Link onto head of video_frame_buffers chain.
   Relink(&video_frame_buffers, result, video_frame_buffers.next);
+  LeaveCriticalSection(&cs_relink_video_frame_buffer);
   result->returned = false;
   return result;
 }
