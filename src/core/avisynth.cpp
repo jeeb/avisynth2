@@ -159,9 +159,30 @@ VideoFrame* VideoFrame::Subframe(int rel_offset, int new_pitch, int new_row_size
 /********  
  * TODO: REPLACE THIS WITH A BLIT to new frame!!!
  * This breaks Planar right now!!!!
+ int _row_sizeUV, int _heightUV
  ***************/
-VideoFrame* VideoFrame::Subframe(int rel_offset, int new_pitch, int new_row_size, int new_height, int rel_offsetU, int rel_offsetV, int new_pitchUV) const {
-  return new VideoFrame(vfb, offset+rel_offset, new_pitch, new_row_size, new_height, rel_offsetU+offsetU, rel_offsetV+offsetV, new_pitchUV, 0,0, pixel_type);
+VideoFrame* VideoFrame::Subframe(int rel_offset, int new_pitch, int new_row_size, int new_height, int rel_offsetU, int rel_offsetV, int new_pitchUV) const {  //int _row_sizeUV, int _heightUV
+  int UVnew_row_size = new_row_size;
+  int UVnew_height = new_height;
+  switch (pixel_type) {  // WILL BREAK EASY! Not very safe!
+    case VideoInfo::CS_YV12:
+    case VideoInfo::CS_I420:
+      UVnew_row_size /=2;
+      UVnew_height /=2;
+      break;
+    case VideoInfo::CS_Y8:
+      UVnew_row_size = 0;
+      UVnew_height = 0;
+      break;
+    case VideoInfo::CS_YV16:
+      UVnew_row_size /=2;
+      break;
+    case VideoInfo::CS_YV411:
+      UVnew_row_size /=4;
+      break;
+
+  }
+  return new VideoFrame(vfb, offset+rel_offset, new_pitch, new_row_size, new_height, rel_offsetU+offsetU, rel_offsetV+offsetV, new_pitchUV, UVnew_row_size, UVnew_height, pixel_type);
 }
 
 
@@ -1134,7 +1155,10 @@ PVideoFrame __stdcall ScriptEnvironment::NewVideoFrame(const VideoInfo& vi, int 
     case VideoInfo::CS_BGR24:
     case VideoInfo::CS_BGR32:
     case VideoInfo::CS_YUY2:
+    case VideoInfo::CS_Y8:
     case VideoInfo::CS_YV12:
+    case VideoInfo::CS_YV16:
+    case VideoInfo::CS_YV24:
     case VideoInfo::CS_I420:
       break;
     default:

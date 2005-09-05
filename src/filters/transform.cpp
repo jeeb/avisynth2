@@ -128,17 +128,16 @@ PVideoFrame FlipHorizontal::GetFrame(int n, IScriptEnvironment* env) {
     }
     return dst;
   }
-  srcp+=row_size-bpp;
-  for (int y=0; y<h;y++) { // Loop for RGB and planar luma.
-    for (int x=0; x<row_size; x+=bpp) {
-      for (int i=0;i<bpp;i++) {
-        dstp[x+i] = srcp[-x+i];
-      }
-    }
-    srcp += src_pitch;
-    dstp += dst_pitch;
-  }
   if (vi.IsPlanar()) {  //For planar always 1bpp
+		srcp+=row_size-1;
+		for (int y=0; y<h;y++) { // Loop planar luma.
+			for (int x=0; x<row_size; x++) {
+				dstp[x] = srcp[-x];
+			}
+			srcp += src_pitch;
+			dstp += dst_pitch;
+		}
+
     srcp = src->GetReadPtr(PLANAR_U);
     dstp = dst->GetWritePtr(PLANAR_U);
     row_size = src->GetRowSize(PLANAR_U);
@@ -146,7 +145,7 @@ PVideoFrame FlipHorizontal::GetFrame(int n, IScriptEnvironment* env) {
     dst_pitch = dst->GetPitch(PLANAR_U);
     h = src->GetHeight(PLANAR_U);
     srcp+=row_size-1;
-    for (int y=0; y<h;y++) {
+    for (y=0; y<h;y++) {
       for (int x=0; x<row_size; x++) {
         dstp[x] = srcp[-x];
       }
@@ -163,7 +162,27 @@ PVideoFrame FlipHorizontal::GetFrame(int n, IScriptEnvironment* env) {
       srcp += src_pitch;
       dstp += dst_pitch;
     }
-
+		return dst;
+  }
+  srcp+=row_size-bpp;
+  if (vi.IsRGB32()) {
+		for (int y=0; y<h;y++) { // Loop for RGB
+			for (int x=0; x<row_size/4; x++) {
+				((int*)dstp)[x] = ((int*)srcp)[-x];
+			}
+			srcp += src_pitch;
+			dstp += dst_pitch;
+		}
+		return dst;
+  }
+  for (int y=0; y<h;y++) { // Loop for RGB
+    for (int x=0; x<row_size; x+=bpp) {
+      for (int i=0;i<bpp;i++) {
+        dstp[x+i] = srcp[-x+i];
+      }
+    }
+    srcp += src_pitch;
+    dstp += dst_pitch;
   }
   return dst;
 }
@@ -262,10 +281,27 @@ PVideoFrame Crop::GetFrame(int n, IScriptEnvironment* env)
     return dst;
   }
 
-  if (!vi.IsPlanar())
-    return frame->Subframe(top * frame->GetPitch() + left_bytes, frame->GetPitch(), vi.RowSize(), vi.height);
-  else
-    return frame->Subframe(top * frame->GetPitch() + left_bytes, frame->GetPitch(), vi.RowSize(), vi.height, (top/2) * frame->GetPitch(PLANAR_U) + (left_bytes/2), (top/2) * frame->GetPitch(PLANAR_V) + (left_bytes/2), frame->GetPitch(PLANAR_U));
+  if (!vi.IsPlanar()) {
+    return env->Subframe(frame,top * frame->GetPitch() + left_bytes, frame->GetPitch(), vi.RowSize(), vi.height);
+  } else {
+    if (vi.IsYV12()) {
+      return env->Subframe(frame,top * frame->GetPitch() + left_bytes, frame->GetPitch(), vi.RowSize(), vi.height, (top/2) * frame->GetPitch(PLANAR_U) + (left_bytes/2), (top/2) * frame->GetPitch(PLANAR_V) + (left_bytes/2), frame->GetPitch(PLANAR_U));
+    }
+    if (vi.IsYV24()) {
+      return env->Subframe(frame,top * frame->GetPitch() + left_bytes, frame->GetPitch(), vi.RowSize(), vi.height, top * frame->GetPitch(PLANAR_U) + left_bytes, top * frame->GetPitch(PLANAR_V) + left_bytes, frame->GetPitch(PLANAR_U));
+    }
+    if (vi.IsYV16()) {
+      return env->Subframe(frame,top * frame->GetPitch() + left_bytes, frame->GetPitch(), vi.RowSize(), vi.height, top * frame->GetPitch(PLANAR_U) + (left_bytes/2), top * frame->GetPitch(PLANAR_V) + (left_bytes/2), frame->GetPitch(PLANAR_U));
+    }
+    if (vi.IsYV411()) {
+      return env->Subframe(frame,top * frame->GetPitch() + left_bytes, frame->GetPitch(), vi.RowSize(), vi.height, top * frame->GetPitch(PLANAR_U) + (left_bytes/4), top * frame->GetPitch(PLANAR_V) + (left_bytes/4), frame->GetPitch(PLANAR_U));
+    }
+    if (vi.IsY8()) {
+      return env->Subframe(frame,top * frame->GetPitch() + left_bytes, frame->GetPitch(), vi.RowSize(), vi.height, 0, 0, frame->GetPitch(PLANAR_U));
+    }
+  }
+  env->ThrowError("Crop: Unknown Colorspace");
+  return frame;
 }
 
 
@@ -448,36 +484,7 @@ AVSValue __cdecl AddBorders::Create(AVSValue args, void*, IScriptEnvironment* en
 
 
 
-/******************************
- *******   AlignPlanar   ******
- *****************************/
 
-
-AlignPlanar::AlignPlanar(PClip _clip) : GenericVideoFilter(_clip) {}
-
-PVideoFrame __stdcall AlignPlanar::GetFrame(int n, IScriptEnvironment* env) {
-  PVideoFrame src = child->GetFrame(n, env);
-  if (!(src->GetRowSize(PLANAR_Y_ALIGNED)&(FRAME_ALIGN-1))) return src;
-  PVideoFrame dst = env->NewVideoFrame(vi);
-  if ((dst->GetRowSize(PLANAR_Y_ALIGNED)&(FRAME_ALIGN-1))) 
-    env->ThrowError("AlignPlanar: [internal error] Returned frame was not aligned!");
-
-
-  BitBlt(dst->GetWritePtr(), dst->GetPitch(), src->GetReadPtr(), src->GetPitch(), src->GetRowSize(), src->GetHeight());
-  BitBlt(dst->GetWritePtr(PLANAR_V), dst->GetPitch(PLANAR_V), src->GetReadPtr(PLANAR_V), src->GetPitch(PLANAR_V), src->GetRowSize(PLANAR_V), src->GetHeight(PLANAR_V));
-  BitBlt(dst->GetWritePtr(PLANAR_U), dst->GetPitch(PLANAR_U), src->GetReadPtr(PLANAR_U), src->GetPitch(PLANAR_U), src->GetRowSize(PLANAR_U), src->GetHeight(PLANAR_U));
-  return dst;
-}
-
-
-PClip AlignPlanar::Create(PClip clip) 
-{
-  if (!clip->GetVideoInfo().IsPlanar()) {  // If not planar, already ok.
-    return clip;
-  }
-  else 
-    return new AlignPlanar(clip);
-}
 
 
 

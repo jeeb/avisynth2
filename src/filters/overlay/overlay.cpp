@@ -272,6 +272,10 @@ ConvertFrom444* Overlay::SelectOutputCS(const char* name, IScriptEnvironment* en
   if (!name) {
     if (vi.IsYV12()) {
       return new Convert444ToYV12();
+    } else if (vi.IsYV24()) {
+      return new Convert444ToYV24();
+    } else if (vi.IsY8()) {
+      return new Convert444ToY8();
     } else if (vi.IsYUY2()) {
       return new Convert444ToYUY2();
     } else if (vi.IsRGB()) {
@@ -290,6 +294,16 @@ ConvertFrom444* Overlay::SelectOutputCS(const char* name, IScriptEnvironment* en
   if (!lstrcmpi(name, "YV12")) {
     vi.pixel_type = VideoInfo::CS_YV12;
     return new Convert444ToYV12();
+  }
+
+  if (!lstrcmpi(name, "YV24")) {
+    vi.pixel_type = VideoInfo::CS_YV24;
+    return new Convert444ToYV24();
+  }
+
+  if (!lstrcmpi(name, "Y8")) {
+    vi.pixel_type = VideoInfo::CS_Y8;
+    return new Convert444ToY8();
   }
 
   if (!lstrcmpi(name, "RGB")) {
@@ -327,6 +341,14 @@ ConvertFrom444* Overlay::SelectOutputCS(const char* name, IScriptEnvironment* en
 ConvertTo444* Overlay::SelectInputCS(VideoInfo* VidI, IScriptEnvironment* env) {
   if (VidI->IsYV12()) {
     ConvertTo444* c = new Convert444FromYV12();
+    c->SetVideoInfo(VidI);
+    return c;
+  } else if (VidI->IsYV24()) {
+    ConvertTo444* c = new Convert444FromYV24();
+    c->SetVideoInfo(VidI);
+    return c;
+  } else if (VidI->IsY8()) {
+    ConvertTo444* c = new Convert444FromY8();
     c->SetVideoInfo(VidI);
     return c;
   } else if (VidI->IsYUY2()) {

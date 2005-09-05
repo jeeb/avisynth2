@@ -113,9 +113,34 @@ void Convert444FromYV12::ConvertImage(PVideoFrame src, Image444* dst, IScriptEnv
 
 void Convert444FromYV12::ConvertImageLumaOnly(PVideoFrame src, Image444* dst, IScriptEnvironment* env) {
   env->BitBlt(dst->GetPtr(PLANAR_Y), dst->pitch, 
-    src->GetReadPtr(PLANAR_Y),src->GetPitch(PLANAR_Y), src->GetRowSize(PLANAR_Y), src->GetHeight());
+    src->GetReadPtr(PLANAR_Y),src->GetPitch(PLANAR_Y), src->GetRowSize(PLANAR_Y), src->GetHeight(PLANAR_Y));
 }
 
+void Convert444FromYV24::ConvertImage(PVideoFrame src, Image444* dst, IScriptEnvironment* env) {
+  env->BitBlt(dst->GetPtr(PLANAR_Y), dst->pitch, 
+    src->GetReadPtr(PLANAR_Y),src->GetPitch(PLANAR_Y), src->GetRowSize(PLANAR_Y), src->GetHeight());
+  env->BitBlt(dst->GetPtr(PLANAR_U), dst->pitch, 
+    src->GetReadPtr(PLANAR_U),src->GetPitch(PLANAR_U), src->GetRowSize(PLANAR_U), src->GetHeight(PLANAR_U));
+  env->BitBlt(dst->GetPtr(PLANAR_V), dst->pitch, 
+    src->GetReadPtr(PLANAR_V),src->GetPitch(PLANAR_V), src->GetRowSize(PLANAR_V), src->GetHeight(PLANAR_V));
+}
+
+void Convert444FromYV24::ConvertImageLumaOnly(PVideoFrame src, Image444* dst, IScriptEnvironment* env) {
+  env->BitBlt(dst->GetPtr(PLANAR_Y), dst->pitch, 
+    src->GetReadPtr(PLANAR_Y),src->GetPitch(PLANAR_Y), src->GetRowSize(PLANAR_Y), src->GetHeight(PLANAR_Y));
+}
+
+void Convert444FromY8::ConvertImage(PVideoFrame src, Image444* dst, IScriptEnvironment* env) {
+  env->BitBlt(dst->GetPtr(PLANAR_Y), dst->pitch, 
+    src->GetReadPtr(PLANAR_Y),src->GetPitch(PLANAR_Y), src->GetRowSize(PLANAR_Y), src->GetHeight(PLANAR_Y));
+  memset((void *)dst->GetPtr(PLANAR_U), (char)0x7f, dst->pitch * dst->h());
+  memset((void *)dst->GetPtr(PLANAR_V), (char)0x7f, dst->pitch * dst->h());
+}
+
+void Convert444FromY8::ConvertImageLumaOnly(PVideoFrame src, Image444* dst, IScriptEnvironment* env) {
+  env->BitBlt(dst->GetPtr(PLANAR_Y), dst->pitch, 
+    src->GetReadPtr(PLANAR_Y),src->GetPitch(PLANAR_Y), src->GetRowSize(PLANAR_Y), src->GetHeight(PLANAR_Y));
+}
 
 /***** YUY2 -> YUV 4:4:4   ******/
 
@@ -174,6 +199,27 @@ void Convert444FromYUY2::ConvertImageLumaOnly(PVideoFrame src, Image444* dst, IS
     srcP+=srcPitch;
     dstY+=dstPitch;
   }
+}
+
+/****** YUV 4:4:4 -> YUV 4:4:4   - Perhaps the easiest job in the world ;)  *****/
+PVideoFrame Convert444ToYV24::ConvertImage(Image444* src, PVideoFrame dst, IScriptEnvironment* env) {
+  env->MakeWritable(&dst);
+
+  env->BitBlt(dst->GetWritePtr(PLANAR_Y), dst->GetPitch(PLANAR_Y),
+    src->GetPtr(PLANAR_Y), src->pitch, dst->GetRowSize(PLANAR_Y), dst->GetHeight(PLANAR_Y));
+  env->BitBlt(dst->GetWritePtr(PLANAR_U), dst->GetPitch(PLANAR_U),
+    src->GetPtr(PLANAR_U), src->pitch, dst->GetRowSize(PLANAR_U), dst->GetHeight(PLANAR_U));
+  env->BitBlt(dst->GetWritePtr(PLANAR_V), dst->GetPitch(PLANAR_V),
+    src->GetPtr(PLANAR_V), src->pitch, dst->GetRowSize(PLANAR_V), dst->GetHeight(PLANAR_V));
+  return dst;
+}
+
+PVideoFrame Convert444ToY8::ConvertImage(Image444* src, PVideoFrame dst, IScriptEnvironment* env) {
+  env->MakeWritable(&dst);
+
+  env->BitBlt(dst->GetWritePtr(PLANAR_Y), dst->GetPitch(PLANAR_Y),
+    src->GetPtr(PLANAR_Y), src->pitch, dst->GetRowSize(PLANAR_Y), dst->GetHeight());
+  return dst;
 }
 
 /******  YUV 4:4:4 -> YV12  *****/

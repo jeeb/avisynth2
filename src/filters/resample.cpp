@@ -48,8 +48,11 @@ AVSFunction Resample_filters[] = {
   { "PointResize", "cii[src_left]f[src_top]f[src_width]f[src_height]f", Create_PointResize },
   { "BilinearResize", "cii[src_left]f[src_top]f[src_width]f[src_height]f", Create_BilinearResize },
   { "BicubicResize", "cii[b]f[c]f[src_left]f[src_top]f[src_width]f[src_height]f", Create_BicubicResize },
-  { "LanczosResize", "cii[src_left]f[src_top]f[src_width]f[src_height]f", Create_Lanczos3Resize},
+  { "LanczosResize", "cii[src_left]f[src_top]f[src_width]f[src_height]f[taps]i", Create_LanczosResize},
   { "Lanczos4Resize", "cii[src_left]f[src_top]f[src_width]f[src_height]f", Create_Lanczos4Resize},
+  { "Spline16Resize", "cii[src_left]f[src_top]f[src_width]f[src_height]f", Create_Spline16Resize},
+  { "Spline36Resize", "cii[src_left]f[src_top]f[src_width]f[src_height]f", Create_Spline36Resize},
+  { "GaussResize", "cii[src_left]f[src_top]f[src_width]f[src_height]f[p]f", Create_GaussianResize},
   /**
     * Resize(PClip clip, dst_width, dst_height [src_left, src_top, src_width, int src_height,] )
     *
@@ -85,18 +88,27 @@ FilteredResizeH::FilteredResizeH( PClip _child, double subrange_left, double sub
   {
     if ((target_width&1) && (vi.IsYUY2()))
       env->ThrowError("Resize: YUY2 width must be even");
+    if ((target_width&1) && (vi.IsYV16()))
+      env->ThrowError("Resize: YV16 width must be even");
     if ((target_width&3) && (vi.IsYV12()))
       env->ThrowError("Resize: YV12 width must be mutiple of 4.");
+
     tempY = (BYTE*) _aligned_malloc(original_width*2+4+32, 64);   // aligned for Athlon cache line
     tempUV = (BYTE*) _aligned_malloc(original_width*4+8+32, 64);  // aligned for Athlon cache line
-    if (vi.IsYV12()) {
-      pattern_chroma = GetResamplingPatternYUV( vi.width>>1, subrange_left/2.0, subrange_width/2.0,
-        target_width>>1, func, true, tempY, env );
-    } else {
-      pattern_chroma = GetResamplingPatternYUV( vi.width>>1, subrange_left/2.0, subrange_width/2.0,
-        target_width>>1, func, false, tempUV, env );
-    }
+
     pattern_luma = GetResamplingPatternYUV(vi.width, subrange_left, subrange_width, target_width, func, true, tempY, env);
+
+    if (vi.IsYV12()) {
+      pattern_chroma = GetResamplingPatternYUV( vi.width>>1, subrange_left/2.0, subrange_width/2.0, target_width>>1, func, true, tempY, env );
+    } else if (vi.IsYV24()) {
+      pattern_chroma = GetResamplingPatternYUV(vi.width, subrange_left, subrange_width, target_width, func, true, tempY, env);
+    } else if (vi.IsY8()) {
+      pattern_chroma = GetResamplingPatternYUV(vi.width, subrange_left, subrange_width, target_width, func, true, tempY, env);
+    } else if (vi.IsYV16()) {
+      pattern_chroma = GetResamplingPatternYUV( vi.width>>1, subrange_left/2.0, subrange_width/2.0, target_width>>1, func, true, tempY, env );
+    } else if (vi.IsYUY2()) {
+      pattern_chroma = GetResamplingPatternYUV( vi.width>>1, subrange_left/2.0, subrange_width/2.0, target_width>>1, func, false, tempUV, env );
+    }
   }
   else
     pattern_luma = GetResamplingPatternRGB(vi.width, subrange_left, subrange_width, target_width, func, env);
@@ -140,9 +152,25 @@ DynamicAssembledCode FilteredResizeH::GenerateResizer(int gen_plane, IScriptEnvi
   Assembler x86;   // This is the class that assembles the code.
 
   // Set up variables for this plane.
-  int vi_height = (gen_plane == PLANAR_Y) ? vi.height : (vi.height/2);
-  int vi_dst_width = (gen_plane == PLANAR_Y) ? vi.width : (vi.width/2);
-  int vi_src_width = (gen_plane == PLANAR_Y) ? original_width : (original_width/2);
+  int vi_height;
+  int vi_dst_width;
+  int vi_src_width;
+
+  if (vi.IsYV12() || vi.IsYV16()) {
+    vi_height = (gen_plane == PLANAR_Y) ? vi.height : (vi.height/2);
+    vi_dst_width = (gen_plane == PLANAR_Y) ? vi.width : (vi.width/2);
+    vi_src_width = (gen_plane == PLANAR_Y) ? original_width : (original_width/2);
+  } else if (vi.IsYV24()){
+    vi_height = vi.height;
+    vi_dst_width = vi.width;
+    vi_src_width = original_width;
+  } else if (vi.IsY8()) {
+    vi_height = (gen_plane == PLANAR_Y) ? vi.height : 0;
+    vi_dst_width = (gen_plane == PLANAR_Y) ? vi.width : 0;
+    vi_src_width = (gen_plane == PLANAR_Y) ? original_width : 0;
+  } else {
+    env->ThrowError("ResizeH: Unknown colorspace");
+  }
 
   int mod16_w = ((vi_src_width)/16);  // Src size!
   int mod16_remain = (3+vi_src_width-(mod16_w*16))/4;  //Src size!
@@ -177,6 +205,11 @@ DynamicAssembledCode FilteredResizeH::GenerateResizer(int gen_plane, IScriptEnvi
     if (!isse) {
       avoid_stlf = false;
     }
+  }
+
+  if (!(vi_src_width && vi_dst_width && vi_height)) { // Skip
+    x86.ret();
+    return DynamicAssembledCode(x86, env, "ResizeH: ISSE code could not be compiled.");
   }
 
   int* array = (gen_plane == PLANAR_Y) ? pattern_luma : pattern_chroma;
@@ -293,31 +326,15 @@ DynamicAssembledCode FilteredResizeH::GenerateResizer(int gen_plane, IScriptEnvi
     }
     x86.paddd(mm3,mm7);
      x86.paddd(mm4,mm7);
-    x86.psrld(mm3,14);
+    x86.psrad(mm3,14);
      x86.paddd(mm5,mm7);
-    x86.psrld(mm4,14);
+    x86.psrad(mm4,14);
      x86.mov(eax,dword_ptr[&gen_temp_destp]);
-    x86.psrld(mm5,14);
-    if (isse) {
-        x86.pshufw(mm3,mm3,(char)248);      // 11111000
-         x86.pshufw(mm4,mm4,(char)143);     // 10001111
-        x86.pshufw(mm5,mm5,(char)248);
-         x86.packuswb(mm3, mm3); 
-        x86.packuswb(mm4, mm4);
-         x86.packuswb(mm5, mm5);
-        x86.por(mm3,mm4);
-    } else {
-        x86.packuswb(mm4, mm6);
-        x86.packuswb(mm3, mm6);
-        x86.packuswb(mm4, mm6);
-        x86.packuswb(mm5, mm6);
-        x86.packuswb(mm3, mm6);
-        x86.psllq(mm4, 16);
-        x86.packuswb(mm5, mm6);
-        x86.por(mm3,mm4);
-    }
-    x86.movd(dword_ptr[eax],mm3);  // Optme: Unaligned every second pixel
-    x86.movd(dword_ptr[eax+4],mm5);   // This is a potential 2 byte overwrite!
+    x86.psrad(mm5,14);
+     x86.packssdw(mm3, mm4);       // [...3 ...2] [...1 ...0] => [.3 .2 .1 .0]
+    x86.packssdw(mm5, mm6);        // [.... ....] [...5 ...4] => [.. .. .5 .4]
+    x86.packuswb(mm3, mm5);        // [.. .. .5 .4] [.3 .2 .1 .0] => [..543210]
+    x86.movq(qword_ptr[eax],mm3);  // This is a potential 2 byte overwrite!
     x86.add(dword_ptr [&gen_temp_destp],6);
     x86.add(edi,filter_offset*3-8);
     x86.dec(dword_ptr [&gen_x]);
@@ -354,34 +371,20 @@ DynamicAssembledCode FilteredResizeH::GenerateResizer(int gen_plane, IScriptEnvi
       }
       x86.paddd(mm3,mm7);
       if (remainy) x86.paddd(mm4,mm7);
-      x86.psrld(mm3,14);
-      if (remainy) x86.psrld(mm4,14);
-
-      if (isse) {
-        x86.pshufw(mm3,mm3,(char)248);      // 11111000
-        x86.pshufw(mm4,mm4,(char)143);     // 10001111
-        x86.packuswb(mm3, mm3); 
-        x86.packuswb(mm4, mm4);
+      x86.psrad(mm3,14);
+      if (remainy) { // Four pixels
+	    x86.psrad(mm4,14);
+        x86.packssdw(mm3, mm4);      // [...3 ...2] [...1 ...0] => [.3 .2 .1 .0]
         x86.mov(eax,dword_ptr[&gen_temp_destp]);
-        if (remainy) x86.por(mm3,mm4);
-      } else {  //MMX
-        x86.packuswb(mm3, mm6);
-        x86.packuswb(mm3, mm6);
-        if(remainy) {
-          x86.packuswb(mm4, mm6);
-          x86.packuswb(mm4, mm6);
-          x86.psllq(mm4, 16);
-          x86.por(mm3,mm4);
-        }
+        x86.packuswb(mm3, mm6);      // [.. .. .. ..] [.3 .2 .1 .0] => [....3210]
+	  } else { // Two pixels
+        x86.packssdw(mm3, mm6);      // [.... ....] [...1 ...0] => [.. .. .1 .0]
         x86.mov(eax,dword_ptr[&gen_temp_destp]);
-      }
-      if (!remainy) { // Two pixels
+        x86.packuswb(mm3, mm6);      // [.. .. .. ..] [.. .. .1 .0] => [......10]
         x86.movd(mm0,dword_ptr[eax]);
-        x86.pand(mm3,qword_ptr[(int)&Mask3]);
         x86.pand(mm0,qword_ptr[(int)&Mask1]);
         x86.por(mm3,mm0);
       }
-
       x86.movd(dword_ptr[eax],mm3); 
     }
     // End remaining pixels 
@@ -418,7 +421,7 @@ PVideoFrame __stdcall FilteredResizeH::GetFrame(int n, IScriptEnvironment* env)
   BYTE* dstp = dst->GetWritePtr();
   int src_pitch = src->GetPitch();
   int dst_pitch = dst->GetPitch();
-  if (vi.IsYV12()) {
+  if (vi.IsPlanar()) {
       int plane = 0;
       if (use_dynamic_code) {  // Use dynamic compilation?
         gen_src_pitch = src_pitch;
@@ -426,29 +429,30 @@ PVideoFrame __stdcall FilteredResizeH::GetFrame(int n, IScriptEnvironment* env)
         gen_srcp = (BYTE*)srcp;
         gen_dstp = dstp;
         assemblerY.Call();
+        if (src->GetRowSize(PLANAR_U)) {
+          gen_src_pitch = src->GetPitch(PLANAR_U);
+          gen_dst_pitch = dst->GetPitch(PLANAR_U);
+          if (vi.IsVPlaneFirst()) {  // Process in order - also to avoid 2 byte overwrite, when rowsize=pitch=(mod6 rowsize).
+            gen_srcp = (BYTE*)src->GetReadPtr(PLANAR_V);
+            gen_dstp = dst->GetWritePtr(PLANAR_V);
+            assemblerUV.Call();
 
-        gen_src_pitch = src->GetPitch(PLANAR_U);
-        gen_dst_pitch = dst->GetPitch(PLANAR_U);
-        if (vi.IsVPlaneFirst()) {  // Process in order - also to avoid 2 byte overwrite, when rowsize=pitch=(mod6 rowszie).
-          gen_srcp = (BYTE*)src->GetReadPtr(PLANAR_V);
-          gen_dstp = dst->GetWritePtr(PLANAR_V);
-          assemblerUV.Call();
+            gen_srcp = (BYTE*)src->GetReadPtr(PLANAR_U);
+            gen_dstp = dst->GetWritePtr(PLANAR_U);
+            assemblerUV.Call();
+          } else {
+            gen_srcp = (BYTE*)src->GetReadPtr(PLANAR_U);
+            gen_dstp = dst->GetWritePtr(PLANAR_U);
+            assemblerUV.Call();
 
-          gen_srcp = (BYTE*)src->GetReadPtr(PLANAR_U);
-          gen_dstp = dst->GetWritePtr(PLANAR_U);
-          assemblerUV.Call();
-        } else {
-          gen_srcp = (BYTE*)src->GetReadPtr(PLANAR_U);
-          gen_dstp = dst->GetWritePtr(PLANAR_U);
-          assemblerUV.Call();
-
-          gen_srcp = (BYTE*)src->GetReadPtr(PLANAR_V);
-          gen_dstp = dst->GetWritePtr(PLANAR_V);
-          assemblerUV.Call();
+            gen_srcp = (BYTE*)src->GetReadPtr(PLANAR_V);
+            gen_dstp = dst->GetWritePtr(PLANAR_V);
+            assemblerUV.Call();
+          }
         }
         return dst;
       }
-        while (plane++<3) {
+      while (plane++<3) {
 //        int org_width = (plane==1) ? original_width : (original_width+1)>>1;
         int org_width = (plane==1) ? src->GetRowSize(PLANAR_Y_ALIGNED) : src->GetRowSize(PLANAR_V_ALIGNED);
         int dst_height= (plane==1) ? dst->GetHeight() : dst->GetHeight(PLANAR_U);
@@ -466,7 +470,7 @@ PVideoFrame __stdcall FilteredResizeH::GetFrame(int n, IScriptEnvironment* env)
         dstp = dst->GetWritePtr(PLANAR_V);
         src_pitch = src->GetPitch(PLANAR_U);
         dst_pitch = dst->GetPitch(PLANAR_U);
-        }
+      }
       int fir_filter_size_luma = array[0];
       int* temp_dst;
       int loopc;
@@ -670,14 +674,10 @@ out_yv_aloopY:
         mov         edx,temp_dst
         paddd       mm1, mm6            ;Y1|Y1|Y0|Y0  (round)
         paddd       mm3, mm6            ;Y1|Y1|Y0|Y0  (round)
-        psrld       mm1, 14             ;mm1 = 0|y1|0|y0
-        psrld       mm3, 14             ;mm1 = 0|y1|0|y0
-        pshufw mm1,mm1,11111000b        ;mm1 = 0|0|y1|y0
-        pshufw mm3,mm3,10001111b        ;mm1 = y1|y0|0|0
-
-        packuswb    mm1, mm1            ;mm1 = ...|0|0|0|Y1y0
-        packuswb    mm3, mm3            ;mm3 = ...|0|0|Y1y0|0
-        por mm1,mm3
+        psrad       mm1, 14             ;mm1 = --y1|--y0
+        psrad       mm3, 14             ;mm3 = --y3|--y2
+        packssdw    mm1, mm3            ;mm1 = -3|-2|-1|-0
+        packuswb    mm1, mm1            ;mm1 = 3|2|1|0 3|2|1|0
         movd        [edx], mm1
         add         temp_dst,4
         dec         x
@@ -693,7 +693,7 @@ out_yv_aloopY:
         int x = dst_width / 4;
 
         __asm {  // 
-		push ebx    // stupid compiler forgets to save ebx!!
+		    push ebx    // stupid compiler forgets to save ebx!!
         mov         edi, this
         mov         ecx, org_width
         mov         edx, [edi].tempY;
@@ -754,20 +754,15 @@ out_yv_aloopY:
         mov         edx,temp_dst
         paddd       mm1, mm6            ;Y1|Y1|Y0|Y0  (round)
         paddd       mm3, mm6            ;Y1|Y1|Y0|Y0  (round)
-        psrld       mm1, 14             ;mm1 = 0|y1|0|y0
-        psrld       mm3, 14             ;mm1 = 0|y1|0|y0
-        packuswb    mm1, mm0            ;mm1 = ...|0|0|y1|y0 
-        packuswb    mm3, mm0            ;mm3 = ...|0|0|y1|y0
-        packuswb    mm1, mm0            ;mm1 = ...|0|0|0|Y1y0
-        packuswb    mm3, mm0            ;mm3 = ...|0|0|0|Y1y0
-        psllq       mm3,16              ;mm3= 0|0|y1y0|0
-        por mm1,mm3  
-
+        psrad       mm1, 14             ;mm1 = --y1|--y0
+        psrad       mm3, 14             ;mm3 = --y3|--y2
+        packssdw    mm1, mm3            ;mm1 = -3|-2|-1|-0
+        packuswb    mm1, mm1            ;mm1 = 3|2|1|0 3|2|1|0
         movd        [edx], mm1
         add         temp_dst,4
         dec         x
         jnz         yv_xloopYUV_mmx
-		  pop ebx
+		    pop ebx
         }// end asm
         srcp += src_pitch;
         dstp += dst_pitch;
@@ -1008,9 +1003,8 @@ out_i_aloopUV:
          paddd       mm1, mm6            ;Y1|Y1|Y0|Y0  (round)
         pslld       mm3, 2              ; Shift up from 14 bits fraction to 16 bit fraction
          pxor        mm4,mm4             ;Clear mm4 - utilize shifter stall
-        psrld       mm1, 14             ;mm1 = 0|y1|0|y0
-         pmaxsw      mm3,mm4             ;Clamp at 0
-
+        psrad       mm1, 14             ;mm1 = --y1|--y0
+        pmaxsw      mm1,mm4             ;Clamp at 0
         pand        mm3, mm5            ;mm3 = v| 0|u| 0
         por         mm3,mm1
         packuswb    mm3, mm3            ;mm3 = ...|v|y1|u|y0
@@ -1093,23 +1087,19 @@ out_i_aloopUV:
         dec         ecx
         paddd       mm3, mm2            ;accumulate
         jnz         aloopUV
-
-        movq        mm4, mm3            ; clip chroma at 0
-        psrad       mm3, 31
-        pandn       mm3, mm4        
- 
-        paddd       mm1, mm6            ;Y1|Y1|Y0|Y0  (round)
+         paddd       mm1, mm6           ; Y1|Y1|Y0|Y0  (round)
         paddd       mm3, mm6            ; V| V| U| U  (round)
-        pslld       mm3, 2              ; Shift up from 14 bits fraction to 16 bit fraction
-                                
-        pand        mm3, mm5            ;mm3 = v| 0|u| 0
-
-        psrld       mm1, 14             ;mm1 = 0|y1|0|y0
-        por         mm3, mm1
-        packuswb    mm3, mm3            ;mm3 = ...|v|y1|u|y0
-        movd        [edx], mm3
+         psrad       mm1, 14            ; mm1 = 0|y1|0|y0
+         pslld       mm3, 2             ; Shift up from 14 bits fraction to 16 bit fraction
+        movq        mm4, mm1
+         psrad       mm1, 31            ; sign extend right
+        pand        mm3, mm5            ; mm3 = v| 0|u| 0
+         pandn       mm1, mm4           ; clip luma at 0        
+         por         mm3, mm1
         add         edx, 4
+         packuswb    mm3, mm3            ; mm3 = ...|v|y1|u|y0
         dec         x
+        movd        [edx-4], mm3
         jnz         xloopYUV
 		  pop ebx
         }
@@ -1290,7 +1280,11 @@ FilteredResizeV::FilteredResizeV( PClip _child, double subrange_top, double subr
   if (vi.IsRGB())
     subrange_top = vi.height - subrange_top - subrange_height;
   resampling_pattern = GetResamplingPatternRGB(vi.height, subrange_top, subrange_height, target_height, func, env);
-  resampling_patternUV = GetResamplingPatternRGB(vi.height>>1, subrange_top/2.0f, subrange_height/2.0f, target_height>>1, func, env);
+  if (vi.IsYV12()) {  // Subsample chroma.
+    resampling_patternUV = GetResamplingPatternRGB(vi.height>>1, subrange_top/2.0f, subrange_height/2.0f, target_height>>1, func, env);
+  } else {  //Don't resample chroma.
+    resampling_patternUV = GetResamplingPatternRGB(vi.height, subrange_top, subrange_height, target_height, func, env);
+  }
   vi.height = target_height;
 
   pitch_gY = -1;
@@ -1369,6 +1363,10 @@ PVideoFrame __stdcall FilteredResizeV::GetFrame(int n, IScriptEnvironment* env)
       case 0: // Default for interleaved
         break;
     }
+
+    if (!xloops)
+      continue;
+
   __asm {
 //    emms
 	push        ebx
@@ -1551,8 +1549,8 @@ out_bloop:
 
 FilteredResizeV::~FilteredResizeV(void)
 {
-  if (resampling_pattern) _aligned_free(resampling_pattern);
-  if (resampling_patternUV) _aligned_free(resampling_patternUV);
+  if (resampling_pattern) _aligned_free(resampling_pattern); resampling_pattern = 0;
+  if (resampling_patternUV) _aligned_free(resampling_patternUV); resampling_patternUV = 0;
   if (yOfs) delete[] yOfs;
   if (yOfsUV) delete[] yOfsUV;
 }
@@ -1601,33 +1599,38 @@ PClip CreateResizeV(PClip clip, double subrange_top, double subrange_height, int
 PClip CreateResize(PClip clip, int target_width, int target_height, const AVSValue* args, 
                    ResamplingFunction* f, IScriptEnvironment* env) 
 {
-	try {	// HIDE DAMN SEH COMPILER BUG!!!
-  const VideoInfo& vi = clip->GetVideoInfo();
-  const double subrange_left = args[0].AsFloat(0), subrange_top = args[1].AsFloat(0);
-  const double subrange_width = args[2].AsFloat(vi.width), subrange_height = args[3].AsFloat(vi.height);
-  PClip result = clip;
-  bool H = ((subrange_width != vi.width) || (target_width != vi.width));
-  bool V = ((subrange_height != vi.height) || (target_height != vi.height));
-  // ensure that the intermediate area is maximal
-  const double area_FirstH = subrange_height * target_width;
-  const double area_FirstV = subrange_width * target_height;
-  if (area_FirstH < area_FirstV)
-  {
-    if (V)
-      result = CreateResizeV(clip, subrange_top, subrange_height, target_height, f, env);
-    if (H)
-      result = CreateResizeH(result, subrange_left, subrange_width, target_width, f, env);
+  try {	// HIDE DAMN SEH COMPILER BUG!!!
+    const VideoInfo& vi = clip->GetVideoInfo();
+    const double subrange_left = args[0].AsFloat(0), subrange_top = args[1].AsFloat(0);
+    
+    double subrange_width = args[2].AsFloat(vi.width), subrange_height = args[3].AsFloat(vi.height);
+    // Crop style syntax
+    if (subrange_width  <= 0.0) subrange_width  = vi.width  - subrange_width;
+    if (subrange_height <= 0.0) subrange_height = vi.height - subrange_height;
+    
+    PClip result = clip;
+    bool H = ((subrange_width != vi.width) || (target_width != vi.width));
+    bool V = ((subrange_height != vi.height) || (target_height != vi.height));
+    // ensure that the intermediate area is maximal
+    const double area_FirstH = subrange_height * target_width;
+    const double area_FirstV = subrange_width * target_height;
+    if (area_FirstH < area_FirstV)
+    {
+      if (V)
+        result = CreateResizeV(clip, subrange_top, subrange_height, target_height, f, env);
+      if (H)
+        result = CreateResizeH(result, subrange_left, subrange_width, target_width, f, env);
+    }
+    else
+    {
+      if (H)
+        result = CreateResizeH(clip, subrange_left, subrange_width, target_width, f, env);
+      if (V)
+        result = CreateResizeV(result, subrange_top, subrange_height, target_height, f, env);
+    }
+    return result;
   }
-  else
-  {
-    if (H)
-      result = CreateResizeH(clip, subrange_left, subrange_width, target_width, f, env);
-    if (V)
-      result = CreateResizeV(result, subrange_top, subrange_height, target_height, f, env);
-  }
-  return result;
-	}
-	catch (...) { throw; }
+  catch (...) { throw; }
 }
 
 AVSValue __cdecl Create_PointResize(AVSValue args, void*, IScriptEnvironment* env) 
@@ -1650,15 +1653,41 @@ AVSValue __cdecl Create_BicubicResize(AVSValue args, void*, IScriptEnvironment* 
                        &MitchellNetravaliFilter(args[3].AsFloat(1./3.), args[4].AsFloat(1./3.)), env );
 }
 
-// 09-14-2002 - Vlad59 - Lanczos3Resize - Added Lanczos3Resize
-AVSValue __cdecl Create_Lanczos3Resize(AVSValue args, void*, IScriptEnvironment* env) 
+AVSValue __cdecl Create_LanczosResize(AVSValue args, void*, IScriptEnvironment* env) 
 {
+	try {	// HIDE DAMN SEH COMPILER BUG!!!
   return CreateResize( args[0].AsClip(), args[1].AsInt(), args[2].AsInt(), &args[3], 
-                       &Lanczos3Filter(), env );
+                       &LanczosFilter(args[7].AsInt(3)), env );
+	}
+	catch (...) { throw; }
 }
-// Lanczos 4
+
 AVSValue __cdecl Create_Lanczos4Resize(AVSValue args, void*, IScriptEnvironment* env) 
 {
+	try {	// HIDE DAMN SEH COMPILER BUG!!!
   return CreateResize( args[0].AsClip(), args[1].AsInt(), args[2].AsInt(), &args[3], 
-                       &Lanczos4Filter(), env );
+                       &LanczosFilter(4), env );
+	}
+	catch (...) { throw; }
+}
+
+AVSValue __cdecl Create_Spline16Resize(AVSValue args, void*, IScriptEnvironment* env) 
+{
+  return CreateResize( args[0].AsClip(), args[1].AsInt(), args[2].AsInt(), &args[3], 
+                       &Spline16Filter(), env );
+}
+
+AVSValue __cdecl Create_Spline36Resize(AVSValue args, void*, IScriptEnvironment* env) 
+{
+  return CreateResize( args[0].AsClip(), args[1].AsInt(), args[2].AsInt(), &args[3], 
+                       &Spline36Filter(), env );
+}
+
+AVSValue __cdecl Create_GaussianResize(AVSValue args, void*, IScriptEnvironment* env) 
+{
+	try {	// HIDE DAMN SEH COMPILER BUG!!!
+  return CreateResize( args[0].AsClip(), args[1].AsInt(), args[2].AsInt(), &args[3], 
+                       &GaussianFilter(args[7].AsFloat(30.0f)), env );
+	}
+	catch (...) { throw; }
 }
