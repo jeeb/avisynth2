@@ -473,10 +473,10 @@ bool CAVIFileSynth::DelayInit() {
  int fp_state = _control87( 0, 0 );
  _control87( FP_STATE, 0xffffffff );
  if (szScriptName) {
-    try {
 #ifndef _DEBUG
-      try {
+    try {
 #endif
+      try {
         // create a script environment and load the script into it
         env = CreateScriptEnvironment();
         if (!env) return false;
@@ -494,12 +494,29 @@ bool CAVIFileSynth::DelayInit() {
           throw AvisynthError("The returned video clip was nil (this is a bug)");
         // get information about the clip
         vi = &filter_graph->GetVideoInfo();
-
+/**** FORCED CONVERSIONS FOR NOW - ENABLE WHEN IMPLEMENTED  ****/
+/*
+        if (vi->IsY8()) {
+          AVSValue args[1] = { filter_graph };
+          filter_graph = env->Invoke("ConvertToYV12", AVSValue(args,1)).AsClip();
+          vi = &filter_graph->GetVideoInfo();
+        }
+        if (vi->IsY16() || vi->IsYV411()) {
+          AVSValue args[1] = { filter_graph };
+          filter_graph = env->Invoke("ConvertToYUY2", AVSValue(args,1)).AsClip();
+          vi = &filter_graph->GetVideoInfo();
+        }
+        if (vi->IsY24()) {
+          AVSValue args[1] = { filter_graph };
+          filter_graph = env->Invoke("ConvertToRGB32", AVSValue(args,1)).AsClip();
+          vi = &filter_graph->GetVideoInfo();
+        }
+*/
         if (vi->IsYV12()&&(vi->width&3))
           throw AvisynthError("Avisynth error: YV12 images for output must have a width divisible by 4 (use crop)!");
         if (vi->IsYUY2()&&(vi->width&3))
           throw AvisynthError("Avisynth error: YUY2 images for output must have a width divisible by 4 (use crop)!");
-//#ifndef _DEBUG
+
       }
       catch (AvisynthError error) {
         error_msg = error.msg;
@@ -512,7 +529,7 @@ bool CAVIFileSynth::DelayInit() {
           filter_graph = 0;
         }
       }
-//#endif
+
       if (szScriptName)
         delete[] szScriptName;
       szScriptName = 0;
@@ -724,6 +741,13 @@ STDMETHODIMP_(LONG) CAVIStreamSynth::Info(AVISTREAMINFOW *psi, LONG lSize) {
         asi.fccHandler = '2YUY';
       else if (vi->IsYV12())
         asi.fccHandler = '21VY'; 
+      else if (vi->IsY8())
+        asi.fccHandler = '008Y'; 
+      else if (vi->IsYV24())
+        asi.fccHandler = '42VY'; 
+      else if (vi->IsYV16()) 
+        asi.fccHandler = '61VY'; 
+      
       else {
         _ASSERT(FALSE);
       }
@@ -760,15 +784,30 @@ void CAVIStreamSynth::ReadFrame(void* lpBuffer, int n) {
   PVideoFrame frame = parent->filter_graph->GetFrame(n, parent->env);
   if (!frame)
     parent->env->ThrowError("Avisynth error: generated video frame was nil (this is a bug)");
-//  VideoInfo vi = parent->filter_graph->GetVideoInfo();
-  const int pitch = frame->GetPitch();
+
+  VideoInfo vi = parent->filter_graph->GetVideoInfo();
+  const int pitch    = frame->GetPitch();
   const int row_size = frame->GetRowSize();
+  const int height   = frame->GetHeight();
+
   // BMP scanlines are always dword-aligned
   const int out_pitch = (row_size+3) & -4;
-  BitBlt((BYTE*)lpBuffer, out_pitch, frame->GetReadPtr(), pitch, row_size, frame->GetHeight());
-  // TODO: Make the following more eyepleasing
-  BitBlt((BYTE*)lpBuffer+(out_pitch*frame->GetHeight()), out_pitch/2, frame->GetReadPtr(PLANAR_V), frame->GetPitch(PLANAR_V), frame->GetRowSize(PLANAR_V), frame->GetHeight(PLANAR_V));
-  BitBlt((BYTE*)lpBuffer+(out_pitch*frame->GetHeight()+frame->GetHeight(PLANAR_U)*out_pitch/2), out_pitch/2, frame->GetReadPtr(PLANAR_U), frame->GetPitch(PLANAR_U), frame->GetRowSize(PLANAR_V), frame->GetHeight(PLANAR_U));
+  int out_pitchUV = (frame->GetRowSize(PLANAR_U)+3) & -4;
+  if (vi.IsYV12()) {  // We know this has special alignment.
+    out_pitchUV = out_pitch / 2;
+  }
+
+  BitBlt((BYTE*)lpBuffer, out_pitch, frame->GetReadPtr(), pitch, row_size, height);
+
+  BitBlt((BYTE*)lpBuffer + (out_pitch*height),
+         out_pitchUV,               frame->GetReadPtr(PLANAR_V),
+		 frame->GetPitch(PLANAR_V), frame->GetRowSize(PLANAR_V),
+		 frame->GetHeight(PLANAR_V) );
+
+  BitBlt((BYTE*)lpBuffer + (out_pitch*height + frame->GetHeight(PLANAR_V)*out_pitchUV),
+         out_pitchUV,               frame->GetReadPtr(PLANAR_U),
+		 frame->GetPitch(PLANAR_U), frame->GetRowSize(PLANAR_U),
+		 frame->GetHeight(PLANAR_U) );
 }
 
 
@@ -904,6 +943,12 @@ STDMETHODIMP CAVIStreamSynth::ReadFormat(LONG lPos, LPVOID lpFormat, LONG *lpcbF
         bi.biCompression = '2YUY';
       else if (vi->IsYV12())
         bi.biCompression = '21VY';
+      else if (vi->IsY8())
+        bi.biCompression = '008Y'; 
+      else if (vi->IsYV24())
+        bi.biCompression = '42VY'; 
+      else if (vi->IsYV16()) 
+        bi.biCompression = '61VY'; 
       else {
         _ASSERT(FALSE);
       }

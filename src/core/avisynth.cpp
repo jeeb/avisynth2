@@ -108,38 +108,60 @@ public:
   VideoFrame vf;
 };
 
-static LinkedVideoFrame* g_VideoFrame_recycle_bin = 0;
+class RecycleBin {  // Tritical May 2005
+public:
+	LinkedVideoFrame* g_VideoFrame_recycle_bin;
+	RecycleBin() : g_VideoFrame_recycle_bin(NULL) { };
+	~RecycleBin()
+	{
+		for (LinkedVideoFrame*i=g_VideoFrame_recycle_bin; i;)
+		{
+			LinkedVideoFrame* j = i->next;
+			operator delete(i);
+			i = j;
+		}
+	}
+};
+
+
+// Tsp June 2005 the heap is cleared when ScriptEnviroment is destroyed
+
+static RecycleBin *g_Bin=0;
 
 void* VideoFrame::operator new(unsigned) {
   // CriticalSection
-  for (LinkedVideoFrame* i = g_VideoFrame_recycle_bin; i; i = i->next)
+  for (LinkedVideoFrame* i = g_Bin->g_VideoFrame_recycle_bin; i; i = i->next)
     if (i->vf.refcount == 0)
       return &i->vf;
   LinkedVideoFrame* result = (LinkedVideoFrame*)::operator new(sizeof(LinkedVideoFrame));
-  result->next = g_VideoFrame_recycle_bin;
-  g_VideoFrame_recycle_bin = result;
+  result->next = g_Bin->g_VideoFrame_recycle_bin;
+  g_Bin->g_VideoFrame_recycle_bin = result;
   return &result->vf;
 }
 
 
-VideoFrame::VideoFrame(VideoFrameBuffer* _vfb, int _offset, int _pitch, int _row_size, int _height)
-  : refcount(0), vfb(_vfb), offset(_offset), pitch(_pitch), row_size(_row_size), height(_height),offsetU(_offset),offsetV(_offset),pitchUV(0)  // PitchUV=0 so this doesn't take up additional space
+VideoFrame::VideoFrame(VideoFrameBuffer* _vfb, int _offset, int _pitch, int _row_size, int _height, int _pixel_type)
+  : refcount(0), vfb(_vfb), offset(_offset), pitch(_pitch), row_size(_row_size), height(_height),offsetU(_offset),offsetV(_offset),pitchUV(0),pixel_type(_pixel_type), row_sizeUV(0), heightUV(0)  // PitchUV=0 so this doesn't take up additional space
 {
   InterlockedIncrement(&vfb->refcount);
 }
 
-VideoFrame::VideoFrame(VideoFrameBuffer* _vfb, int _offset, int _pitch, int _row_size, int _height, int _offsetU, int _offsetV, int _pitchUV)
-  : refcount(0), vfb(_vfb), offset(_offset), pitch(_pitch), row_size(_row_size), height(_height),offsetU(_offsetU),offsetV(_offsetV),pitchUV(_pitchUV)
+VideoFrame::VideoFrame(VideoFrameBuffer* _vfb, int _offset, int _pitch, int _row_size, int _height, int _offsetU, int _offsetV, int _pitchUV, int _row_sizeUV, int _heightUV, int _pixel_type)
+  : refcount(0), vfb(_vfb), offset(_offset), pitch(_pitch), row_size(_row_size), height(_height),offsetU(_offsetU),offsetV(_offsetV),pitchUV(_pitchUV),pixel_type(_pixel_type), row_sizeUV(_row_sizeUV), heightUV(_heightUV)
 {
   InterlockedIncrement(&vfb->refcount);
 }
 
 VideoFrame* VideoFrame::Subframe(int rel_offset, int new_pitch, int new_row_size, int new_height) const {
-  return new VideoFrame(vfb, offset+rel_offset, new_pitch, new_row_size, new_height);
+  return new VideoFrame(vfb, offset+rel_offset, new_pitch, new_row_size, new_height, pixel_type);
 }
 
+/********  
+ * TODO: REPLACE THIS WITH A BLIT to new frame!!!
+ * This breaks Planar right now!!!!
+ ***************/
 VideoFrame* VideoFrame::Subframe(int rel_offset, int new_pitch, int new_row_size, int new_height, int rel_offsetU, int rel_offsetV, int new_pitchUV) const {
-  return new VideoFrame(vfb, offset+rel_offset, new_pitch, new_row_size, new_height, rel_offsetU+offsetU, rel_offsetV+offsetV, new_pitchUV);
+  return new VideoFrame(vfb, offset+rel_offset, new_pitch, new_row_size, new_height, rel_offsetU+offsetU, rel_offsetV+offsetV, new_pitchUV, 0,0, pixel_type);
 }
 
 
@@ -282,6 +304,8 @@ public:
   ~FunctionTable() {
     while (local_functions) {
       LocalFunction* prev = local_functions->prev;
+	  free((void*)local_functions->name);  // Tritical May 2005
+	  free((void*)local_functions->param_types);
       delete local_functions;
       local_functions = prev;
     }
@@ -409,8 +433,8 @@ public:
     LocalFunction* f = new LocalFunction;
     const char* alt_name = 0;
     if (!prescanning) {
-      f->name = name;
-      f->param_types = params;
+      f->name = strdup(name);  // Tritical May 2005
+      f->param_types = strdup(params);
       f->apply = apply;
       f->user_data = user_data;
       f->prev = local_functions;
@@ -697,9 +721,12 @@ public:
   bool __stdcall SetGlobalVar(const char* name, const AVSValue& val);
   void __stdcall PushContext(int level=0);
   void __stdcall PopContext();
+  void __stdcall PopContextGlobal();
+  unsigned int PlaneWidth(const VideoInfo& vi, int plane);
+  unsigned int PlaneHeight(const VideoInfo& vi, int plane);
   PVideoFrame __stdcall NewVideoFrame(const VideoInfo& vi, int align);
-  PVideoFrame NewVideoFrame(int row_size, int height, int align);
-  PVideoFrame NewPlanarVideoFrame(int width, int height, int align, bool U_first);
+  PVideoFrame NewIVideoFrame(const VideoInfo& vi, int align);
+  PVideoFrame NewPlanarVideoFrame(const VideoInfo& vi, int align);
   bool __stdcall MakeWritable(PVideoFrame* pvf);
   void __stdcall BitBlt(BYTE* dstp, int dst_pitch, const BYTE* srcp, int src_pitch, int row_size, int height);
   void __stdcall AtExit(IScriptEnvironment::ShutdownFunc function, void* user_data);
@@ -708,16 +735,21 @@ public:
   int __stdcall SetWorkingDir(const char * newdir);
   __stdcall ~ScriptEnvironment();
   void* __stdcall ManageCache(int key, void* data);
+  bool __stdcall PlanarChromaAlignment(IScriptEnvironment::PlanarChromaAlignmentMode key);
+  PVideoFrame __stdcall Subframe(PVideoFrame src, int rel_offset, int new_pitch, int new_row_size, int new_height, int rel_offsetU, int rel_offsetV, int new_pitchUV);
 
 private:
+  // Tritical May 2005
+  // Note order here!!
+  // AtExiter has functions which
+  // rely on StringDump elements.
+  StringDump string_dump;
 
   AtExiter at_exit;
 
-  StringDump string_dump;
-
   FunctionTable function_table;
 
-  VarTable global_var_table;
+  VarTable* global_var_table;
   VarTable* var_table;
 
   LinkedVideoFrameBuffer video_frame_buffers, lost_video_frame_buffers;
@@ -727,6 +759,7 @@ private:
 
   LinkedVideoFrameBuffer* GetFrameBuffer2(int size);
   VideoFrameBuffer* GetFrameBuffer(int size);
+  long CPU_id;
 
   // helper for Invoke
   int Flatten(const AVSValue& src, AVSValue* dst, int index, int max, const char** arg_names=0);
@@ -736,11 +769,26 @@ private:
   bool LoadPluginsMatching(const char* pattern);
   void PrescanPlugins();
   void ExportFilters();
+  bool PlanarChromaAlignmentState;
 
+  static long refcount; // Global to all ScriptEnvironment objects
 };
 
+long ScriptEnvironment::refcount=0;
+extern long CPUCheckForExtensions();  // in cpuaccel.cpp
 
-ScriptEnvironment::ScriptEnvironment() : at_exit(This()), function_table(This()), global_var_table(0, 0) {
+ScriptEnvironment::ScriptEnvironment()
+  : at_exit(This()),
+    function_table(This()),
+	PlanarChromaAlignmentState(true){ // Change to "true" for 2.5.7
+
+  CPU_id = CPUCheckForExtensions();
+
+  if(InterlockedCompareExchange(&refcount, 1, 0) == 0)//tsp June 2005 Initialize Recycle bin
+    g_Bin=new RecycleBin();
+  else
+    InterlockedIncrement(&refcount);
+
   MEMORYSTATUS memstatus;
   GlobalMemoryStatus(&memstatus);
   // Minimum 16MB, otherwise available physical memory/4, no maximum
@@ -749,11 +797,12 @@ ScriptEnvironment::ScriptEnvironment() : at_exit(This()), function_table(This())
   else
     memory_max = 16777216i64;
   memory_used = 0i64;
-  var_table = new VarTable(0, &global_var_table);
-  global_var_table.Set("true", true);
-  global_var_table.Set("false", false);
-  global_var_table.Set("yes", true);
-  global_var_table.Set("no", false);
+  global_var_table = new VarTable(0, 0);
+  var_table = new VarTable(0, global_var_table);
+  global_var_table->Set("true", true);
+  global_var_table->Set("false", false);
+  global_var_table->Set("yes", true);
+  global_var_table->Set("no", false);
 
   PrescanPlugins();
   ExportFilters();
@@ -762,6 +811,8 @@ ScriptEnvironment::ScriptEnvironment() : at_exit(This()), function_table(This())
 ScriptEnvironment::~ScriptEnvironment() {
   while (var_table)
     PopContext();
+  while (global_var_table)
+    PopContextGlobal();
   LinkedVideoFrameBuffer* i = video_frame_buffers.prev;
   while (i != &video_frame_buffers) {
     LinkedVideoFrameBuffer* prev = i->prev;
@@ -773,6 +824,10 @@ ScriptEnvironment::~ScriptEnvironment() {
     LinkedVideoFrameBuffer* prev = i->prev;
     delete i;
     i = prev;
+  }
+  if(!InterlockedDecrement((long*)&refcount)){
+	delete g_Bin;//tsp June 2005 Cleans up the heap
+	g_Bin=NULL;
   }
 }
 
@@ -798,14 +853,13 @@ void ScriptEnvironment::CheckVersion(int version) {
     ThrowError("Plugin was designed for a later version of Avisynth (%d)", version);
 }
 
-extern long CPUCheckForExtensions();  // in cpuaccel.cpp
 
 long GetCPUFlags() {
   static long lCPUExtensionsAvailable = CPUCheckForExtensions();
   return lCPUExtensionsAvailable;
 }
 
-long ScriptEnvironment::GetCPUFlags() { return ::GetCPUFlags(); }
+long ScriptEnvironment::GetCPUFlags() { return CPU_id; }
 
 void ScriptEnvironment::AddFunction(const char* name, const char* params, ApplyFunc apply, void* user_data) {
   function_table.AddFunction(name, params, apply, user_data);
@@ -820,7 +874,7 @@ bool ScriptEnvironment::SetVar(const char* name, const AVSValue& val) {
 }
 
 bool ScriptEnvironment::SetGlobalVar(const char* name, const AVSValue& val) {
-  return global_var_table.Set(name, val);
+  return global_var_table->Set(name, val);
 }
 
 const char* ScriptEnvironment::GetPluginDirectory()
@@ -846,7 +900,15 @@ const char* ScriptEnvironment::GetPluginDirectory()
     while (plugin_dir[l-1] == '\\')
       l--;
     plugin_dir[l]=0;
-    SetGlobalVar("$PluginDir$", AVSValue(plugin_dir));
+    SetGlobalVar("$PluginDir$", AVSValue(SaveString(plugin_dir)));  // Tritical May 2005
+	delete[] plugin_dir;
+	try {
+		plugin_dir = (char*)GetVar("$PluginDir$").AsString();
+	}
+	catch (...)
+	{
+		return 0;
+	}
   }
   return plugin_dir;
 }
@@ -926,13 +988,93 @@ void ScriptEnvironment::ExportFilters()
   SetGlobalVar("$InternalFunctions$", AVSValue( SaveString(builtin_names.c_str(), builtin_names.length() + 1) ));
 }
 
+unsigned int ScriptEnvironment::PlaneWidth(const VideoInfo& vi, int plane) {
+  if (!vi.IsPlanar())
+    ThrowError("PlaneWidth: Only planar formats are supported.");
 
-PVideoFrame ScriptEnvironment::NewPlanarVideoFrame(int width, int height, int align, bool U_first) {
-  int pitch = (width+align-1) / align * align;  // Y plane, width = 1 byte per pixel
-//  int UVpitch = ((width>>1)+align-1) / align * align;  // UV plane, width = 1/2 byte per pixel - can't align UV planes seperately.
-  int UVpitch = pitch>>1;  // UV plane, width = 1/2 byte per pixel
-  int size = pitch * height + UVpitch * height;
-  VideoFrameBuffer* vfb = GetFrameBuffer(size+(FRAME_ALIGN*4));
+  if (PLANAR_Y == plane)  // We have no formats where Y is subsampled.
+    return vi.width;
+
+  if (PLANAR_U != plane && PLANAR_V != plane)
+    ThrowError("PlaneWidth: Unknown plane.");
+
+  if (vi.IsYV12()) {
+    return vi.width >> 1;
+  }
+  if (vi.IsYV16()) {
+    return vi.width >> 1;
+  }
+  if (vi.IsY8()) {
+    return 0;
+  }
+  if (vi.IsYV24()) {
+    return vi.width;
+  }
+  if (vi.IsYV411()) {
+    return vi.width >> 2;  // w/4
+  }
+  ThrowError("PlaneWidth: Unknown colorspace.");
+  return 0;
+}
+
+unsigned int ScriptEnvironment::PlaneHeight(const VideoInfo& vi, int plane) {
+  if (!vi.IsPlanar())
+    ThrowError("PlaneHeight: Only planar formats are supported.");
+
+  if (PLANAR_Y == plane)  // We have no formats where Y is subsampled.
+    return vi.height;
+
+  if (PLANAR_U != plane && PLANAR_V != plane)
+    ThrowError("PlaneHeight: Unknown plane.");
+
+  if (vi.IsYV12()) {
+    return vi.height >> 1;
+  }
+  if (vi.IsYV16()) {
+    return vi.height;
+  }
+  if (vi.IsY8()) {
+    return 0;
+  }
+  if (vi.IsYV24()) {
+    return vi.height;
+  }
+  if (vi.IsYV411()) {
+    return vi.height;  // w
+  }
+  ThrowError("PlaneHeight: Unknown colorspace.");
+  return 0;
+}
+
+
+PVideoFrame ScriptEnvironment::NewPlanarVideoFrame(const VideoInfo& vi, int align) {
+  int UVpitch, pitch;
+  int Ywidth = PlaneWidth(vi, PLANAR_Y);
+  int UVwidth = PlaneWidth(vi, PLANAR_U);
+
+  int Yheight = PlaneHeight(vi, PLANAR_Y);
+  int UVheight = PlaneHeight(vi, PLANAR_U);
+
+  if (align<0) {
+// Forced alignment - pack Y as specified, pack UV half that
+    align = -align;
+	  pitch = (Ywidth+align-1) / align * align;  // Y plane, width = 1 byte per pixel
+    if (vi.IsYV12()) {
+	    UVpitch = (pitch+1)>>1;  // UV plane, width = 1/2 byte per pixel - can't align UV planes seperately.
+    } else {
+	    UVpitch = (UVwidth+align-1) / align * align;
+    }
+  } else {
+  // Align planes seperately
+    pitch = ((Ywidth+1)+align-1) / align * align;
+    UVpitch = ((UVwidth+1)+align-1) / align * align;
+  }
+
+  int size = pitch *  Yheight + 2 * UVpitch * UVheight;
+
+  int _align = (align < FRAME_ALIGN) ? FRAME_ALIGN : align;
+  VideoFrameBuffer* vfb = GetFrameBuffer(size+(_align*4));
+
   if (!vfb)
     ThrowError("NewPlanarVideoFrame: Returned 0 size image!");
 #ifdef _DEBUG
@@ -945,22 +1087,26 @@ PVideoFrame ScriptEnvironment::NewPlanarVideoFrame(int width, int height, int al
     }
   }
 #endif
+
 //  int offset = (-int(vfb->GetWritePtr())) & (align-1);  // align first line offset
   int offset = int(vfb->GetWritePtr()) & (FRAME_ALIGN-1);  // align first line offset
   offset = (FRAME_ALIGN - offset)%FRAME_ALIGN;
   int Uoffset, Voffset;
-  if (U_first) {
-    Uoffset = offset + pitch * height;
-    Voffset = offset + pitch * height + UVpitch * (height>>1);
+
+  if (vi.IsVPlaneFirst()) {
+    Voffset = offset + pitch * Yheight;
+    Uoffset = offset + pitch * Yheight + UVpitch * UVheight;
   } else {
-    Voffset = offset + pitch * height;
-    Uoffset = offset + pitch * height + UVpitch * (height>>1);
+    Uoffset = offset + pitch * Yheight;
+    Voffset = offset + pitch * Yheight + UVpitch * UVheight;
   }
-  return new VideoFrame(vfb, offset, pitch, width, height, Uoffset, Voffset, UVpitch);
+  return new VideoFrame(vfb, offset, pitch, Ywidth, Yheight, Uoffset, Voffset, UVpitch, UVwidth, UVheight, vi.pixel_type);
 }
 
 
-PVideoFrame ScriptEnvironment::NewVideoFrame(int row_size, int height, int align) {
+PVideoFrame ScriptEnvironment::NewIVideoFrame(const VideoInfo& vi, int align) {
+  int row_size = vi.RowSize();
+  int height = vi.height;
   int pitch = (row_size+align-1) / align * align;
   int size = pitch * height;
   int _align = (align < FRAME_ALIGN) ? FRAME_ALIGN : align;
@@ -978,7 +1124,7 @@ PVideoFrame ScriptEnvironment::NewVideoFrame(int row_size, int height, int align
   int offset = int(vfb->GetWritePtr()) & (FRAME_ALIGN-1);  // align first line offset
   offset = (FRAME_ALIGN - offset)%FRAME_ALIGN;
 //  int offset = (-int(vfb->GetWritePtr())) & (align-1);  // align first line offset  (alignment is free here!)
-  return new VideoFrame(vfb, offset, pitch, row_size, height);
+  return new VideoFrame(vfb, offset, pitch, row_size, height, vi.pixel_type);
 }
 
 
@@ -996,14 +1142,23 @@ PVideoFrame __stdcall ScriptEnvironment::NewVideoFrame(const VideoInfo& vi, int 
   }
   // If align is negative, it will be forced, if not it may be made bigger
   if (vi.IsPlanar()) { // Planar requires different math ;)
-    if (align<0) {
-      align *= -1;
-    } else {
+    if (align>=0) {
       align = max(align,FRAME_ALIGN);
     }
-    if ((vi.height&1)||(vi.width&1))
-      ThrowError("Filter Error: Attempted to request an YV12 frame that wasn't mod2 in width and height!");
-    return ScriptEnvironment::NewPlanarVideoFrame(vi.width, vi.height, align, !vi.IsVPlaneFirst());  // If planar, maybe swap U&V
+    if (vi.IsYV12()) {
+      if ((vi.height&1)||(vi.width&1))
+        ThrowError("Filter Error: Attempted to request an YV12 frame that wasn't mod2 in width and height!");
+    }
+    if (vi.IsYV16()) {
+      if (vi.width&1)
+        ThrowError("Filter Error: Attempted to request an YV16 frame that wasn't mod2 in width!");      
+    }
+    if (vi.IsYV411()) {
+      if (vi.width&3)
+        ThrowError("Filter Error: Attempted to request an YV411 frame that wasn't mod4 in width!");      
+    }
+
+    return ScriptEnvironment::NewPlanarVideoFrame(vi, align);  // If planar, maybe swap U&V
   } else {
     if ((vi.width&1)&&(vi.IsYUY2()))
       ThrowError("Filter Error: Attempted to request an YUY2 frame that wasn't mod2 in width.");
@@ -1012,7 +1167,7 @@ PVideoFrame __stdcall ScriptEnvironment::NewVideoFrame(const VideoInfo& vi, int 
     } else {
       align = max(align,FRAME_ALIGN);
     }
-    return ScriptEnvironment::NewVideoFrame(vi.RowSize(), vi.height, align);
+    return ScriptEnvironment::NewIVideoFrame(vi, align);
   }
 }
 
@@ -1029,10 +1184,27 @@ bool ScriptEnvironment::MakeWritable(PVideoFrame* pvf) {
     const int row_size = vf->GetRowSize();
     const int height = vf->GetHeight();
     PVideoFrame dst;
-    if (vf->GetPitch(PLANAR_U)) {  // we have no videoinfo, so we can only assume that it is Planar
-      dst = NewPlanarVideoFrame(row_size, height, FRAME_ALIGN,false);  // Always V first on internal images
+
+      // Create new VideoInfo and fill needed fields
+    VideoInfo new_vi;
+    new_vi.pixel_type = vf->pixel_type;
+    new_vi.height = height;
+
+    if (new_vi.IsPlanar()) {  // we have no videoinfo, so we can only assume that it is Planar
+      new_vi.width = vf->GetRowSize(PLANAR_Y);
+      dst = NewPlanarVideoFrame(new_vi, FRAME_ALIGN);  // Always V first on internal images
+      new_vi.width = row_size;
     } else {
-      dst = NewVideoFrame(row_size, height, FRAME_ALIGN);
+      if (new_vi.IsRGB24()) {
+        new_vi.width = vf->GetRowSize() / 3;
+      } else if (new_vi.IsRGB32()) {
+        new_vi.width = vf->GetRowSize() >> 2;
+      } else if (new_vi.IsYUY2()) {
+        new_vi.width = vf->GetRowSize() >> 1;
+      } else {
+        ThrowError("MakeWriteable: Unknown Interleaved Format");
+      }
+      dst = NewIVideoFrame(new_vi, FRAME_ALIGN);
     }
     BitBlt(dst->GetWritePtr(), dst->GetPitch(), vf->GetReadPtr(), vf->GetPitch(), row_size, height);
     // Blit More planes (pitch, rowsize and height should be 0, if none is present)
@@ -1049,17 +1221,26 @@ void ScriptEnvironment::AtExit(IScriptEnvironment::ShutdownFunc function, void* 
 }
 
 void ScriptEnvironment::PushContext(int level) {
-  var_table = new VarTable(var_table, &global_var_table);
+  var_table = new VarTable(var_table, global_var_table);
 }
 
 void ScriptEnvironment::PopContext() {
   var_table = var_table->Pop();
 }
 
+void ScriptEnvironment::PopContextGlobal() {
+  global_var_table = global_var_table->Pop();
+}
+
+
 PVideoFrame __stdcall ScriptEnvironment::Subframe(PVideoFrame src, int rel_offset, int new_pitch, int new_row_size, int new_height) {
   return src->Subframe(rel_offset, new_pitch, new_row_size, new_height);
 }
 
+//tsp June 2005 new function compliments the above function
+PVideoFrame __stdcall ScriptEnvironment::Subframe(PVideoFrame src, int rel_offset, int new_pitch, int new_row_size, int new_height, int rel_offsetU, int rel_offsetV, int new_pitchUV) {
+  return src->Subframe(rel_offset, new_pitch, new_row_size, new_height, rel_offsetU, rel_offsetV, new_pitchUV);
+}
 
 void* ScriptEnvironment::ManageCache(int key, void* data){
 // An extensible interface for providing system or user access to the
@@ -1072,20 +1253,38 @@ void* ScriptEnvironment::ManageCache(int key, void* data){
   // allowing it to be reused in favour of any of it's older siblings.
   case MC_ReturnVideoFrameBuffer:
   {
-    LinkedVideoFrameBuffer *lvfb = (LinkedVideoFrameBuffer*)data;
+	LinkedVideoFrameBuffer *lvfb = (LinkedVideoFrameBuffer*)data;
 
 	// The Cache volunteers VFB's it no longer tracks for reuse. This closes the loop
-	// for Memory Management. GetFrameBuffer moves new VideoFrameBuffer's to the head
-	// of the list and here we move unloved VideoFrameBuffer's to the end.
+	// for Memory Management. MC_PromoteVideoFrameBuffer moves VideoFrameBuffer's to
+	// the head of the list and here we move unloved VideoFrameBuffer's to the end.
 
 	// Check to make sure the vfb wasn't discarded and is really a LinkedVideoFrameBuffer.
 	if ((lvfb->data == 0) || (lvfb->signature != LinkedVideoFrameBuffer::ident)) break;
 
 	// Move unloved VideoFrameBuffer's to the end of the video_frame_buffers LRU list.
-	Relink(video_frame_buffers.prev, (LinkedVideoFrameBuffer*)lvfb, &video_frame_buffers);
+	Relink(video_frame_buffers.prev, lvfb, &video_frame_buffers);
 
 	// Flag it as returned, i.e. for immediate reuse.
 	lvfb->returned = true;
+
+	return (void*)1;
+  }
+  // Allow the cache to designate a VideoFrameBuffer as cacheable thus
+  // requesting it be moved to the head of the video_frame_buffers LRU list.
+  case MC_PromoteVideoFrameBuffer:
+  {
+	LinkedVideoFrameBuffer *lvfb = (LinkedVideoFrameBuffer*)data;
+
+	// When a cache instance detects attempts to refetch previously generated frames
+	// it starts to promote VFB's to the head of the video_frame_buffers LRU list.
+	// Previously all VFB's cycled to the head now only cacheable ones do.
+
+	// Check to make sure the vfb wasn't discarded and is really a LinkedVideoFrameBuffer.
+	if ((lvfb->data == 0) || (lvfb->signature != LinkedVideoFrameBuffer::ident)) break;
+
+	// Move loved VideoFrameBuffer's to the head of the video_frame_buffers LRU list.
+    Relink(&video_frame_buffers, lvfb, video_frame_buffers.next);
 
 	return (void*)1;
   }
@@ -1093,6 +1292,28 @@ void* ScriptEnvironment::ManageCache(int key, void* data){
     break;
   }
   return 0;
+}
+
+
+bool ScriptEnvironment::PlanarChromaAlignment(IScriptEnvironment::PlanarChromaAlignmentMode key){
+  bool oldPlanarChromaAlignmentState = PlanarChromaAlignmentState;
+
+  switch (key)
+  {
+  case IScriptEnvironment::PlanarChromaAlignmentOff:
+  {
+	PlanarChromaAlignmentState = false;
+    break;
+  }
+  case IScriptEnvironment::PlanarChromaAlignmentOn:
+  {
+	PlanarChromaAlignmentState = true;
+    break;
+  }
+  default:
+    break;
+  }
+  return oldPlanarChromaAlignmentState;
 }
 
 
@@ -1105,20 +1326,17 @@ LinkedVideoFrameBuffer* ScriptEnvironment::NewFrameBuffer(int size) {
 
 LinkedVideoFrameBuffer* ScriptEnvironment::GetFrameBuffer2(int size) {
   LinkedVideoFrameBuffer *i, *j;
- 
+
   // Before we allocate a new framebuffer, check our memory usage, and if we
   // are more than 12.5% above allowed usage discard some unreferenced frames.
   if (memory_used >  memory_max + (memory_max >> 3) ) {
-	++g_Mem_stats.CleanUps;
+    ++g_Mem_stats.CleanUps;
     int freed = 0;
     int freed_count = 0;
     // Deallocate enough unused frames.
     for (i = video_frame_buffers.prev; i != &video_frame_buffers; i = i->prev) {
       if (i->GetRefcount() == 0) {
         if (i->next != i->prev) {
-          // Unlink this one
-          i->prev->next = i->next;
-          i->next->prev = i->prev;
           // Store size.
           freed += i->data_size;
           freed_count++;
@@ -1126,12 +1344,12 @@ LinkedVideoFrameBuffer* ScriptEnvironment::GetFrameBuffer2(int size) {
           i->~LinkedVideoFrameBuffer();  // Can't delete me because caches have pointers to me
           // Link onto tail of lost_video_frame_buffers chain.
           j = i;
-		  i = i -> next; // step back one
+          i = i -> next; // step back one
           Relink(lost_video_frame_buffers.prev, j, &lost_video_frame_buffers);
           if ((memory_used+size - freed) < memory_max)
             break; // Stop, we are below 100% utilization
         }
-		else break;
+        else break;
       }
     }
     _RPT2(0,"Freed %d frames, consisting of %d bytes.\n",freed_count, freed);
@@ -1143,33 +1361,33 @@ LinkedVideoFrameBuffer* ScriptEnvironment::GetFrameBuffer2(int size) {
     //   Part 1: look for a returned free buffer of the same size and reuse it
     for (i = video_frame_buffers.prev; i != &video_frame_buffers; i = i->prev) {
       if (i->returned && (i->GetRefcount() == 0) && (i->GetDataSize() == size)) {
-		++g_Mem_stats.PlanA1;
+        ++g_Mem_stats.PlanA1;
         return i;
-	  }
+      }
     }
     //   Part 2: else just allocate a new buffer
-	++g_Mem_stats.PlanA2;
+    ++g_Mem_stats.PlanA2;
     return NewFrameBuffer(size);
   }
-  
+
   // Plan B: Steal the oldest existing free buffer of the same size
   j = 0;
   for (i = video_frame_buffers.prev; i != &video_frame_buffers; i = i->prev) {
     if (i->GetRefcount() == 0) {
-	  if (i->GetDataSize() == size) {
-		++g_Mem_stats.PlanB;
-		return i;
-	  }
-	  if (i->GetDataSize() > size) {
-		if ((j == 0) || (i->GetDataSize() < j->GetDataSize())) j = i;
-	  }
-	}
+      if (i->GetDataSize() == size) {
+        ++g_Mem_stats.PlanB;
+        return i;
+      }
+      if (i->GetDataSize() > size) {
+        if ((j == 0) || (i->GetDataSize() < j->GetDataSize())) j = i;
+      }
+    }
   }
 
   // Plan C: Steal the oldest, smallest free buffer that is greater in size
   if (j) {
-	++g_Mem_stats.PlanC;
-	return j;
+    ++g_Mem_stats.PlanC;
+    return j;
   }
 
   // Plan D: Allocate a new buffer, regardless of current memory usage
@@ -1179,8 +1397,13 @@ LinkedVideoFrameBuffer* ScriptEnvironment::GetFrameBuffer2(int size) {
 
 VideoFrameBuffer* ScriptEnvironment::GetFrameBuffer(int size) {
   LinkedVideoFrameBuffer* result = GetFrameBuffer2(size);
+#if 0
   // Link onto head of video_frame_buffers chain.
   Relink(&video_frame_buffers, result, video_frame_buffers.next);
+#else
+  // Link onto tail of video_frame_buffers chain.
+  Relink(video_frame_buffers.prev, result, &video_frame_buffers);
+#endif
   result->returned = false;
   return result;
 }
@@ -1205,84 +1428,116 @@ int ScriptEnvironment::Flatten(const AVSValue& src, AVSValue* dst, int index, in
 
 
 AVSValue ScriptEnvironment::Invoke(const char* name, const AVSValue args, const char** arg_names) {
-  // flatten unnamed args
-  AVSValue args2[ScriptParser::max_args];
-  int args2_count = Flatten(args, args2, 0, ScriptParser::max_args, arg_names);
 
-  // find matching function
+  int args2_count;
   bool strict;
-  AVSFunction* f = function_table.Lookup(name, args2, args2_count, &strict);
-  if (!f)
-    throw NotFound();
+  AVSFunction *f;
+  AVSValue retval;
+
+  AVSValue *args1 = new AVSValue[ScriptParser::max_args]; // Save stack space - put on heap!!!
+
+  try {
+	// flatten unnamed args
+	args2_count = Flatten(args, args1, 0, ScriptParser::max_args, arg_names);
+
+	// find matching function
+	f = function_table.Lookup(name, args1, args2_count, &strict);
+	if (!f)
+	  throw NotFound();
+  }
+  catch (...) {
+    delete[] args1;
+	throw;
+  }
+
+  // collapse the 1024 element array
+  AVSValue *args2 = new AVSValue[args2_count];
+  for (int i=0; i< args2_count; i++)
+    args2[i] = args1[i];
+  delete[] args1;
 
   // combine unnamed args into arrays
-  AVSValue args3[ScriptParser::max_args];
-  const char* p = f->param_types;
   int src_index=0, dst_index=0;
-  while (*p) {
-    if (*p == '[') {
-      p = strchr(p+1, ']');
-      if (!p) break;
-      p++;
-    } else if (p[1] == '*' || p[1] == '+') {
-      int start = src_index;
-      while (src_index < args2_count && FunctionTable::SingleTypeMatch(*p, args2[src_index], strict))
-        src_index++;
-      args3[dst_index++] = AVSValue(&args2[start], src_index - start);
-      p += 2;
-    } else {
-      if (src_index < args2_count)
-        args3[dst_index] = args2[src_index];
-      src_index++;
-      dst_index++;
-      p++;
-    }
-  }
-  if (src_index < args2_count)
-    ThrowError("Too many arguments to function %s", name);
+  const char* p = f->param_types;
+  const int maxarg3 = max(args2_count, strlen(p)); // well it can't be any longer than this.
 
-  const int args3_count = dst_index;
+  AVSValue *args3 = new AVSValue[maxarg3];
 
-  // copy named args
-  if (args.IsArray() && arg_names) {
-    const int array_size = args.ArraySize();
-    for (int i=0; i<array_size; ++i) {
-      if (arg_names[i]) {
-        int named_arg_index = 0;
-        for (const char* p = f->param_types; *p; ++p) {
-          if (*p == '*' || *p == '+') {
-            continue;   // without incrementing named_arg_index
-          } else if (*p == '[') {
-            p += 1;
-            const char* q = strchr(p, ']');
-            if (!q) break;
-            if (strlen(arg_names[i]) == unsigned(q-p) && !strnicmp(arg_names[i], p, q-p)) {
-              // we have a match
-              if (args3[named_arg_index].Defined()) {
-                ThrowError("Script error: the named argument \"%s\" was passed more than once to %s", arg_names[i], name);
-              } else if (args[i].IsArray()) {
-                ThrowError("Script error: can't pass an array as a named argument");
-              } else if (args[i].Defined() && !FunctionTable::SingleTypeMatch(q[1], args[i], false)) {
-                ThrowError("Script error: the named argument \"%s\" to %s had the wrong type", arg_names[i], name);
-              } else {
-                args3[named_arg_index] = args[i];
-                goto success;
-              }
-            } else {
-              p = q+1;
-            }
-          }
-          named_arg_index++;
-        }
-        // failure
-        ThrowError("Script error: %s does not have a named argument \"%s\"", name, arg_names[i]);
+  try {
+	while (*p) {
+	  if (*p == '[') {
+		p = strchr(p+1, ']');
+		if (!p) break;
+		p++;
+	  } else if (p[1] == '*' || p[1] == '+') {
+		int start = src_index;
+		while (src_index < args2_count && FunctionTable::SingleTypeMatch(*p, args2[src_index], strict))
+		  src_index++;
+		args3[dst_index++] = AVSValue(&args2[start], src_index - start); // can't delete args2 early because of this
+		p += 2;
+	  } else {
+		if (src_index < args2_count)
+		  args3[dst_index] = args2[src_index];
+		src_index++;
+		dst_index++;
+		p++;
+	  }
+	}
+	if (src_index < args2_count)
+	  ThrowError("Too many arguments to function %s", name);
+
+	const int args3_count = dst_index;
+
+	// copy named args
+	if (args.IsArray() && arg_names) {
+	  const int array_size = args.ArraySize();
+	  for (int i=0; i<array_size; ++i) {
+		if (arg_names[i]) {
+		  int named_arg_index = 0;
+		  for (const char* p = f->param_types; *p; ++p) {
+			if (*p == '*' || *p == '+') {
+			  continue;   // without incrementing named_arg_index
+			} else if (*p == '[') {
+			  p += 1;
+			  const char* q = strchr(p, ']');
+			  if (!q) break;
+			  if (strlen(arg_names[i]) == unsigned(q-p) && !strnicmp(arg_names[i], p, q-p)) {
+				// we have a match
+				if (args3[named_arg_index].Defined()) {
+				  ThrowError("Script error: the named argument \"%s\" was passed more than once to %s", arg_names[i], name);
+				} else if (args[i].IsArray()) {
+				  ThrowError("Script error: can't pass an array as a named argument");
+				} else if (args[i].Defined() && !FunctionTable::SingleTypeMatch(q[1], args[i], false)) {
+				  ThrowError("Script error: the named argument \"%s\" to %s had the wrong type", arg_names[i], name);
+				} else {
+				  args3[named_arg_index] = args[i];
+				  goto success;
+				}
+			  } else {
+				p = q+1;
+			  }
+			}
+			named_arg_index++;
+		  }
+		  // failure
+		  ThrowError("Script error: %s does not have a named argument \"%s\"", name, arg_names[i]);
 success:;
-      }
-    }
-  }
+		}
+	  }
+	}
 
-  // ... and we're finally ready to make the call
-  return f->apply(AVSValue(args3, args3_count), f->user_data, this);
+	// ... and we're finally ready to make the call
+	retval = f->apply(AVSValue(args3, args3_count), f->user_data, this);
+  }
+  catch (...) {
+    delete[] args3;
+	delete[] args2;
+	throw;
+  }
+  delete[] args3;
+  delete[] args2;
+
+  return retval;
 }
 
 
@@ -1574,6 +1829,7 @@ void ScriptEnvironment::ThrowError(const char* fmt, ...) {
 
 
 IScriptEnvironment* __stdcall CreateScriptEnvironment(int version) {
+  if (loadplugin_prefix) free((void*)loadplugin_prefix);
   loadplugin_prefix = 0;
   if (version <= AVISYNTH_INTERFACE_VERSION)
     return new ScriptEnvironment;
