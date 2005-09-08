@@ -118,9 +118,9 @@ PVideoFrame __stdcall StackVertical::GetFrame(int n, IScriptEnvironment* env)
   BYTE* dstp2U = dstpU + dst_pitchUV * src1->GetHeight(PLANAR_U);
   BYTE* dstp2V = dstpV + dst_pitchUV * src1->GetHeight(PLANAR_V);
 
-  if (vi.IsYV12())
+  if (vi.IsPlanar())
   {
-    // Copy YV12 
+    // Copy Planar
     BitBlt(dstp, dst_pitch, src1p, src1_pitch, row_size, src1_height);
     BitBlt(dstp2, dst_pitch, src2p, src2_pitch, row_size, src2_height);
 
@@ -130,15 +130,8 @@ PVideoFrame __stdcall StackVertical::GetFrame(int n, IScriptEnvironment* env)
     BitBlt(dstpV, dst_pitchUV, src1pV, src1_pitchUV, row_sizeUV, src1_heightUV);
     BitBlt(dstp2V, dst_pitchUV, src2pV, src2_pitchUV, row_sizeUV, src2_heightUV);
   } else {
-    // I'll leave the planar BitBlts (no-ops) in for compatibility with future planar formats
     BitBlt(dstp, dst_pitch, src1p, src1_pitch, row_size, src1_height);
     BitBlt(dstp2, dst_pitch, src2p, src2_pitch, row_size, src2_height);
-
-    BitBlt(dstpU, dst_pitchUV, src1pU, src1_pitchUV, row_sizeUV, src1_heightUV);
-    BitBlt(dstp2U, dst_pitchUV, src2pU, src2_pitchUV, row_sizeUV, src2_heightUV);
-
-    BitBlt(dstpV, dst_pitchUV, src1pV, src1_pitchUV, row_sizeUV, src1_heightUV);
-    BitBlt(dstp2V, dst_pitchUV, src2pV, src2_pitchUV, row_sizeUV, src2_heightUV);
   }
   return dst;
 }
@@ -444,6 +437,21 @@ Animate::Animate( PClip context, int _first, int _last, const char* _name, const
 }
 
 
+bool __stdcall Animate::GetParity(int n) 
+{
+  if (range_limit) {
+    if ((n<first) || (n>last)) {
+      return args_after[0].AsClip()->GetParity(n);
+    }
+  }
+  // We could go crazy here and replicate the GetFrame
+  // logic and share the cache_stage but it is not
+  // really worth it. Although clips that change parity
+  // are supported they are very confusing.
+  return cache[0]->GetParity(n);
+}
+
+
 PVideoFrame __stdcall Animate::GetFrame(int n, IScriptEnvironment* env) 
 {
   if (range_limit) {
@@ -483,34 +491,42 @@ void __stdcall Animate::GetAudio(void* buf, __int64 start, __int64 count, IScrip
   if (range_limit) {  // Applyrange - hard switch between streams.
 
     const VideoInfo& vi1 = cache[0]->GetVideoInfo();
+    const __int64 start_switch =  vi1.AudioSamplesFromFrames(first);
+    const __int64 end_switch   =  vi1.AudioSamplesFromFrames(last+1);
 
-    if ( (start+count < vi1.AudioSamplesFromFrames(first)) || (start > vi1.AudioSamplesFromFrames(last+1)) ) {
+    if ( (start+count <= start_switch) || (start >= end_switch) ) {
       // Everything unfiltered
       args_after[0].AsClip()->GetAudio(buf, start, count, env);
       return;
     }
-
-    if (start < vi1.AudioSamplesFromFrames(first) || (start+count > vi1.AudioSamplesFromFrames(last+1)) ) {
+    else if ( (start < start_switch) || (start+count > end_switch) ) {
       // We are at one or both switchover points
-      // We start by filling with filtered material.
-      cache[0]->GetAudio(buf, start, count, env);
 
-      // Now we fetch the unfiltered material for both ends.
-      __int64 start_switch =  vi1.AudioSamplesFromFrames(first);
-      if (start_switch > start) 
-        args_after[0].AsClip()->GetAudio(buf, start, start_switch - start, env);  // UnFiltered
+      // The bit before
+      if (start_switch > start) {
+	const __int64 pre_count = start_switch - start;
+        args_after[0].AsClip()->GetAudio(buf, start, pre_count, env);  // UnFiltered
+	start += pre_count;
+	count -= pre_count;
+	buf = (void*)( (BYTE*)buf + vi1.BytesFromAudioSamples(pre_count) );
+      }
 
-      __int64 end_switch =  vi1.AudioSamplesFromFrames(last+1);
-      if (end_switch < start+count) 
-        args_after[0].AsClip()->GetAudio(buf, end_switch, start + count - end_switch, env);  // UnFiltered
+      // The bit in the middle
+      const __int64 filt_count = (end_switch < start+count) ? (end_switch - start) : count;
+      cache[0]->GetAudio(buf, start, filt_count, env);  // Filtered 
+      start += filt_count;
+      count -= filt_count;
+      buf = (void*)( (BYTE*)buf + vi1.BytesFromAudioSamples(filt_count) );
+
+      // The bit after
+      if (count > 0) 
+        args_after[0].AsClip()->GetAudio(buf, start, count, env);  // UnFiltered
 
       return;
     }
-
-    cache[0]->GetAudio(buf, start, count, env);  // Filtered
-    return;
+    // Everything filtered
   }
-  cache[0]->GetAudio(buf, start, count, env); 
+  cache[0]->GetAudio(buf, start, count, env);  // Filtered 
 } 
   
 

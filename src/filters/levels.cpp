@@ -48,7 +48,7 @@
 
 AVSFunction Levels_filters[] = {
   { "Levels", "cifiii[coring]b", Levels::Create },        // src_low, gamma, src_high, dst_low, dst_high 
-  { "RGBAdjust", "c[r]f[g]f[b]f[a]f[rb]f[gb]f[bb]f[ab]f[analyze]b", RGBAdjust::Create },   // R, G, B, A
+  { "RGBAdjust", "c[r]f[g]f[b]f[a]f[rb]f[gb]f[bb]f[ab]f[rg]f[gg]f[bg]f[ag]f[analyze]b", RGBAdjust::Create },
   { "Tweak", "c[hue]f[sat]f[bright]f[cont]f[coring]b[sse]b", Tweak::Create },  // hue, sat, bright, contrast
   { "Limiter", "c[min_luma]i[max_luma]i[min_chroma]i[max_chroma]i[show]s", Limiter::Create },
   { 0 }
@@ -180,23 +180,28 @@ AVSValue __cdecl Levels::Create(AVSValue args, void*, IScriptEnvironment* env)
 
 RGBAdjust::RGBAdjust(PClip _child, double r,  double g,  double b,  double a,
                                    double rb, double gb, double bb, double ab,
+                                   double rg, double gg, double bg, double ag,
                                    bool _analyze, IScriptEnvironment* env)
   : GenericVideoFilter(_child), analyze(_analyze)
 {
+	try {	// HIDE DAMN SEH COMPILER BUG!!!
   if (!vi.IsRGB())
     env->ThrowError("RGBAdjust requires RGB input");
-  int p;
+
+  if ((rg <= 0.0) || (gg <= 0.0) || (bg <= 0.0) || (ag <= 0.0))
+    env->ThrowError("RGBAdjust: gammas must be positive");
+
+  rg=1/rg; gg=1/gg; bg=1/bg; ag=1/ag;
+
   for (int i=0; i<256; ++i) 
   {
-    p = int(rb + i * r + 0.5);
-	mapR[i] = min(max(p,0),255);
-    p = int(gb + i * g + 0.5);
-	mapG[i] = min(max(p,0),255);
-    p = int(bb + i * b + 0.5);
-	mapB[i] = min(max(p,0),255);
-    p = int(ab + i * a + 0.5);
-	mapA[i] = min(max(p,0),255);
+	mapR[i] = int(pow(min(max((rb + i * r)/255.0, 0.0), 1.0), rg) * 255.0 + 0.5);
+	mapG[i] = int(pow(min(max((gb + i * g)/255.0, 0.0), 1.0), gg) * 255.0 + 0.5);
+	mapB[i] = int(pow(min(max((bb + i * b)/255.0, 0.0), 1.0), bg) * 255.0 + 0.5);
+	mapA[i] = int(pow(min(max((ab + i * a)/255.0, 0.0), 1.0), ag) * 255.0 + 0.5);
   }
+	}
+	catch (...) { throw; }
 }
 
 
@@ -329,10 +334,14 @@ PVideoFrame __stdcall RGBAdjust::GetFrame(int n, IScriptEnvironment* env)
 
 AVSValue __cdecl RGBAdjust::Create(AVSValue args, void*, IScriptEnvironment* env) 
 {
-  return new RGBAdjust(args[0].AsClip(),
-                       args[1].AsFloat(1), args[2].AsFloat(1), args[3].AsFloat(1), args[4].AsFloat(1),
-                       args[5].AsFloat(0), args[6].AsFloat(0), args[7].AsFloat(0), args[8].AsFloat(0),
-					   args[9].AsBool(false), env );
+	try {	// HIDE DAMN SEH COMPILER BUG!!!
+  return new RGBAdjust(args[ 0].AsClip(),
+                       args[ 1].AsFloat(1), args[ 2].AsFloat(1), args[ 3].AsFloat(1), args[ 4].AsFloat(1),
+                       args[ 5].AsFloat(0), args[ 6].AsFloat(0), args[ 7].AsFloat(0), args[ 8].AsFloat(0),
+                       args[ 9].AsFloat(1), args[10].AsFloat(1), args[11].AsFloat(1), args[12].AsFloat(1),
+                       args[13].AsBool(false), env );
+	}
+	catch (...) { throw; }
 }
 
 
@@ -350,6 +359,7 @@ Tweak::Tweak( PClip _child, double _hue, double _sat, double _bright, double _co
               IScriptEnvironment* env ) 
   : GenericVideoFilter(_child), coring(_coring), sse(_sse)
 {
+	try {	// HIDE DAMN SEH COMPILER BUG!!!
   if (vi.IsRGB())
 		env->ThrowError("Tweak: YUV data only (no RGB)");
   if (vi.width % 2)
@@ -384,6 +394,8 @@ Tweak::Tweak( PClip _child, double _hue, double _sat, double _bright, double _co
 		mapCos[i] = int(((i - 128) * COS * _sat + 128) * 256. + 128.5);
 		mapSin[i] = int( (i - 128) * SIN * _sat        * 256. +   0.5);
 	}
+	}
+	catch (...) { throw; }
 }
 
 
@@ -413,8 +425,8 @@ PVideoFrame __stdcall Tweak::GetFrame(int n, IScriptEnvironment* env)
 		}
 	}
 
-	int maxUV = coring ? 240 : 255;
-	int minUV = coring ? 16 : 0;
+	const int maxUV = coring ? 240 : 255;
+	const int minUV = coring ? 16 : 0;
 
 	if (vi.IsYUY2()) {
 		for (int y = 0; y < height; y++)
@@ -797,7 +809,8 @@ PVideoFrame __stdcall Limiter::GetFrame(int n, IScriptEnvironment* env) {
 			}
 			return frame;
 		}
-
+  }
+  if (vi.IsPlanar()) {
     if (env->GetCPUFlags() & CPUF_INTEGER_SSE) {
       /** Run emulator if CPU supports it**/
       row_size= frame->GetRowSize(PLANAR_Y_ALIGNED);
@@ -815,6 +828,8 @@ PVideoFrame __stdcall Limiter::GetFrame(int n, IScriptEnvironment* env) {
       // Prepare for chroma
       row_size = frame->GetRowSize(PLANAR_U_ALIGNED);
       pitch = frame->GetPitch(PLANAR_U);
+      if (!row_size)
+        return frame;
       
       if (!chroma_emulator) {
         height = frame->GetHeight(PLANAR_U);

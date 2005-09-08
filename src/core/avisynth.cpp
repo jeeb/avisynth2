@@ -156,11 +156,7 @@ VideoFrame* VideoFrame::Subframe(int rel_offset, int new_pitch, int new_row_size
   return new VideoFrame(vfb, offset+rel_offset, new_pitch, new_row_size, new_height, pixel_type);
 }
 
-/********  
- * TODO: REPLACE THIS WITH A BLIT to new frame!!!
- * This breaks Planar right now!!!!
- int _row_sizeUV, int _heightUV
- ***************/
+
 VideoFrame* VideoFrame::Subframe(int rel_offset, int new_pitch, int new_row_size, int new_height, int rel_offsetU, int rel_offsetV, int new_pitchUV) const {  //int _row_sizeUV, int _heightUV
   int UVnew_row_size = new_row_size;
   int UVnew_height = new_height;

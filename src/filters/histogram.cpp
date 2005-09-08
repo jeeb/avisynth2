@@ -62,23 +62,19 @@ Histogram::Histogram(PClip _child, int _mode, IScriptEnvironment* env)
 {
 
   if (mode ==0) {
-    if (!vi.IsYUV())
-      env->ThrowError("Histogram: YUV data only");
+    if (!(vi.IsYV12() || vi.IsYUY2()))
+      env->ThrowError("Histogram: YUY2 or YV12 data only");
     vi.width += 256;
   }
   if (mode ==1) {
-    if (!vi.IsYUV())
-      env->ThrowError("Histogram: YUV data only");
-    if (!vi.IsPlanar())
+    if (!vi.IsYV12())
       env->ThrowError("Histogram: Levels mode only available in YV12.");
     vi.width += 256;
     vi.height = max(256,vi.height);
   }
 
   if (mode ==2) {
-    if (!vi.IsYUV())
-      env->ThrowError("Histogram: YUV data only");
-    if (!vi.IsPlanar())
+    if (!vi.IsYV12())
       env->ThrowError("Histogram: Color mode only available in YV12.");
     vi.width += 256;
     vi.height = max(256,vi.height);
@@ -105,7 +101,7 @@ Histogram::Histogram(PClip _child, int _mode, IScriptEnvironment* env)
       if(!vi.IsYV12())
         env->ThrowError("Histogram: StereoOverlay must be YV12");
     } else {
-      vi.pixel_type = VideoInfo::CS_YV12;
+      vi.pixel_type = VideoInfo::CS_Y8;
       vi.height = 512;
       vi.width = 512;
     }
@@ -242,13 +238,13 @@ PVideoFrame Histogram::DrawMode4(int n, IScriptEnvironment* env) {
   for (int y = 0; y < 512;y+=16)
     srcp[y*p+256] = (srcp[y*p+256]>127) ? 16 : 235 ;
 
-  if (vi.IsPlanar()) {
+/*  if (vi.IsPlanar()) {
     srcp = src->GetWritePtr(PLANAR_U);
     imgSize = src->GetHeight(PLANAR_U) * src->GetPitch(PLANAR_U);
     memset(srcp, 127, imgSize);
     srcp = src->GetWritePtr(PLANAR_V);
     memset(srcp, 127, imgSize);
-  }
+  }*/
   delete[] samples;
   return src;
 }
