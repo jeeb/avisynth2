@@ -39,7 +39,6 @@
 
 #include "../internal.h"
 
-
 class ConvertToY8 : public GenericVideoFilter
 {
 public:
@@ -56,15 +55,22 @@ class ConvertToYV24 : public GenericVideoFilter
 public:
   ConvertToYV24(PClip src, IScriptEnvironment* env);
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
-  static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);   
+  static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
 };
 
 class ConvertToPlanarGeneric : public GenericVideoFilter
 {
 public:
-  ConvertToPlanarGeneric(PClip src, IScriptEnvironment* env);
+  ConvertToPlanarGeneric(PClip src, int dst_space, bool interlaced, AVSValue* UsubsSampling, AVSValue* VsubsSampling, IScriptEnvironment* env);
+  ~ConvertToPlanarGeneric() {}
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
-  static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);   
+  static AVSValue __cdecl CreateYV12(AVSValue args, void*, IScriptEnvironment* env);   
+  static AVSValue __cdecl CreateYV16(AVSValue args, void*, IScriptEnvironment* env);   
+  static AVSValue __cdecl CreateYV24(AVSValue args, void*, IScriptEnvironment* env);   
+  static AVSValue __cdecl CreateYV411(AVSValue args, void*, IScriptEnvironment* env);   
+private:
+  PClip Usource;
+  PClip Vsource;
 };
 
 

@@ -1167,6 +1167,7 @@ PVideoFrame __stdcall ScriptEnvironment::NewVideoFrame(const VideoInfo& vi, int 
     case VideoInfo::CS_YV12:
     case VideoInfo::CS_YV16:
     case VideoInfo::CS_YV24:
+    case VideoInfo::CS_YV411:
     case VideoInfo::CS_I420:
       break;
     default:

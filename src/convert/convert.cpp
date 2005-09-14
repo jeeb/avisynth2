@@ -51,7 +51,11 @@ AVSFunction Convert_filters[] = {
 { "ConvertToRGB", "c[matrix]s[interlaced]b", ConvertToRGB::Create },       // matrix can be "rec709", "PC.601" or "PC.709"
   { "ConvertToRGB24", "c[matrix]s[interlaced]b", ConvertToRGB::Create24 },
   { "ConvertToRGB32", "c[matrix]s[interlaced]b", ConvertToRGB::Create32 },
-  { "ConvertToYV12", "c[interlaced]b[matrix]s", ConvertToYV12::Create },  
+  { "ConvertToY8", "c[matrix]s", ConvertToY8::Create },
+  { "ConvertToYV12", "c[interlaced]b[matrix]s", ConvertToYV12::Create },
+  { "ConvertToYV24", "c[interlaced]b[matrix]s",  ConvertToPlanarGeneric::CreateYV24},  
+  { "ConvertToYV16", "c[interlaced]b[matrix]s",  ConvertToPlanarGeneric::CreateYV16}, 
+  { "ConvertToYV411", "c[interlaced]b[matrix]s", ConvertToPlanarGeneric::CreateYV411},
   { "ConvertToYUY2", "c[interlaced]b[matrix]s", ConvertToYUY2::Create },  
   { "ConvertBackToYUY2", "c[matrix]s", ConvertBackToYUY2::Create },  
   { 0 }
@@ -266,6 +270,7 @@ AVSValue __cdecl ConvertToYV12::Create(AVSValue args, void*, IScriptEnvironment*
 {
   PClip clip = args[0].AsClip();
   const VideoInfo& vi = clip->GetVideoInfo();
+//  if (vi.IsYV12()) return clip;
   if (vi.IsRGB()) {
   	return new ConvertToYV12(new ConvertToYUY2(clip,false,args[2].AsString(0),env),args[1].AsBool(false),env);
   } else {
@@ -273,6 +278,8 @@ AVSValue __cdecl ConvertToYV12::Create(AVSValue args, void*, IScriptEnvironment*
       env->ThrowError("ConvertToYV12: invalid \"matrix\" parameter (RGB data only)");
     if (vi.IsYUY2())
       return  new ConvertToYV12(clip,args[1].AsBool(false),env);
+    if (vi.IsPlanar())
+      return ConvertToPlanarGeneric::CreateYV12(args,0,env);
   }
   return clip;
 }

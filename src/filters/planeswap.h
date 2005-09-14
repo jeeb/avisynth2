@@ -75,9 +75,10 @@ public:
   static AVSValue __cdecl CreateUToY8(AVSValue args, void* user_data, IScriptEnvironment* env);
   static AVSValue __cdecl CreateVToY8(AVSValue args, void* user_data, IScriptEnvironment* env);
 
+  enum {UToY=1, VToY, UToY8, VToY8};
+
 private:
   int mode;
-  enum {UToY=1, VToY, UToY8, VToY8};
 };
 
 

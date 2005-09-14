@@ -45,14 +45,14 @@
 ********************************************************************/
 
 AVSFunction Resample_filters[] = {  
-  { "PointResize", "cii[src_left]f[src_top]f[src_width]f[src_height]f", Create_PointResize },
-  { "BilinearResize", "cii[src_left]f[src_top]f[src_width]f[src_height]f", Create_BilinearResize },
-  { "BicubicResize", "cii[b]f[c]f[src_left]f[src_top]f[src_width]f[src_height]f", Create_BicubicResize },
-  { "LanczosResize", "cii[src_left]f[src_top]f[src_width]f[src_height]f[taps]i", Create_LanczosResize},
-  { "Lanczos4Resize", "cii[src_left]f[src_top]f[src_width]f[src_height]f", Create_Lanczos4Resize},
-  { "Spline16Resize", "cii[src_left]f[src_top]f[src_width]f[src_height]f", Create_Spline16Resize},
-  { "Spline36Resize", "cii[src_left]f[src_top]f[src_width]f[src_height]f", Create_Spline36Resize},
-  { "GaussResize", "cii[src_left]f[src_top]f[src_width]f[src_height]f[p]f", Create_GaussianResize},
+  { "PointResize", "cii[src_left]f[src_top]f[src_width]f[src_height]f", FilteredResize::Create_PointResize },
+  { "BilinearResize", "cii[src_left]f[src_top]f[src_width]f[src_height]f", FilteredResize::Create_BilinearResize },
+  { "BicubicResize", "cii[b]f[c]f[src_left]f[src_top]f[src_width]f[src_height]f", FilteredResize::Create_BicubicResize },
+  { "LanczosResize", "cii[src_left]f[src_top]f[src_width]f[src_height]f[taps]i", FilteredResize::Create_LanczosResize},
+  { "Lanczos4Resize", "cii[src_left]f[src_top]f[src_width]f[src_height]f", FilteredResize::Create_Lanczos4Resize},
+  { "Spline16Resize", "cii[src_left]f[src_top]f[src_width]f[src_height]f", FilteredResize::Create_Spline16Resize},
+  { "Spline36Resize", "cii[src_left]f[src_top]f[src_width]f[src_height]f", FilteredResize::Create_Spline36Resize},
+  { "GaussResize", "cii[src_left]f[src_top]f[src_width]f[src_height]f[p]f", FilteredResize::Create_GaussianResize},
   /**
     * Resize(PClip clip, dst_width, dst_height [src_left, src_top, src_width, int src_height,] )
     *
@@ -1564,7 +1564,7 @@ FilteredResizeV::~FilteredResizeV(void)
  *******   Resampling Factory Methods   *******
  **********************************************/
 
-PClip CreateResizeH(PClip clip, double subrange_left, double subrange_width, int target_width, 
+PClip FilteredResize::CreateResizeH(PClip clip, double subrange_left, double subrange_width, int target_width, 
                     ResamplingFunction* func, IScriptEnvironment* env) 
 {
   const VideoInfo& vi = clip->GetVideoInfo();
@@ -1580,7 +1580,7 @@ PClip CreateResizeH(PClip clip, double subrange_left, double subrange_width, int
 }
 
 
-PClip CreateResizeV(PClip clip, double subrange_top, double subrange_height, int target_height, 
+PClip FilteredResize::CreateResizeV(PClip clip, double subrange_top, double subrange_height, int target_height, 
                     ResamplingFunction* func, IScriptEnvironment* env) 
 {
   const VideoInfo& vi = clip->GetVideoInfo();
@@ -1596,7 +1596,7 @@ PClip CreateResizeV(PClip clip, double subrange_top, double subrange_height, int
 }
 
 
-PClip CreateResize(PClip clip, int target_width, int target_height, const AVSValue* args, 
+PClip FilteredResize::CreateResize(PClip clip, int target_width, int target_height, const AVSValue* args, 
                    ResamplingFunction* f, IScriptEnvironment* env) 
 {
   try {	// HIDE DAMN SEH COMPILER BUG!!!
@@ -1633,27 +1633,27 @@ PClip CreateResize(PClip clip, int target_width, int target_height, const AVSVal
   catch (...) { throw; }
 }
 
-AVSValue __cdecl Create_PointResize(AVSValue args, void*, IScriptEnvironment* env) 
+AVSValue __cdecl FilteredResize::Create_PointResize(AVSValue args, void*, IScriptEnvironment* env) 
 {
   return CreateResize( args[0].AsClip(), args[1].AsInt(), args[2].AsInt(), &args[3], 
                        &PointFilter(), env );
 }
 
 
-AVSValue __cdecl Create_BilinearResize(AVSValue args, void*, IScriptEnvironment* env) 
+AVSValue __cdecl FilteredResize::Create_BilinearResize(AVSValue args, void*, IScriptEnvironment* env) 
 {
   return CreateResize( args[0].AsClip(), args[1].AsInt(), args[2].AsInt(), &args[3], 
                        &TriangleFilter(), env );
 }
 
 
-AVSValue __cdecl Create_BicubicResize(AVSValue args, void*, IScriptEnvironment* env) 
+AVSValue __cdecl FilteredResize::Create_BicubicResize(AVSValue args, void*, IScriptEnvironment* env) 
 {
   return CreateResize( args[0].AsClip(), args[1].AsInt(), args[2].AsInt(), &args[5], 
                        &MitchellNetravaliFilter(args[3].AsFloat(1./3.), args[4].AsFloat(1./3.)), env );
 }
 
-AVSValue __cdecl Create_LanczosResize(AVSValue args, void*, IScriptEnvironment* env) 
+AVSValue __cdecl FilteredResize::Create_LanczosResize(AVSValue args, void*, IScriptEnvironment* env) 
 {
 	try {	// HIDE DAMN SEH COMPILER BUG!!!
   return CreateResize( args[0].AsClip(), args[1].AsInt(), args[2].AsInt(), &args[3], 
@@ -1662,7 +1662,7 @@ AVSValue __cdecl Create_LanczosResize(AVSValue args, void*, IScriptEnvironment* 
 	catch (...) { throw; }
 }
 
-AVSValue __cdecl Create_Lanczos4Resize(AVSValue args, void*, IScriptEnvironment* env) 
+AVSValue __cdecl FilteredResize::Create_Lanczos4Resize(AVSValue args, void*, IScriptEnvironment* env) 
 {
 	try {	// HIDE DAMN SEH COMPILER BUG!!!
   return CreateResize( args[0].AsClip(), args[1].AsInt(), args[2].AsInt(), &args[3], 
@@ -1671,19 +1671,19 @@ AVSValue __cdecl Create_Lanczos4Resize(AVSValue args, void*, IScriptEnvironment*
 	catch (...) { throw; }
 }
 
-AVSValue __cdecl Create_Spline16Resize(AVSValue args, void*, IScriptEnvironment* env) 
+AVSValue __cdecl FilteredResize::Create_Spline16Resize(AVSValue args, void*, IScriptEnvironment* env) 
 {
   return CreateResize( args[0].AsClip(), args[1].AsInt(), args[2].AsInt(), &args[3], 
                        &Spline16Filter(), env );
 }
 
-AVSValue __cdecl Create_Spline36Resize(AVSValue args, void*, IScriptEnvironment* env) 
+AVSValue __cdecl FilteredResize::Create_Spline36Resize(AVSValue args, void*, IScriptEnvironment* env) 
 {
   return CreateResize( args[0].AsClip(), args[1].AsInt(), args[2].AsInt(), &args[3], 
                        &Spline36Filter(), env );
 }
 
-AVSValue __cdecl Create_GaussianResize(AVSValue args, void*, IScriptEnvironment* env) 
+AVSValue __cdecl FilteredResize::Create_GaussianResize(AVSValue args, void*, IScriptEnvironment* env) 
 {
 	try {	// HIDE DAMN SEH COMPILER BUG!!!
   return CreateResize( args[0].AsClip(), args[1].AsInt(), args[2].AsInt(), &args[3], 

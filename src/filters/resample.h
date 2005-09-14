@@ -102,6 +102,12 @@ private:
 
 /*** Resample factory methods ***/
 
+class FilteredResize
+/**
+  * Helper for resample functions
+ **/
+{
+public:
 static PClip CreateResizeH( PClip clip, double subrange_left, double subrange_width, int target_width, 
                             ResamplingFunction* func, IScriptEnvironment* env );
 
@@ -118,12 +124,16 @@ static AVSValue __cdecl Create_BilinearResize(AVSValue args, void*, IScriptEnvir
 static AVSValue __cdecl Create_BicubicResize(AVSValue args, void*, IScriptEnvironment* env);
 
 // 09-14-2002 - Vlad59 - Lanczos3Resize - 
-static AVSValue __cdecl Create_Lanczos3Resize(AVSValue args, void*, IScriptEnvironment* env);
+static AVSValue __cdecl Create_LanczosResize(AVSValue args, void*, IScriptEnvironment* env);
 
 static AVSValue __cdecl Create_Lanczos4Resize(AVSValue args, void*, IScriptEnvironment* env);
 
+static AVSValue __cdecl Create_Spline16Resize(AVSValue args, void*, IScriptEnvironment* env);
 
+static AVSValue __cdecl Create_Spline36Resize(AVSValue args, void*, IScriptEnvironment* env);
 
+static AVSValue __cdecl Create_GaussianResize(AVSValue args, void*, IScriptEnvironment* env);
+};
 
 
 
