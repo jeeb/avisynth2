@@ -468,6 +468,14 @@ SOURCE=.\filters\misc.h
 # End Source File
 # Begin Source File
 
+SOURCE=.\filters\planeswap.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\filters\planeswap.h
+# End Source File
+# Begin Source File
+
 SOURCE=.\filters\resample.cpp
 # End Source File
 # Begin Source File
@@ -716,6 +724,14 @@ InputName=convert_a
 
 !ENDIF 
 
+# End Source File
+# Begin Source File
+
+SOURCE=.\convert\convert_planar.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\convert\convert_planar.h
 # End Source File
 # Begin Source File
 

@@ -39,6 +39,7 @@
 #include "convert_rgb.h"
 #include "convert_yv12.h"
 #include "convert_yuy2.h"
+#include "convert_planar.h"
 
 
 
@@ -488,6 +489,9 @@ AVSValue __cdecl ConvertToYUY2::Create(AVSValue args, void*, IScriptEnvironment*
   bool i=args[1].AsBool(false);
   return new ConvertToYUY2(clip, i, args[2].AsString(0), env);
 }
+
+
+
 
 
 /****************************************************
