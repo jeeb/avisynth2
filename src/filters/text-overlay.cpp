@@ -983,10 +983,11 @@ PVideoFrame FilterInfo::GetFrame(int n, IScriptEnvironment* env)
         s_parity = vi.IsBFF() ? t_ABFF : t_BFF;
       }
     }
+
     char text[400];
-    RECT r= { 32, 16, min(3440,vi.width*8), 768*2 };
+    RECT r= { 32, 16, min(3440,vi.width*8), 868*2 };
     sprintf(text,
-      "Frame: %-8u\n"
+      "Frame: %-8u / %-8u\n"
       "ColorSpace: %s\n"
       "Width:%4u pixels, Height:%4u pixels.\n"
       "Frames per second: %7.4f\n"
@@ -997,8 +998,9 @@ PVideoFrame FilterInfo::GetFrame(int n, IScriptEnvironment* env)
       "Audio Channels: %-8u\n"
       "Sample Type: %s\n"
       "Samples Per Second: %4d\n"
+      "Audio length: %d samples.\n"
       "CPU detected: %s\n"
-      ,n
+      ,n, vi.num_frames
       ,c_space
       ,vi.width,vi.height
       ,(float)vi.fps_numerator/(float)vi.fps_denominator
@@ -1009,6 +1011,7 @@ PVideoFrame FilterInfo::GetFrame(int n, IScriptEnvironment* env)
       ,vi.AudioChannels()
       ,s_type
       ,vi.audio_samples_per_second
+      ,vi.num_audio_samples
       ,GetCpuMsg(env).c_str()
     );
 

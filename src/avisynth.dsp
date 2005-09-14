@@ -147,6 +147,10 @@ SOURCE=.\core\parser\tokenizer.h
 # End Group
 # Begin Source File
 
+SOURCE=.\core\alignplanar.cpp
+# End Source File
+# Begin Source File
+
 SOURCE=.\core\avisynth.cpp
 # End Source File
 # Begin Source File
@@ -413,6 +417,14 @@ SOURCE=.\filters\fps.cpp
 # Begin Source File
 
 SOURCE=.\filters\fps.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\filters\greyscale.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\filters\greyscale.h
 # End Source File
 # Begin Source File
 
@@ -707,11 +719,23 @@ InputName=convert_a
 # End Source File
 # Begin Source File
 
+SOURCE=.\convert\convert_rgb.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\convert\convert_rgb.h
+# End Source File
+# Begin Source File
+
 SOURCE=.\convert\convert_yuy2.cpp
 # End Source File
 # Begin Source File
 
 SOURCE=.\convert\convert_yuy2.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\convert\convert_yuy2.inc
 # End Source File
 # Begin Source File
 
