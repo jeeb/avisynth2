@@ -1277,7 +1277,7 @@ void ScriptEnvironment::PopContextGlobal() {
 PVideoFrame __stdcall ScriptEnvironment::Subframe(PVideoFrame src, int rel_offset, int new_pitch, int new_row_size, int new_height) {
   //return src->Subframe(rel_offset, new_pitch, new_row_size, new_height); Thread unsafe to do it like this  
 	PVideoFrame retval=new VideoFrame(src->vfb, src->offset+rel_offset, new_pitch, new_row_size, new_height, src->pixel_type);
-	InterlockedDecrement((long*)retval->refcount);
+	InterlockedDecrement((long*)&retval->refcount);
 	return retval;
 }
 
