@@ -61,6 +61,7 @@ extern AVSFunction Audio_filters[], Combine_filters[], Convert_filters[],
                    Debug_filters[], Image_filters[], Turn_filters[],
                                      Conditional_filters[], Conditional_funtions_filters[],
                    CPlugin_filters[], Cache_filters[],SSRC_filters[],
+                   CacheMT_filters[],MT_filters[],
                    SuperEq_filters[], Overlay_filters[], Soundtouch_filters[],
                    Greyscale_filters[], Swap_filters[];
 
@@ -77,6 +78,7 @@ AVSFunction* builtin_functions[] = {
                                      Conditional_filters, Conditional_funtions_filters,
                    Plugin_functions, CPlugin_filters, Cache_filters,
                    SSRC_filters, SuperEq_filters, Overlay_filters,
+                   CacheMT_filters,MT_filters,
                    Soundtouch_filters, Greyscale_filters, Swap_filters };
 
 // Global statistics counters
@@ -101,6 +103,7 @@ AVSValue LoadPlugin(AVSValue args, void* user_data, IScriptEnvironment* env);
 void FreeLibraries(void* loaded_plugins, IScriptEnvironment* env);
 
 //extern const char* loadplugin_prefix;  // in plugin.cpp
+extern DWORD TlsIndex;  // in main.cpp
 
 
 class LinkedVideoFrame {
@@ -761,6 +764,8 @@ public:
   void* __stdcall ManageCache(int key, void* data);
   bool __stdcall PlanarChromaAlignment(IScriptEnvironment::PlanarChromaAlignmentMode key);
   PVideoFrame __stdcall Subframe(PVideoFrame src, int rel_offset, int new_pitch, int new_row_size, int new_height, int rel_offsetU, int rel_offsetV, int new_pitchUV);
+  void __stdcall SetMTMode(int mode,int threads, bool temporary);
+  int __stdcall  GetMTMode(bool return_nthreads);
 
 private:
   // Tritical May 2005
@@ -796,27 +801,38 @@ private:
   bool PlanarChromaAlignmentState;
 
   static long refcount; // Global to all ScriptEnvironment objects
+  
+  static CRITICAL_SECTION cs_relink_video_frame_buffer;//tsp July 2005. 
 
-  CRITICAL_SECTION cs_relink_video_frame_buffer;//tsp June 2005 
+  CRITICAL_SECTION cs_var_table;
+  int mt_mode;
+  int temp_mt_mode;
+  DWORD nthreads;
 };
 
 long ScriptEnvironment::refcount=0;
+CRITICAL_SECTION ScriptEnvironment::cs_relink_video_frame_buffer;
 extern long CPUCheckForExtensions();  // in cpuaccel.cpp
 
 ScriptEnvironment::ScriptEnvironment()
   : at_exit(This()),
     function_table(This()),
+    mt_mode(-1),
+	temp_mt_mode(-5),
+	nthreads(0),
 	PlanarChromaAlignmentState(true){ // Change to "true" for 2.5.7
 
   CPU_id = CPUCheckForExtensions();
 
-  InitializeCriticalSectionAndSpinCount(&cs_relink_video_frame_buffer, 4000);//tsp June 2005 might have to change the spincount or use InitializeCriticalSection if it should run on WinNT 4 without SP3 or better
 
   if(InterlockedCompareExchange(&refcount, 1, 0) == 0)//tsp June 2005 Initialize Recycle bin
+  {
     g_Bin=new RecycleBin();
+	InitializeCriticalSectionAndSpinCount(&cs_relink_video_frame_buffer,4000);//tsp June 2005 might have to change the spincount or use InitializeCriticalSection if it should run on WinNT 4 without SP3 or better
+  }
   else
     InterlockedIncrement(&refcount);
-
+  InitializeCriticalSectionAndSpinCount(&cs_var_table,4000);
   MEMORYSTATUS memstatus;
   GlobalMemoryStatus(&memstatus);
   // Minimum 16MB, otherwise available physical memory/4, no maximum
@@ -825,6 +841,13 @@ ScriptEnvironment::ScriptEnvironment()
   else
     memory_max = 16777216i64;
   memory_used = 0i64;
+  DWORD systemaffinitymask=0;
+  DWORD processaffinitymask=0;
+  GetProcessAffinityMask(GetCurrentProcess(),&processaffinitymask,&systemaffinitymask);
+  do//count the number of bits set = number of logical procesors available for avisynth
+    if(processaffinitymask&1)
+      nthreads++;
+  while(processaffinitymask>>=1);
   global_var_table = new VarTable(0, 0);
   var_table = new VarTable(0, global_var_table);
   global_var_table->Set("true", true);
@@ -856,8 +879,9 @@ ScriptEnvironment::~ScriptEnvironment() {
   if(!InterlockedDecrement((long*)&refcount)){
 	delete g_Bin;//tsp June 2005 Cleans up the heap
 	g_Bin=NULL;
+	DeleteCriticalSection(&cs_relink_video_frame_buffer);//tsp July 2005
   }
-  DeleteCriticalSection(&cs_relink_video_frame_buffer);//tsp June 2005
+  DeleteCriticalSection(&cs_var_table);
 }
 
 int ScriptEnvironment::SetMemoryMax(int mem) {
@@ -895,15 +919,50 @@ void ScriptEnvironment::AddFunction(const char* name, const char* params, ApplyF
 }
 
 AVSValue ScriptEnvironment::GetVar(const char* name) {
-  return var_table->Get(name);
+  EnterCriticalSection(&cs_var_table);
+  AVSValue retval;
+  try  {
+	  if(mt_mode>0)  {
+		  ScriptEnvironmentTLS* tls=(ScriptEnvironmentTLS*)TlsGetValue(TlsIndex);
+		  if(tls && tls->vartable)
+			retval = tls->vartable->Get(name);
+		  else 
+			retval = var_table->Get(name);
+	  }
+	  else 
+        retval = var_table->Get(name);
+  }
+  catch(...)  {
+    LeaveCriticalSection(&cs_var_table);
+	throw;
+  }
+  LeaveCriticalSection(&cs_var_table);
+  return retval;
 }
 
 bool ScriptEnvironment::SetVar(const char* name, const AVSValue& val) {
-  return var_table->Set(name, val);
+  EnterCriticalSection(&cs_var_table);
+  bool retval;
+  if(mt_mode>0)  {
+	  if(ScriptEnvironmentTLS* tls=(ScriptEnvironmentTLS*)TlsGetValue(TlsIndex))  {
+			if(!tls->vartable)
+				tls->vartable=new VarTable(var_table,global_var_table);
+		retval = tls->vartable->Set(name, val);
+	  }
+	  else
+		retval = var_table->Set(name, val);
+  }
+  else
+	retval = var_table->Set(name, val);
+  LeaveCriticalSection(&cs_var_table);
+  return retval;
 }
 
 bool ScriptEnvironment::SetGlobalVar(const char* name, const AVSValue& val) {
-  return global_var_table->Set(name, val);
+  EnterCriticalSection(&cs_var_table);
+  bool retval = global_var_table->Set(name, val);
+  LeaveCriticalSection(&cs_var_table);
+  return retval;
 }
 
 const char* ScriptEnvironment::GetPluginDirectory()
@@ -1173,6 +1232,7 @@ PVideoFrame __stdcall ScriptEnvironment::NewVideoFrame(const VideoInfo& vi, int 
     default:
       ThrowError("Filter Error: Filter attempted to create VideoFrame with invalid pixel_type.");
   }
+  PVideoFrame retval;
   // If align is negative, it will be forced, if not it may be made bigger
   if (vi.IsPlanar()) { // Planar requires different math ;)
     if (align>=0) {
@@ -1191,10 +1251,7 @@ PVideoFrame __stdcall ScriptEnvironment::NewVideoFrame(const VideoInfo& vi, int 
         ThrowError("Filter Error: Attempted to request an YV411 frame that wasn't mod4 in width!");      
     }
 
- 	  PVideoFrame retval=ScriptEnvironment::NewPlanarVideoFrame(vi, align);  // If planar, maybe swap U&V
-	  InterlockedDecrement((long*)&retval->vfb->refcount);//After the VideoFrame has been assigned to a PVideoFrame it is safe to decrement the refcount (from 2 to 1)
-	  InterlockedDecrement((long*)&retval->refcount);
-	  return retval;
+ 	  retval=ScriptEnvironment::NewPlanarVideoFrame(vi, align);  // If planar, maybe swap U&V
   } else {
     if ((vi.width&1)&&(vi.IsYUY2()))
       ThrowError("Filter Error: Attempted to request an YUY2 frame that wasn't mod2 in width.");
@@ -1203,11 +1260,11 @@ PVideoFrame __stdcall ScriptEnvironment::NewVideoFrame(const VideoInfo& vi, int 
     } else {
       align = max(align,FRAME_ALIGN);
     }
-    PVideoFrame retval=ScriptEnvironment::NewIVideoFrame(vi, align);
-	  InterlockedDecrement((long*)&retval->vfb->refcount);//After the VideoFrame has been assigned to a PVideoFrame it is safe to decrement the refcount (from 2 to 1)
-	  InterlockedDecrement((long*)&retval->refcount);
-	  return retval;
+    retval=ScriptEnvironment::NewIVideoFrame(vi, align);
   }
+  InterlockedDecrement((long*)&retval->vfb->refcount);//After the VideoFrame has been assigned to a PVideoFrame it is safe to decrement the refcount (from 2 to 1)
+  InterlockedDecrement((long*)&retval->refcount);
+  return retval;
 }
 
 bool ScriptEnvironment::MakeWritable(PVideoFrame* pvf) {
@@ -1262,15 +1319,21 @@ void ScriptEnvironment::AtExit(IScriptEnvironment::ShutdownFunc function, void* 
 }
 
 void ScriptEnvironment::PushContext(int level) {
+  EnterCriticalSection(&cs_var_table);
   var_table = new VarTable(var_table, global_var_table);
+  LeaveCriticalSection(&cs_var_table);
 }
 
 void ScriptEnvironment::PopContext() {
+  EnterCriticalSection(&cs_var_table);
   var_table = var_table->Pop();
+  LeaveCriticalSection(&cs_var_table);
 }
 
 void ScriptEnvironment::PopContextGlobal() {
+  EnterCriticalSection(&cs_var_table);
   global_var_table = global_var_table->Pop();
+  LeaveCriticalSection(&cs_var_table);
 }
 
 
@@ -1352,10 +1415,24 @@ void* ScriptEnvironment::ManageCache(int key, void* data){
 	if ((lvfb->data == 0) || (lvfb->signature != LinkedVideoFrameBuffer::ident)) break;
 
 	// Move loved VideoFrameBuffer's to the head of the video_frame_buffers LRU list.
+    EnterCriticalSection(&cs_relink_video_frame_buffer);//Don't want to mess up with GetFrameBuffer(2)
     Relink(&video_frame_buffers, lvfb, video_frame_buffers.next);
+    LeaveCriticalSection(&cs_relink_video_frame_buffer);
 
 	return (void*)1;
   }
+  case MC_LockVFBList:
+  {
+    EnterCriticalSection(&cs_relink_video_frame_buffer);
+
+    return (void*)1;
+  }
+  case MC_UnlockVFBList:
+  {
+    LeaveCriticalSection(&cs_relink_video_frame_buffer);
+
+    return (void*)1;
+  } 
   default:
     break;
   }
@@ -1450,6 +1527,7 @@ LinkedVideoFrameBuffer* ScriptEnvironment::GetFrameBuffer2(int size) {
         ++g_Mem_stats.PlanB;
         if(j)
           InterlockedDecrement((long*)&j->refcount);
+        InterlockedIncrement((long*)&i->sequence_number);  //  Signal to the cache that the vfb has been stolen
         return i;
       }
       if (i->GetDataSize() > size) 
@@ -1472,6 +1550,7 @@ LinkedVideoFrameBuffer* ScriptEnvironment::GetFrameBuffer2(int size) {
   // Plan C: Steal the oldest, smallest free buffer that is greater in size
   if (j) {
     ++g_Mem_stats.PlanC;
+    InterlockedIncrement((long*)&i->sequence_number);  //  Signal to the cache that the vfb has been stolen
     return j;
   }
 
@@ -1879,7 +1958,11 @@ void ScriptEnvironment::BitBlt(BYTE* dstp, int dst_pitch, const BYTE* srcp, int 
 
 
 char* ScriptEnvironment::SaveString(const char* s, int len) {
-  return string_dump.SaveString(s, len);
+  char* retval;
+  EnterCriticalSection(&cs_var_table);  // This function is so rarely used that I think it is okay it uses the same critical section as the vartable
+  retval = string_dump.SaveString(s, len);
+  LeaveCriticalSection(&cs_var_table);
+  return retval;
 }
 
 
@@ -1908,6 +1991,31 @@ void ScriptEnvironment::ThrowError(const char* fmt, ...) {
   throw AvisynthError(ScriptEnvironment::SaveString(buf));
 }
 
+void ScriptEnvironment::SetMTMode(int mode,int threads,bool temporary){
+  if(mode==6)  {
+	  mode=5;InterlockedIncrement(&Mode5Gate::suspendedthreads);}
+  if(threads>0&&mt_mode==-1)
+    nthreads=threads;
+  if(mt_mode!=0&&mode>=1&&mode<=5) {
+	if(temporary&&temp_mt_mode==-5)
+		temp_mt_mode=mode;
+    mt_mode=mode;
+  }
+  if(mt_mode==-1&&mode==0)
+    mt_mode=0;
+  if(mt_mode==-5&&temp_mt_mode!=-5){// restore permanent mtmode
+	  mt_mode=temp_mt_mode;
+	  temp_mt_mode=-5;
+  }
+}
+
+
+int ScriptEnvironment::GetMTMode(bool return_nthreads){
+  if(return_nthreads)
+    return nthreads;
+  else
+    return mt_mode;
+}
 
 IScriptEnvironment* __stdcall CreateScriptEnvironment(int version) {
   if (loadplugin_prefix) free((void*)loadplugin_prefix);

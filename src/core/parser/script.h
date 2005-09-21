@@ -117,7 +117,12 @@ AVSValue SetMemoryMax(AVSValue args, void*, IScriptEnvironment* env);
 
 AVSValue SetWorkingDir(AVSValue args, void*, IScriptEnvironment* env);
 
+AVSValue GetMTMode(AVSValue args, void*, IScriptEnvironment* env);
+AVSValue SetMTMode(AVSValue args, void*, IScriptEnvironment* env);
+
 /*****   Entry/Factory Methods   ******/
+
+AVSValue Muldiv(AVSValue args, void*, IScriptEnvironment* env);
 
 AVSValue Floor(AVSValue args, void*, IScriptEnvironment* env);
 AVSValue Ceil(AVSValue args, void*, IScriptEnvironment* env);

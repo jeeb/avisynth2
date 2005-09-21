@@ -318,6 +318,7 @@ class VideoFrameBuffer {
 
   friend class VideoFrame;
   friend class Cache;
+  friend class CacheMT;
   friend class ScriptEnvironment;
   long refcount;
 
@@ -357,6 +358,7 @@ class VideoFrame {
 
   friend class ScriptEnvironment;
   friend class Cache;
+  friend class CacheMT;
 
 //<<<<<<< avisynth.h
   VideoFrame(VideoFrameBuffer* _vfb, int _offset, int _pitch, int _row_size, int _height, int pixel_type);
@@ -760,6 +762,9 @@ public:
   virtual bool __stdcall PlanarChromaAlignment(PlanarChromaAlignmentMode key) = 0;
 
   virtual PVideoFrame __stdcall Subframe(PVideoFrame src, int rel_offset, int new_pitch, int new_row_size, int new_height, int rel_offsetU, int rel_offsetV, int new_pitchUV) = 0;
+
+  virtual void __stdcall SetMTMode(int mode,int threads,bool temporary)=0;
+  virtual int __stdcall  GetMTMode(bool return_nthreads)=0;
 };
 
 

@@ -47,6 +47,8 @@
 ********************************************************************/
 
 AVSFunction Script_functions[] = {
+  { "muldiv", "iii", Muldiv },
+
   { "floor", "f", Floor },
   { "ceil", "f", Ceil },
   { "round", "f", Round },
@@ -144,6 +146,9 @@ AVSFunction Script_functions[] = {
   { "HasVideo", "c", HasVideo },
   { "HasAudio", "c", HasAudio },
  
+  { "SetMTMode","[mode]i[threads]i",SetMTMode},
+  { "GetMTMode","[threads]b",GetMTMode},
+
   { 0 }
 };
 
@@ -290,10 +295,18 @@ AVSValue Import(AVSValue args, void*, IScriptEnvironment* env)
   return result;
 }
 
+AVSValue SetMTMode(AVSValue args, void*, IScriptEnvironment* env)
+{
+  env->SetMTMode(args[0].AsInt(2),args[1].AsInt(0),false);
+  return AVSValue();
+}
 
+AVSValue GetMTMode(AVSValue args, void*, IScriptEnvironment* env){ return env->GetMTMode(args[0].AsBool(false)); }
 
 AVSValue SetMemoryMax(AVSValue args, void*, IScriptEnvironment* env) { return env->SetMemoryMax(args[0].AsInt()); }
 AVSValue SetWorkingDir(AVSValue args, void*, IScriptEnvironment* env) { return env->SetWorkingDir(args[0].AsString()); }
+
+AVSValue Muldiv(AVSValue args, void*,IScriptEnvironment* env) { return int(MulDiv(args[0].AsInt(), args[1].AsInt(), args[2].AsInt())); }
 
 AVSValue Floor(AVSValue args, void*,IScriptEnvironment* env) { return int(floor(args[0].AsFloat())); }
 AVSValue Ceil(AVSValue args, void*, IScriptEnvironment* env) { return int(ceil(args[0].AsFloat())); }
@@ -545,13 +558,13 @@ AVSValue String(AVSValue args, void*, IScriptEnvironment* env)
 		return "";	// <--WE
   } else {	// standard behaviour
 	  if (args[0].IsInt()) {
-		char *s = new char[12];
-		return itoa(args[0].AsInt(), s, 10);
+		char s[12];
+		return env->SaveString(itoa(args[0].AsInt(), s, 10));
 	  }
 	  if (args[0].IsFloat()) {
-		char *s = new char[30];
+		char s[30];
 		sprintf(s,"%lf",args[0].AsFloat());
-		return s;
+		return env->SaveString(s);
 	  }
   }
   return "";

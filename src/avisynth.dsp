@@ -183,6 +183,22 @@ SOURCE=.\core\cache.h
 # End Source File
 # Begin Source File
 
+SOURCE=.\core\cacheMT.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\core\cacheMT.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\core\MT.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\core\MT.h
+# End Source File
+# Begin Source File
+
 SOURCE=.\core\clip_info.h
 # End Source File
 # Begin Source File

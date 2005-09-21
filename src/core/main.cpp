@@ -48,7 +48,10 @@
 #include "../audio/audio.h"
 #include <float.h>
 
+#include "cacheMT.h"
 static long gRefCnt=0;
+
+DWORD TlsIndex;
 
 
 extern "C" const GUID CLSID_CAVIFileSynth   // {E6D6B700-124D-11D4-86F3-DB80AFD98778}
@@ -173,9 +176,12 @@ BOOL APIENTRY DllMain(HANDLE hModule, ULONG ulReason, LPVOID lpReserved) {
 	case DLL_PROCESS_ATTACH:
 		hrfromcoinit = CoInitialize(NULL);
 		_RPT0(0,"Process attach\n");
+		if ((TlsIndex = TlsAlloc()) == 0xFFFFFFFF) 
+                return FALSE;
 		break;
 
 	case DLL_PROCESS_DETACH:
+		TlsFree(TlsIndex); 
                 if(SUCCEEDED(hrfromcoinit)) CoUninitialize();
 		_RPT0(0,"Process detach\n");
 		break;
@@ -483,7 +489,10 @@ bool CAVIFileSynth::DelayInit() {
         AVSValue return_val = env->Invoke("Import", szScriptName);
         // store the script's return value (a video clip)
         if (return_val.IsClip()) {
-
+          if(env->GetMTMode(false)>0&&env->GetMTMode(false)<5)  {
+            return_val=new Distributor(return_val.AsClip(),env);
+            return_val=new CacheMT1(return_val.AsClip(),env);
+          }
           return_val.AsClip()->SetCacheHints(CACHE_ALL, 999); // Give the top level cache a big head start!!
 
           filter_graph = ConvertAudio::Create(return_val.AsClip(), SAMPLE_INT8|SAMPLE_INT16|SAMPLE_INT24|SAMPLE_INT32, SAMPLE_INT16);  // Ensure samples are int     [filter_graph = return_val.AsClip();]

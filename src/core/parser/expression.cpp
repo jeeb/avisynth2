@@ -49,8 +49,6 @@ AVSValue ExpSequence::Evaluate(IScriptEnvironment* env)
     return b->Evaluate(env);
 }
 
-
-#ifdef _DEBUG
 /* First cut for breaking out system exceptions from the evil and most
  * unhelpful "Evaluate: Unrecognized exception!".
  *
@@ -58,57 +56,7 @@ AVSValue ExpSequence::Evaluate(IScriptEnvironment* env)
  * is so inclined the info structure could be pulled apart and the
  * state of the machine presented. So far just knowing "Integer Divide
  * by Zero" was happening has been a real boon.
- *
- * Warning! Don't try to throw another exception here it is not safe.
- * If you want to throw a new exception, flag your intention through
- * a function argument, return "EXCEPTION_EXECUTE_HANDLER" and throw
- * the exception from within the _except block.
  */
-static int ProcessSystemError(unsigned code, _EXCEPTION_POINTERS *info)
-{
-  if (code == 0xE06D7363) // C++ Exception, 0xE0000000 | "\0msc"
-    return EXCEPTION_CONTINUE_SEARCH;
-  
-  switch (code) {
-  case STATUS_GUARD_PAGE_VIOLATION:      // 0x80000001
-  case STATUS_DATATYPE_MISALIGNMENT:     // 0x80000002
-//case STATUS_BREAKPOINT:                // 0x80000003
-//case STATUS_SINGLE_STEP:               // 0x80000004
-	return EXCEPTION_EXECUTE_HANDLER;
-
-  default:
-    break;
-  }
-
-  switch (code) {
-  case STATUS_ACCESS_VIOLATION:          // 0xc0000005
-  case STATUS_IN_PAGE_ERROR:             // 0xc0000006
-  case STATUS_INVALID_HANDLE:            // 0xc0000008
-  case STATUS_NO_MEMORY:                 // 0xc0000017
-  case STATUS_ILLEGAL_INSTRUCTION:       // 0xc000001d
-  case STATUS_NONCONTINUABLE_EXCEPTION:  // 0xc0000025
-  case STATUS_INVALID_DISPOSITION:       // 0xc0000026
-  case STATUS_ARRAY_BOUNDS_EXCEEDED:     // 0xc000008c
-  case STATUS_FLOAT_DENORMAL_OPERAND:    // 0xc000008d
-  case STATUS_FLOAT_DIVIDE_BY_ZERO:      // 0xc000008e
-  case STATUS_FLOAT_INEXACT_RESULT:      // 0xc000008f
-  case STATUS_FLOAT_INVALID_OPERATION:   // 0xc0000090
-  case STATUS_FLOAT_OVERFLOW:            // 0xc0000091
-  case STATUS_FLOAT_STACK_CHECK:         // 0xc0000092
-  case STATUS_FLOAT_UNDERFLOW:           // 0xc0000093
-  case STATUS_INTEGER_DIVIDE_BY_ZERO:    // 0xc0000094
-  case STATUS_INTEGER_OVERFLOW:          // 0xc0000095
-  case STATUS_PRIVILEGED_INSTRUCTION:    // 0xc0000096
-  case STATUS_STACK_OVERFLOW:            // 0xc00000fd
-	return EXCEPTION_EXECUTE_HANDLER;
-
-  default:
-    break;
-  }
-
-  return EXCEPTION_CONTINUE_SEARCH;
-}
-
 static const char * const StringSystemError(const unsigned code)
 {
   switch (code) {
@@ -188,55 +136,98 @@ void ExpExceptionTranslator::ChainEval(AVSValue &av, IScriptEnvironment* env)
 }
 
 
+#if 0
 /* Damn! I can't call Evaluate directly from here because it returns an object
  * I have to call an interlude and pass an alias to the return value through.
  */
-void ExpExceptionTranslator::TrapEval(AVSValue &av, IScriptEnvironment* env) 
+void ExpExceptionTranslator::TrapEval(AVSValue &av, unsigned &excode, IScriptEnvironment* env) 
 {
-  unsigned excode;
-
+// XPsp2 bug with this
   __try {
     ChainEval(av, env);
   }
-  __except (ProcessSystemError(excode = _exception_code(),
-                               (_EXCEPTION_POINTERS *)_exception_info()))
-  {
-    const char * const extext = StringSystemError(excode);
-	if (extext)
-      env->ThrowError(extext);
-	else
-      env->ThrowError("Evaluate: System exception - 0x%x", excode);
+  __except (excode = _exception_code(), EXCEPTION_CONTINUE_SEARCH ) { }
+}
+
+#else
+  
+/* Damn! XPsp2 barfs at my use of SEH. So do my own exception handling routine.
+ * Simple handler snaffles the exception code and stashes it where my extended
+ * EXCEPTION_REGISTRATION record retarg pointer point, then just continue the
+ * search. 
+ */
+EXCEPTION_DISPOSITION __cdecl _Exp_except_handler(struct _EXCEPTION_RECORD *ExceptionRecord, void * EstablisherFrame,
+												  struct _CONTEXT *ContextRecord, void * DispatcherContext)
+{
+  struct Est_Frame {  // My extended EXCEPTION_REGISTRATION record
+	void	  *prev;
+	void	  *handler;
+	unsigned  *retarg;	  // pointer where to stash exception code
+  };
+
+  if (ExceptionRecord->ExceptionFlags == 0)	  // First pass?
+	*(((struct Est_Frame *)EstablisherFrame)->retarg) = ExceptionRecord->ExceptionCode;
+
+  return ExceptionContinueSearch;
+}
+
+
+/* Damn! XPsp2 barfs at my use of SEH, so do my own exception handling
+ * Having to do this is pure filth!
+ */
+void ExpExceptionTranslator::TrapEval(AVSValue &av, unsigned &excode, IScriptEnvironment* env) 
+{
+  DWORD handler = (DWORD)_Exp_except_handler;
+ 
+  __asm { // Build EXCEPTION_REGISTRATION record:
+  push	excode		// Address of return argument
+  push	handler	    // Address of handler function
+  push	FS:[0]		// Address of previous handler
+  mov	FS:[0],esp	// Install new EXCEPTION_REGISTRATION
+  }
+
+  ChainEval(av, env);
+
+  __asm { // Remove our EXCEPTION_REGISTRATION record
+  mov	eax,[esp]	// Get pointer to previous record
+  mov	FS:[0], eax	// Install previous record
+  add	esp, 12		// Clean our EXCEPTION_REGISTRATION off stack
   }
 }
+#endif
 
 
 /* Damn! You can't mix C++ exception handling and SEH in the one routine.
  * Call an interlude. And this is all because C++ doesn't provide any way
  * to expand system exceptions into there true cause or identity.
  */
-#endif
 
 AVSValue ExpExceptionTranslator::Evaluate(IScriptEnvironment* env) 
 {
+  unsigned excode=0;
   try {
-#ifdef _DEBUG
     AVSValue av;
-    TrapEval(av, env);
+    TrapEval(av, excode, env);
     return av;
-#else
-    return exp->Evaluate(env);
-#endif
   }
   catch (AvisynthError) {
     throw;
   }
-#ifndef _DEBUG
   catch (...) {
+	if ( (excode != 0xE06D7363) // C++ Exception, 0xE0000000 | "\0msc"
+	  && (excode != 0) ) {
+	  const char * const extext = StringSystemError(excode);
+	  if (extext)
+		env->ThrowError(extext);
+	  else
+		env->ThrowError("Evaluate: System exception - 0x%x", excode);
+	}
     env->ThrowError("Evaluate: Unrecognized exception!");
   }
-#endif
   return 0;
 }
+
+
 
 AVSValue ExpTryCatch::Evaluate(IScriptEnvironment* env) 
 {
@@ -530,11 +521,20 @@ AVSValue ExpFunctionCall::Call(IScriptEnvironment* env)
 {
   AVSValue result;
   AVSValue *args = new AVSValue[arg_expr_count+1];
-  for (int a=0; a<arg_expr_count; ++a)
-    args[a+1] = arg_exprs[a]->Evaluate(env);
+  try {
+    for (int a=0; a<arg_expr_count; ++a)
+      args[a+1] = arg_exprs[a]->Evaluate(env);
+  }
+  catch (...)
+  {
+    delete[] args;
+    throw;
+  }
   // first try without implicit "last"
   try {
     result = env->Invoke(name, AVSValue(args+1, arg_expr_count), arg_expr_names+1);
+	if(result.IsClip())
+      InsertCache(result,args,env,false);
     delete[] args;
     return result;
   }
@@ -544,11 +544,23 @@ AVSValue ExpFunctionCall::Call(IScriptEnvironment* env)
       try {
         args[0] = env->GetVar("last");
         result = env->Invoke(name, AVSValue(args, arg_expr_count+1), arg_expr_names);
+        if(result.IsClip())
+          InsertCache(result,args,env,true);
         delete[] args;
         return result;
       }
       catch (IScriptEnvironment::NotFound) { /* see below */ }
+      catch (...)
+      {
+        delete[] args;
+        throw;
+      }
     }
+  }
+  catch (...)
+  {
+    delete[] args;
+    throw;
   }
   delete[] args;
   env->ThrowError(env->FunctionExists(name) ? "Script error: Invalid arguments to function \"%s\""
@@ -567,8 +579,76 @@ ExpFunctionCall::~ExpFunctionCall(void)
 AVSValue ExpFunctionCall::Evaluate(IScriptEnvironment* env)
 {
   AVSValue result = Call(env);
-  if (result.IsClip())
-    return new Cache(result.AsClip());
-  else
-    return result;
+  return result;
+}
+
+
+void ExpFunctionCall::InsertCache(AVSValue &result,AVSValue *args,IScriptEnvironment* env,bool implicit_last)
+{
+  switch(env->GetMTMode(false))
+  {
+    case -1:
+    {
+      env->SetMTMode(0,0,false);
+    }
+    case 0:
+    {
+      result=new Cache(result.AsClip());
+      break;
+    }
+    case 1:
+    {
+      result=new CacheMT1(result.AsClip(),env);
+      break;
+    }
+    case 2:
+    {
+      int nthreads=env->GetMTMode(true);
+      AVSValue *filters= new AVSValue[nthreads]; 
+      filters[0]=result;
+      for(int i=1;i<nthreads;i++)
+        filters[i]=env->Invoke(name, AVSValue(args+!implicit_last, arg_expr_count+implicit_last), arg_expr_names+!implicit_last);
+      result=new CacheMT2(AVSValue(filters,nthreads),env);
+	  break;
+    }
+    case 3:
+    {
+    Mode3Gate* lastMode3Gate=0;
+    for(int i=0;i<=arg_expr_count;i++)
+      if(args[i].IsClip())  {
+        lastMode3Gate=new Mode3Gate(args[i].AsClip(),lastMode3Gate,env);
+        args[i]=lastMode3Gate;
+      }
+    result=new CacheMT3((env->Invoke(name, AVSValue(args+!implicit_last, arg_expr_count+implicit_last), arg_expr_names+!implicit_last)).AsClip(),lastMode3Gate,env);
+    break;
+    }
+    case 4:
+    {
+    Mode3Gate* lastMode3Gate=0;
+    for(int i=0;i<=arg_expr_count;i++)
+      if(args[i].IsClip())  {
+        lastMode3Gate=new Mode3Gate(args[i].AsClip(),lastMode3Gate,env);
+        args[i]=lastMode3Gate;
+      }
+    int nthreads=env->GetMTMode(true);
+    AVSValue *filters=new AVSValue[nthreads]; 
+    for(int i=0;i<nthreads;i++)
+      filters[i]=env->Invoke(name, AVSValue(args+!implicit_last, arg_expr_count+implicit_last), arg_expr_names+!implicit_last);
+    result=new CacheMT4(AVSValue(filters,nthreads),lastMode3Gate,env);
+    break;
+    }
+    case 5:
+    {
+	   for(int i=0;i<=arg_expr_count;i++)
+		   if(args[i].IsClip())  {
+			void* q=args[i].AsClip();
+			if(static_cast<CacheMT5*>(q)->signature!=('cach'+'eMT '+5))
+				args[i]=new Mode5Gate(args[i].AsClip(),env);
+		   }
+      result=new CacheMT5((env->Invoke(name, AVSValue(args+!implicit_last, arg_expr_count+implicit_last), arg_expr_names+!implicit_last)).AsClip(),env);
+      break;
+    }
+  }
+  env->SetMTMode(-5,0,false);
+  return;
 }

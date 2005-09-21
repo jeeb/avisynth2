@@ -37,6 +37,7 @@
 
 #include "../../internal.h"
 #include "../cache.h"
+#include "../cacheMT.h"
 
 
 /********************************************************************
@@ -123,7 +124,7 @@ public:
   
 private:
   const PExpression exp;
-  void TrapEval(AVSValue&, IScriptEnvironment*);
+  void TrapEval(AVSValue&, unsigned &excode, IScriptEnvironment*);
   void ChainEval(AVSValue&, IScriptEnvironment*);
 };
 
@@ -355,6 +356,7 @@ private:
   const char** arg_expr_names;
   const int arg_expr_count;
   const bool oop_notation;
+  void InsertCache(AVSValue &result,AVSValue *args,IScriptEnvironment* env,bool implicit_last);
 };
 
 
