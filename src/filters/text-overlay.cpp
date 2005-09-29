@@ -213,8 +213,8 @@ void Antialiaser::ApplyYV12(BYTE* buf, int pitch, int pitchUV, BYTE* bufU, BYTE*
 void Antialiaser::ApplyPlanar(BYTE* buf, int pitch, int pitchUV, BYTE* bufU, BYTE* bufV, int shiftX, int shiftY) {
   if (dirty) {
     GetAlphaRect();
-	xl &= -2; xr |= 1;
-	yb &= -2; yt |= 1;
+    xl &= -(1<<shiftX) ; xr |= (1<<shiftX)-1;
+	  yb &= -(1<<shiftY); yt |= (1<<shiftY)-1;
   }
   const int w4 = w*4;
   unsigned short* alpha = alpha_calcs + yb*w4;

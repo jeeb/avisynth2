@@ -39,6 +39,23 @@
 
 #include "../internal.h"
 
+enum {Rec601=0, Rec709=1, PC_601=2, PC_709=3 };
+
+static int getMatrix( const char* matrix, IScriptEnvironment* env) {
+  if (matrix) {
+    if (!lstrcmpi(matrix, "rec601"))
+      return Rec601;
+    if (!lstrcmpi(matrix, "rec709"))
+      return Rec709;
+    else if (!lstrcmpi(matrix, "PC.601"))
+      return PC_601;
+    else if (!lstrcmpi(matrix, "PC.709"))
+      return PC_709;
+  }
+  env->ThrowError("Convert: Unknown colormatrix");
+  return Rec601; // Default colorspace conversion for AviSynth
+}
+
 class ConvertToY8 : public GenericVideoFilter
 {
 public:
@@ -50,12 +67,26 @@ private:
   bool yuy2_input;
 };
 
-class ConvertToYV24 : public GenericVideoFilter
+
+class ConvertRGBToYV24 : public GenericVideoFilter
 {
 public:
-  ConvertToYV24(PClip src, IScriptEnvironment* env);
+  ConvertRGBToYV24(PClip src, int matrix, IScriptEnvironment* env);
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
+private:
+  signed short* matrix;
+  int offset_y;
+  int pixel_step;
+};
+
+class ConvertYUY2ToYV16 : public GenericVideoFilter
+{
+public:
+  ConvertYUY2ToYV16(PClip src, IScriptEnvironment* env);
+  PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
+  static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
+private:
 };
 
 class ConvertToPlanarGeneric : public GenericVideoFilter
