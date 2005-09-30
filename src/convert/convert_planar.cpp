@@ -40,6 +40,7 @@
 #include "convert_planar.h"
 #include "../filters/resample.h"
 #include "../filters/planeswap.h"
+#include "../filters/field.h"
 
 
 
@@ -571,6 +572,7 @@ ConvertToPlanarGeneric::ConvertToPlanarGeneric(PClip src, int dst_space, bool in
       env->ThrowError("Convert: Cannot convert to destination format.");
 
   }
+
   vi.pixel_type = dst_space;
   if (!Y8input) {
     MitchellNetravaliFilter filter(1./3., 1./3.);
@@ -615,8 +617,12 @@ AVSValue __cdecl ConvertToPlanarGeneric::CreateYV12(AVSValue args, void*, IScrip
   if (!clip->GetVideoInfo().IsPlanar())
     env->ThrowError("ConvertToYV12: Can only convert from Planar YUV.");
 
+  bool interlaced = args[1].AsBool(false);
+  if (interlaced) clip = new SeparateFields(clip, env);
   AVSValue subs[4] = { 0.0, -0.5, 0.0, 0.0 }; 
-  return new ConvertToPlanarGeneric(clip ,VideoInfo::CS_YV12,args[1].AsBool(false),subs, subs, env);
+  clip = new ConvertToPlanarGeneric(clip ,VideoInfo::CS_YV12,args[1].AsBool(false),subs, subs, env);
+  if (interlaced) clip = new SelectEvery(new DoubleWeaveFields(clip), 2, 0);
+  return clip;
 }
 
 AVSValue __cdecl ConvertToPlanarGeneric::CreateYV16(AVSValue args, void*, IScriptEnvironment* env) {
@@ -634,8 +640,13 @@ AVSValue __cdecl ConvertToPlanarGeneric::CreateYV16(AVSValue args, void*, IScrip
   if (!clip->GetVideoInfo().IsPlanar())
     env->ThrowError("ConvertToYV16: Can only convert from Planar YUV.");
 
+  bool interlaced = args[1].AsBool(false) && clip->GetVideoInfo().IsYV12();
+  if (interlaced) clip = new SeparateFields(clip, env);
+
   AVSValue subs[4] = { 0.0, 0.0, 0.0, 0.0 }; 
-  return new ConvertToPlanarGeneric(clip ,VideoInfo::CS_YV16,args[1].AsBool(false),subs, subs, env);
+  clip = new ConvertToPlanarGeneric(clip ,VideoInfo::CS_YV16,args[1].AsBool(false),subs, subs, env);
+  if (interlaced) clip = new SelectEvery(new DoubleWeaveFields(clip), 2, 0);
+  return clip;
 }
 
 AVSValue __cdecl ConvertToPlanarGeneric::CreateYV24(AVSValue args, void*, IScriptEnvironment* env) {
@@ -653,8 +664,13 @@ AVSValue __cdecl ConvertToPlanarGeneric::CreateYV24(AVSValue args, void*, IScrip
   if (!clip->GetVideoInfo().IsPlanar())
     env->ThrowError("ConvertToYV24: Can only convert from Planar YUV.");
 
+  bool interlaced = args[1].AsBool(false) && clip->GetVideoInfo().IsYV12();
+  if (interlaced) clip = new SeparateFields(clip, env);
+
   AVSValue subs[4] = { 0.0, 0.0, 0.0, 0.0 }; 
-  return new ConvertToPlanarGeneric(clip ,VideoInfo::CS_YV24,args[1].AsBool(false),subs, subs, env);
+  clip = new ConvertToPlanarGeneric(clip ,VideoInfo::CS_YV24,args[1].AsBool(false),subs, subs, env);
+  if (interlaced) clip = new SelectEvery(new DoubleWeaveFields(clip), 2, 0);
+  return clip;
 }
 
 AVSValue __cdecl ConvertToPlanarGeneric::CreateYV411(AVSValue args, void*, IScriptEnvironment* env) {
@@ -672,6 +688,11 @@ AVSValue __cdecl ConvertToPlanarGeneric::CreateYV411(AVSValue args, void*, IScri
   if (!clip->GetVideoInfo().IsPlanar())
     env->ThrowError("ConvertToYV411: Can only convert from Planar YUV.");
 
+  bool interlaced = args[1].AsBool(false) && clip->GetVideoInfo().IsYV12();
+  if (interlaced) clip = new SeparateFields(clip, env);
+
   AVSValue subs[4] = { 0.0, 0.0, 0.0, 0.0 }; 
-  return new ConvertToPlanarGeneric(clip ,VideoInfo::CS_YV411,args[1].AsBool(false),subs, subs, env);
+  clip = new ConvertToPlanarGeneric(clip ,VideoInfo::CS_YV411,args[1].AsBool(false),subs, subs, env);
+  if (interlaced) clip = new SelectEvery(new DoubleWeaveFields(clip), 2, 0);
+  return clip;
 }
