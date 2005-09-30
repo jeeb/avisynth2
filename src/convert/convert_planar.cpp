@@ -141,6 +141,7 @@ ConvertRGBToYV24::ConvertRGBToYV24(PClip src, int in_matrix, IScriptEnvironment*
     *m++ = (signed short)((219.0/255.0)*0.5*32768.0+0.5);
     *m++ = 0;
     offset_y = 16;
+
   } else if (in_matrix == PC_601) {
     signed short* m = matrix;
     *m++ = (signed short)(0.114*32768.0+0.5);  //B
@@ -191,6 +192,8 @@ ConvertRGBToYV24::ConvertRGBToYV24(PClip src, int in_matrix, IScriptEnvironment*
     *m++ = (signed short)(0.5016*32768.0+0.5);
     *m++ = 0;
     offset_y = 0;
+  } else {
+    env->ThrowError("ConvertRGBToYV24: Unknown matrix.");
   }
 }
 
@@ -212,9 +215,9 @@ PVideoFrame __stdcall ConvertRGBToYV24::GetFrame(int n, IScriptEnvironment* env)
       int b = srcp[0];
       int g = srcp[1];
       int r = srcp[2];
-      int Y = offset_y + (((int)m[0] * b + (int)m[1] * g + (int)m[2] * r)>>15);
-      int U = 127+(((int)m[4] * b + (int)m[5] * g + (int)m[6] * r)>>15);
-      int V = 127+(((int)m[8] * b + (int)m[9] * g + (int)m[10] * r)>>15);
+      int Y = offset_y + (((int)m[0] * b + (int)m[1] * g + (int)m[2] * r + 16383)>>15);
+      int U = 127+(((int)m[4] * b + (int)m[5] * g + (int)m[6] * r + 16383)>>15);
+      int V = 127+(((int)m[8] * b + (int)m[9] * g + (int)m[10] * r + 16383)>>15);
 #if 1
       *dstY++ = (BYTE)min(255,max(0,Y));  // All the safety we can wish for.
       *dstU++ = (BYTE)min(255,max(0,U));
@@ -238,7 +241,150 @@ AVSValue __cdecl ConvertRGBToYV24::Create(AVSValue args, void*, IScriptEnvironme
   PClip clip = args[0].AsClip();
   if (clip->GetVideoInfo().IsYV24())
     return clip;
-  return new ConvertRGBToYV24(clip, Rec601, env);
+  return new ConvertRGBToYV24(clip, getMatrix(args[1].AsString("rec601"), env), env);
+}
+
+
+/*****************************************************
+ * ConvertYV24ToRGB
+ *
+ * (c) Klaus Post, 2005
+ ******************************************************/
+
+ConvertYV24ToRGB::ConvertYV24ToRGB(PClip src, int in_matrix, int _pixel_step, IScriptEnvironment* env) : GenericVideoFilter(src), pixel_step(_pixel_step) {
+
+  if (!vi.IsYV24())
+    env->ThrowError("ConvertYV24ToRGB: Only YV24 data input accepted");
+
+  vi.pixel_type = (pixel_step == 3) ? VideoInfo::CS_BGR24 : VideoInfo::CS_BGR32;
+  matrix = (signed short*)_aligned_malloc(sizeof(short)*12,64);
+
+  const double mulfac = 8192.0;
+
+  if (in_matrix == Rec601) {
+    /*
+    B'= Y' + 1.773*U' + 0.000*V'
+    G'= Y' - 0.344*U' - 0.714*V'
+    R'= Y' + 0.000*U' + 1.403*V'
+    */
+    signed short* m = matrix;
+    *m++ = (signed short)((255.0/219.0)*1.000*mulfac+0.5);  //Y
+    *m++ = (signed short)((255.0/219.0)*1.773*mulfac+0.5);  //U
+    *m++ = (signed short)((255.0/219.0)*0.000*mulfac+0.5);  //V
+    *m++ = 0;
+    *m++ = (signed short)((255.0/219.0)*1.000*mulfac+0.5);  //Y
+    *m++ = (signed short)((255.0/219.0)*-0.334*mulfac+0.5);
+    *m++ = (signed short)((255.0/219.0)*-0.714*mulfac+0.5);
+    *m++ = 0;
+    *m++ = (signed short)((255.0/219.0)*1.000*mulfac+0.5);  //Y
+    *m++ = (signed short)((255.0/219.0)*-0.000*mulfac+0.5);
+    *m++ = (signed short)((255.0/219.0)*1.403*mulfac+0.5);
+    *m++ = 0;
+    offset_y = -16;
+  } else if (in_matrix == PC_601) {
+    signed short* m = matrix;
+    *m++ = (signed short)(1.000*mulfac+0.5);  //Y
+    *m++ = (signed short)(1.773*mulfac+0.5);  //U
+    *m++ = (signed short)(0.000*mulfac+0.5);  //V
+    *m++ = 0;
+    *m++ = (signed short)(1.000*mulfac+0.5);  //Y
+    *m++ = (signed short)(-0.334*mulfac+0.5);
+    *m++ = (signed short)(-0.714*mulfac+0.5);
+    *m++ = 0;
+    *m++ = (signed short)(1.000*mulfac+0.5);  //Y
+    *m++ = (signed short)(-0.000*mulfac+0.5);
+    *m++ = (signed short)(1.403*mulfac+0.5);
+    *m++ = 0;
+    offset_y = 0;
+  } else if (in_matrix == Rec709) {
+    /*
+    B'= Y' - 1.8556*Cb + 0.0000*Cr  // The colorfaq seems wrong here, "-" should be "+"
+    G'= Y' - 0.1870*Cb - 0.4664*Cr
+    R'= Y' + 0.0000*Cb + 1.5701*Cr
+    */
+    signed short* m = matrix;
+    *m++ = (signed short)((255.0/219.0)*1.000*mulfac+0.5);  //Y
+    *m++ = (signed short)((255.0/219.0)*1.8556*mulfac+0.5);  //U
+    *m++ = (signed short)((255.0/219.0)*0.000*mulfac+0.5);  //V
+    *m++ = 0;
+    *m++ = (signed short)((255.0/219.0)*1.000*mulfac+0.5);  //Y
+    *m++ = (signed short)((255.0/219.0)*-0.1870*mulfac+0.5);
+    *m++ = (signed short)((255.0/219.0)*-0.4664*mulfac+0.5);
+    *m++ = 0;
+    *m++ = (signed short)((255.0/219.0)*1.000*mulfac+0.5);  //Y
+    *m++ = (signed short)((255.0/219.0)*0.000*mulfac+0.5);
+    *m++ = (signed short)((255.0/219.0)*1.5701*mulfac+0.5);
+    *m++ = 0;
+    offset_y = -16;
+  } else if (in_matrix == PC_709) {
+    signed short* m = matrix;
+    *m++ = (signed short)(1.000*mulfac+0.5);  //Y
+    *m++ = (signed short)(1.8556*mulfac+0.5);  //U
+    *m++ = (signed short)(0.000*mulfac+0.5);  //V
+    *m++ = 0;
+    *m++ = (signed short)(1.000*mulfac+0.5);  //Y
+    *m++ = (signed short)(-0.1870*mulfac+0.5);
+    *m++ = (signed short)(-0.4664*mulfac+0.5);
+    *m++ = 0;
+    *m++ = (signed short)(1.000*mulfac+0.5);  //Y
+    *m++ = (signed short)(0.000*mulfac+0.5);
+    *m++ = (signed short)(1.5701*mulfac+0.5);
+    *m++ = 0;
+    offset_y = 0;
+  } else {
+    env->ThrowError("ConvertYV24ToRGB: Unknown matrix.");
+  }
+}
+
+PVideoFrame __stdcall ConvertYV24ToRGB::GetFrame(int n, IScriptEnvironment* env) {
+  PVideoFrame src = child->GetFrame(n, env);
+  PVideoFrame dst = env->NewVideoFrame(vi);
+
+  const BYTE* srcY = src->GetReadPtr(PLANAR_Y);
+  const BYTE* srcU = src->GetReadPtr(PLANAR_U);
+  const BYTE* srcV = src->GetReadPtr(PLANAR_V);
+
+  BYTE* dstp = dst->GetWritePtr();
+
+  //Slow C-code.
+
+  signed short* m = (signed short*)matrix;
+  dstp += dst->GetPitch() * (vi.height-1);  // We start at last line
+  for (int y = 0; y < vi.height; y++) {
+    for (int x = 0; x < vi.width; x++) {
+      int Y = srcY[x] + offset_y;
+      int U = srcU[x] - 127;
+      int V = srcV[x] - 127;
+      int b = (((int)m[0] * Y + (int)m[1] * U + (int)m[2] * V + 4096)>>13);
+      int g = (((int)m[4] * Y + (int)m[5] * U + (int)m[6] * V + 4096)>>13);
+      int r = (((int)m[8] * Y + (int)m[9] * U + (int)m[10] * V + 4096)>>13);
+#if 1
+      dstp[0] = (BYTE)min(255,max(0,b));  // All the safety we can wish for.
+      dstp[1] = (BYTE)min(255,max(0,g));  // Probably needed here.
+      dstp[2] = (BYTE)min(255,max(0,r));
+#endif
+      dstp += pixel_step;
+    }
+    dstp -= dst->GetPitch() + (vi.width * pixel_step);
+    srcY += src->GetPitch(PLANAR_Y);
+    srcU += src->GetPitch(PLANAR_U);
+    srcV += src->GetPitch(PLANAR_V);
+  }
+  return dst;
+}
+
+AVSValue __cdecl ConvertYV24ToRGB::Create32(AVSValue args, void*, IScriptEnvironment* env) {
+  PClip clip = args[0].AsClip();
+  if (clip->GetVideoInfo().IsRGB())
+    return clip;
+  return new ConvertYV24ToRGB(clip, getMatrix(args[1].AsString("rec601"), env), 4, env);
+}
+
+AVSValue __cdecl ConvertYV24ToRGB::Create24(AVSValue args, void*, IScriptEnvironment* env) {
+  PClip clip = args[0].AsClip();
+  if (clip->GetVideoInfo().IsRGB())
+    return clip;
+  return new ConvertYV24ToRGB(clip, getMatrix(args[1].AsString("rec601"), env), 3, env);
 }
 
 /************************************
@@ -285,9 +431,58 @@ PVideoFrame __stdcall ConvertYUY2ToYV16::GetFrame(int n, IScriptEnvironment* env
 
 AVSValue __cdecl ConvertYUY2ToYV16::Create(AVSValue args, void*, IScriptEnvironment* env) {
   PClip clip = args[0].AsClip();
-  if (clip->GetVideoInfo().IsY8())
+  if (clip->GetVideoInfo().IsYV16())
     return clip;
   return new ConvertYUY2ToYV16(clip, env);
+}
+
+/************************************
+ * YV16 to YUY2
+ ************************************/
+
+ConvertYV16ToYUY2::ConvertYV16ToYUY2(PClip src, IScriptEnvironment* env) : GenericVideoFilter(src) {
+
+  if (!vi.IsYV16())
+    env->ThrowError("ConvertYV16ToYUY2: Only YV16 is allowed as input");
+  
+  vi.pixel_type = VideoInfo::CS_YUY2;
+  
+}
+
+PVideoFrame __stdcall ConvertYV16ToYUY2::GetFrame(int n, IScriptEnvironment* env) {
+  PVideoFrame src = child->GetFrame(n, env);
+  PVideoFrame dst = env->NewVideoFrame(vi);
+
+  const BYTE* srcY = src->GetReadPtr(PLANAR_Y);
+  const BYTE* srcU = src->GetReadPtr(PLANAR_U);
+  const BYTE* srcV = src->GetReadPtr(PLANAR_V);
+
+  BYTE* dstp = dst->GetWritePtr();
+
+  int w = vi.width/2;
+  
+  for (int y=0; y<vi.height; y++) { // ASM will probably not be faster here.
+    for (int x=0; x<w; x++) {
+      int x2 = x<<1;
+      int x4 = x<<2;
+      dstp[x4] = srcY[x2];
+      dstp[x4+2] = srcY[x2+1];
+      dstp[x4+1] = srcU[x];
+      dstp[x4+3] = srcV[x];
+    }
+    srcY += src->GetPitch(PLANAR_Y);
+    srcU += src->GetPitch(PLANAR_U);
+    srcV += src->GetPitch(PLANAR_V);
+    dstp += dst->GetPitch();
+  }
+  return dst;
+}
+
+AVSValue __cdecl ConvertYV16ToYUY2::Create(AVSValue args, void*, IScriptEnvironment* env) {
+  PClip clip = args[0].AsClip();
+  if (clip->GetVideoInfo().IsYUY2())
+    return clip;
+  return new ConvertYV16ToYUY2(clip, env);
 }
 
 /**********************************************
@@ -350,6 +545,9 @@ PVideoFrame __stdcall ConvertToPlanarGeneric::GetFrame(int n, IScriptEnvironment
 AVSValue __cdecl ConvertToPlanarGeneric::CreateYV12(AVSValue args, void*, IScriptEnvironment* env) {
   PClip clip = args[0].AsClip();
 
+  if (clip->GetVideoInfo().IsYV12() )
+    return clip;
+
   if (clip->GetVideoInfo().IsRGB()) 
     clip = new ConvertRGBToYV24(clip, getMatrix(args[2].AsString("rec601"), env), env);
 
@@ -365,6 +563,9 @@ AVSValue __cdecl ConvertToPlanarGeneric::CreateYV12(AVSValue args, void*, IScrip
 
 AVSValue __cdecl ConvertToPlanarGeneric::CreateYV16(AVSValue args, void*, IScriptEnvironment* env) {
   PClip clip = args[0].AsClip();
+
+  if (clip->GetVideoInfo().IsYV16())
+    return clip;
 
   if (clip->GetVideoInfo().IsRGB()) 
     clip = new ConvertRGBToYV24(clip, getMatrix(args[2].AsString("rec601"), env), env);
@@ -382,6 +583,9 @@ AVSValue __cdecl ConvertToPlanarGeneric::CreateYV16(AVSValue args, void*, IScrip
 AVSValue __cdecl ConvertToPlanarGeneric::CreateYV24(AVSValue args, void*, IScriptEnvironment* env) {
   PClip clip = args[0].AsClip();
 
+  if (clip->GetVideoInfo().IsYV24() )
+    return clip;
+
   if (clip->GetVideoInfo().IsRGB()) 
     return new ConvertRGBToYV24(clip, getMatrix(args[2].AsString("rec601"), env), env);
 
@@ -397,6 +601,9 @@ AVSValue __cdecl ConvertToPlanarGeneric::CreateYV24(AVSValue args, void*, IScrip
 
 AVSValue __cdecl ConvertToPlanarGeneric::CreateYV411(AVSValue args, void*, IScriptEnvironment* env) {
   PClip clip = args[0].AsClip();
+
+  if (clip->GetVideoInfo().IsYV411() )
+    return clip;
 
   if (clip->GetVideoInfo().IsRGB()) 
     clip = new ConvertRGBToYV24(clip, getMatrix(args[2].AsString("rec601"), env), env);

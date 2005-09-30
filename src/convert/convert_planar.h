@@ -51,6 +51,10 @@ static int getMatrix( const char* matrix, IScriptEnvironment* env) {
       return PC_601;
     else if (!lstrcmpi(matrix, "PC.709"))
       return PC_709;
+    else if (!lstrcmpi(matrix, "PC601"))
+      return PC_601;
+    else if (!lstrcmpi(matrix, "PC709"))
+      return PC_709;
   }
   env->ThrowError("Convert: Unknown colormatrix");
   return Rec601; // Default colorspace conversion for AviSynth
@@ -77,6 +81,7 @@ public:
 private:
   signed short* matrix;
   int offset_y;
+  int mul_out;
   int pixel_step;
 };
 
@@ -84,6 +89,28 @@ class ConvertYUY2ToYV16 : public GenericVideoFilter
 {
 public:
   ConvertYUY2ToYV16(PClip src, IScriptEnvironment* env);
+  PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
+  static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
+private:
+};
+
+class ConvertYV24ToRGB : public GenericVideoFilter
+{
+public:
+  ConvertYV24ToRGB(PClip src, int matrix, int pixel_step, IScriptEnvironment* env);
+  PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
+  static AVSValue __cdecl Create24(AVSValue args, void*, IScriptEnvironment* env);
+  static AVSValue __cdecl Create32(AVSValue args, void*, IScriptEnvironment* env);
+private:
+  signed short* matrix;
+  int offset_y;
+  int pixel_step;
+};
+
+class ConvertYV16ToYUY2 : public GenericVideoFilter
+{
+public:
+  ConvertYV16ToYUY2(PClip src, IScriptEnvironment* env);
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
 private:
