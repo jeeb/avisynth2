@@ -43,21 +43,52 @@
 
 
 
-ConvertToY8::ConvertToY8(PClip src, IScriptEnvironment* env) : GenericVideoFilter(src) {
-  yuy2_input = blit_luma_only = false;
+ConvertToY8::ConvertToY8(PClip src, int in_matrix, IScriptEnvironment* env) : GenericVideoFilter(src) {
+  yuy2_input = blit_luma_only = rgb_input = false;
 
   if (vi.IsYV12()||vi.IsYV16()||vi.IsYV24()||vi.IsYV411()) {
     blit_luma_only = true;
     vi.pixel_type = VideoInfo::CS_Y8;
     return;
   }
+
   if (vi.IsYUY2()) {
     yuy2_input = true;
     vi.pixel_type = VideoInfo::CS_Y8;
     return;
   }
-  if (vi.IsRGB())
-    env->ThrowError("ConvertToY8: RGB to Y8 not supported");
+
+  if (vi.IsRGB()) {
+    rgb_input = true;
+    pixel_step = vi.BytesFromPixels(1);
+    vi.pixel_type = VideoInfo::CS_Y8;
+    matrix = (signed short*)_aligned_malloc(sizeof(short)*4,64);
+    signed short* m = matrix;
+    if (in_matrix == Rec601) {
+      *m++ = (signed short)((219.0/255.0)*0.114*32768.0+0.5);  //B
+      *m++ = (signed short)((219.0/255.0)*0.587*32768.0+0.5);  //G
+      *m++ = (signed short)((219.0/255.0)*0.299*32768.0+0.5);  //R
+      offset_y = 16;
+    } else if (in_matrix == PC_601) {
+      *m++ = (signed short)(0.114*32768.0+0.5);  //B
+      *m++ = (signed short)(0.587*32768.0+0.5);  //G
+      *m++ = (signed short)(0.299*32768.0+0.5);  //R
+      offset_y = 0;
+    } else if (in_matrix == Rec709) {
+      *m++ = (signed short)((219.0/255.0)*0.0721*32768.0+0.5);  //B
+      *m++ = (signed short)((219.0/255.0)*0.7154*32768.0+0.5);  //G
+      *m++ = (signed short)((219.0/255.0)*0.2215*32768.0+0.5);  //R
+      offset_y = 16;
+    } else if (in_matrix == PC_709) {
+      *m++ = (signed short)(0.0721*32768.0+0.5);  //B
+      *m++ = (signed short)(0.7154*32768.0+0.5);  //G
+      *m++ = (signed short)(0.2215*32768.0+0.5);  //R
+      offset_y = 0;
+    } else {
+      env->ThrowError("ConvertToY8: Unknown matrix.");
+    }
+    return;
+  }
 
   env->ThrowError("ConvertToY8: Unknown input format");
 }
@@ -76,7 +107,6 @@ PVideoFrame __stdcall ConvertToY8::GetFrame(int n, IScriptEnvironment* env) {
     const BYTE* srcP = src->GetReadPtr();
     int srcPitch = src->GetPitch();
 
-    PVideoFrame dst = env->NewVideoFrame(vi);
     BYTE* dstY = dst->GetWritePtr(PLANAR_Y);
 
     int dstPitch = dst->GetPitch(PLANAR_Y);
@@ -94,6 +124,24 @@ PVideoFrame __stdcall ConvertToY8::GetFrame(int n, IScriptEnvironment* env) {
       dstY+=dstPitch;
     }
   }
+
+  if (rgb_input) {
+    const BYTE* srcp = src->GetReadPtr();
+
+    BYTE* dstY = dst->GetWritePtr(PLANAR_Y);
+
+    signed short* m = (signed short*)matrix;
+    srcp += src->GetPitch() * (vi.height-1);  // We start at last line
+    for (int y=0; y<vi.height; y++) {
+      for (int x=0; x<vi.width; x++) {
+        int Y = offset_y + (((int)m[0] * srcp[0] + (int)m[1] * srcp[1] + (int)m[2] * srcp[2] + 16383)>>15);
+        *dstY++ = (BYTE)min(255,max(0,Y));  // All the safety we can wish for.
+        srcp += pixel_step;
+      }
+      srcp -= src->GetPitch() + (vi.width * pixel_step);
+      dstY += dst->GetPitch(PLANAR_Y) - vi.width;
+    }
+  }
   return dst;
 }
 
@@ -101,7 +149,7 @@ AVSValue __cdecl ConvertToY8::Create(AVSValue args, void*, IScriptEnvironment* e
   PClip clip = args[0].AsClip();
   if (clip->GetVideoInfo().IsY8())
     return clip;
-  return new ConvertToY8(clip, env);
+  return new ConvertToY8(clip,getMatrix(args[1].AsString("rec601"), env), env);
 }
 
 
@@ -116,7 +164,7 @@ ConvertRGBToYV24::ConvertRGBToYV24(PClip src, int in_matrix, IScriptEnvironment*
   if (!vi.IsRGB())
     env->ThrowError("ConvertRGBToYV24: Only RGB data input accepted");
 
-  pixel_step = vi.IsRGB32() ? 4 : 3;
+  pixel_step = vi.BytesFromPixels(1);
   vi.pixel_type = VideoInfo::CS_YV24;
   matrix = (signed short*)_aligned_malloc(sizeof(short)*12,64);
 
@@ -498,8 +546,11 @@ AVSValue __cdecl ConvertYV16ToYUY2::Create(AVSValue args, void*, IScriptEnvironm
 
 
 ConvertToPlanarGeneric::ConvertToPlanarGeneric(PClip src, int dst_space, bool interlaced, AVSValue* UsubSampling, AVSValue* VsubSampling, IScriptEnvironment* env) : GenericVideoFilter(src) {
-  Usource = new SwapUVToY(child, SwapUVToY::UToY8, env);  
-  Vsource = new SwapUVToY(child, SwapUVToY::VToY8, env);
+  Y8input = vi.IsY8();
+  if (!Y8input) {
+    Usource = new SwapUVToY(child, SwapUVToY::UToY8, env);  
+    Vsource = new SwapUVToY(child, SwapUVToY::VToY8, env);
+  }
   int uv_width = vi.width;
   int uv_height = vi.height;
   switch (dst_space) {
@@ -521,13 +572,15 @@ ConvertToPlanarGeneric::ConvertToPlanarGeneric(PClip src, int dst_space, bool in
 
   }
   vi.pixel_type = dst_space;
-  MitchellNetravaliFilter filter(1./3., 1./3.);
-  UsubSampling[2] = AVSValue(Usource->GetVideoInfo().width+UsubSampling[0].AsFloat(0.0));
-  UsubSampling[3] = AVSValue(Usource->GetVideoInfo().height+UsubSampling[1].AsFloat(0.0));
-  VsubSampling[2] = AVSValue(Vsource->GetVideoInfo().width+VsubSampling[0].AsFloat(0.0));
-  VsubSampling[3] = AVSValue(Vsource->GetVideoInfo().height+VsubSampling[1].AsFloat(0.0));
-  Usource = FilteredResize::CreateResize(Usource, uv_width, uv_height, UsubSampling, &filter, env);
-  Vsource = FilteredResize::CreateResize(Vsource, uv_width, uv_height, VsubSampling, &filter, env);
+  if (!Y8input) {
+    MitchellNetravaliFilter filter(1./3., 1./3.);
+    UsubSampling[2] = AVSValue(Usource->GetVideoInfo().width+UsubSampling[0].AsFloat(0.0));
+    UsubSampling[3] = AVSValue(Usource->GetVideoInfo().height+UsubSampling[1].AsFloat(0.0));
+    VsubSampling[2] = AVSValue(Vsource->GetVideoInfo().width+VsubSampling[0].AsFloat(0.0));
+    VsubSampling[3] = AVSValue(Vsource->GetVideoInfo().height+VsubSampling[1].AsFloat(0.0));
+    Usource = FilteredResize::CreateResize(Usource, uv_width, uv_height, UsubSampling, &filter, env);
+    Vsource = FilteredResize::CreateResize(Vsource, uv_width, uv_height, VsubSampling, &filter, env);
+  }
 }
 
 PVideoFrame __stdcall ConvertToPlanarGeneric::GetFrame(int n, IScriptEnvironment* env) {
@@ -535,10 +588,15 @@ PVideoFrame __stdcall ConvertToPlanarGeneric::GetFrame(int n, IScriptEnvironment
   PVideoFrame dst = env->NewVideoFrame(vi);
 
   env->BitBlt(dst->GetWritePtr(PLANAR_Y), dst->GetPitch(PLANAR_Y), src->GetReadPtr(PLANAR_Y), src->GetPitch(PLANAR_Y), src->GetRowSize(PLANAR_Y_ALIGNED), src->GetHeight(PLANAR_Y));
-  src = Usource->GetFrame(n, env);
-  env->BitBlt(dst->GetWritePtr(PLANAR_U), dst->GetPitch(PLANAR_U), src->GetReadPtr(PLANAR_Y), src->GetPitch(PLANAR_Y), src->GetRowSize(PLANAR_Y_ALIGNED), src->GetHeight(PLANAR_Y));
-  src = Vsource->GetFrame(n, env);
-  env->BitBlt(dst->GetWritePtr(PLANAR_V), dst->GetPitch(PLANAR_V), src->GetReadPtr(PLANAR_Y), src->GetPitch(PLANAR_Y), src->GetRowSize(PLANAR_Y_ALIGNED), src->GetHeight(PLANAR_Y));
+  if (!Y8input) {
+    src = Usource->GetFrame(n, env);
+    env->BitBlt(dst->GetWritePtr(PLANAR_U), dst->GetPitch(PLANAR_U), src->GetReadPtr(PLANAR_Y), src->GetPitch(PLANAR_Y), src->GetRowSize(PLANAR_Y_ALIGNED), src->GetHeight(PLANAR_Y));
+    src = Vsource->GetFrame(n, env);
+    env->BitBlt(dst->GetWritePtr(PLANAR_V), dst->GetPitch(PLANAR_V), src->GetReadPtr(PLANAR_Y), src->GetPitch(PLANAR_Y), src->GetRowSize(PLANAR_Y_ALIGNED), src->GetHeight(PLANAR_Y));
+  } else {
+    memset(dst->GetWritePtr(PLANAR_U), 127, dst->GetHeight(PLANAR_U)*dst->GetPitch(PLANAR_U));
+    memset(dst->GetWritePtr(PLANAR_V), 127, dst->GetHeight(PLANAR_V)*dst->GetPitch(PLANAR_V));
+  }
   return dst;
 }
 

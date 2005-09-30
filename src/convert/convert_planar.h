@@ -63,12 +63,16 @@ static int getMatrix( const char* matrix, IScriptEnvironment* env) {
 class ConvertToY8 : public GenericVideoFilter
 {
 public:
-  ConvertToY8(PClip src, IScriptEnvironment* env);
-  PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
+  ConvertToY8(PClip src, int matrix, IScriptEnvironment* env);
+  PVideoFrame __stdcall GetFrame(int n,IScriptEnvironment* env);
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);  
 private:
   bool blit_luma_only;
   bool yuy2_input;
+  bool rgb_input;
+  int pixel_step;
+  signed short* matrix;
+  int offset_y;
 };
 
 
@@ -127,6 +131,7 @@ public:
   static AVSValue __cdecl CreateYV24(AVSValue args, void*, IScriptEnvironment* env);   
   static AVSValue __cdecl CreateYV411(AVSValue args, void*, IScriptEnvironment* env);   
 private:
+  bool Y8input;
   PClip Usource;
   PClip Vsource;
 };

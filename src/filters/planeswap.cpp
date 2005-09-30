@@ -230,7 +230,8 @@ AVSValue __cdecl SwapUVToY::CreateUToY(AVSValue args, void* user_data, IScriptEn
 }
 
 AVSValue __cdecl SwapUVToY::CreateUToY8(AVSValue args, void* user_data, IScriptEnvironment* env) {
-  return new SwapUVToY(args[0].AsClip(), UToY8, env);
+  PClip clip = args[0].AsClip();
+  return new SwapUVToY(clip, (clip->GetVideoInfo().IsYUY2()) ? YUY2UToY8 : UToY8, env);
 }
 
 AVSValue __cdecl SwapUVToY::CreateVToY(AVSValue args, void* user_data, IScriptEnvironment* env) {
@@ -238,7 +239,8 @@ AVSValue __cdecl SwapUVToY::CreateVToY(AVSValue args, void* user_data, IScriptEn
 }
 
 AVSValue __cdecl SwapUVToY::CreateVToY8(AVSValue args, void* user_data, IScriptEnvironment* env) {
-  return new SwapUVToY(args[0].AsClip(), VToY8, env);
+  PClip clip = args[0].AsClip();
+  return new SwapUVToY(clip, (clip->GetVideoInfo().IsYUY2()) ? YUY2VToY8 : VToY8, env);
 }
 
 SwapUVToY::SwapUVToY(PClip _child, int _mode, IScriptEnvironment* env)
@@ -255,8 +257,10 @@ SwapUVToY::SwapUVToY(PClip _child, int _mode, IScriptEnvironment* env)
   if (vi.IsYV411()) vi.width >>=2;
 
   if(mode == UToY8 || mode == VToY8) {
-    if (vi.IsYUY2())
-      env->ThrowError("UVToY8 not supported on YUY2 images");
+    vi.pixel_type = VideoInfo::CS_Y8;
+  }
+
+  if(mode == YUY2UToY8 || mode == YUY2VToY8) {
     vi.pixel_type = VideoInfo::CS_Y8;
   }
 
@@ -294,6 +298,19 @@ PVideoFrame __stdcall SwapUVToY::GetFrame(int n, IScriptEnvironment* env) {
         }
       }
       return dst;
+    }
+
+    if (mode==YUY2UToY8 || mode==YUY2VToY8) {  // YUY2 U To Y
+      const BYTE* srcp = src->GetReadPtr();
+      BYTE* dstp = (BYTE*)dst->GetWritePtr();
+      int offset = (mode==YUY2UToY8) ? 1 : 3;
+      for (int y=0; y<vi.height; y++) {
+        for (int x = 0; x < vi.width; x++) {
+          dstp[x] = srcp[(x<<2) + offset];
+        }
+        srcp += src->GetPitch();
+        dstp += dst->GetPitch(PLANAR_Y);
+      }      
     }
 
     // Planar
