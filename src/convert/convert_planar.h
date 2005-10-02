@@ -38,6 +38,7 @@
 #define __Convert_PLANAR_H__
 
 #include "../internal.h"
+#include "../core/softwire_helpers.h"
 
 enum {Rec601=0, Rec709=1, PC_601=2, PC_709=3 };
 
@@ -60,6 +61,24 @@ static int getMatrix( const char* matrix, IScriptEnvironment* env) {
   return Rec601; // Default colorspace conversion for AviSynth
 }
 
+
+class MatrixGenerator3x3 : public  CodeGenerator
+{
+public:
+  MatrixGenerator3x3();
+  ~MatrixGenerator3x3();
+protected:
+  void GenerateAssembly(int width, int faction_bits, IScriptEnvironment* env);
+  DynamicAssembledCode assembly;
+  BYTE* dyn_src;
+  BYTE* dyn_dest;
+  BYTE* dyn_matrix;
+  __int64 pre_add, post_add;
+  __int64 rounder;
+  int src_pixel_step;
+  int dest_pixel_step;
+};
+
 class ConvertToY8 : public GenericVideoFilter
 {
 public:
@@ -76,7 +95,7 @@ private:
 };
 
 
-class ConvertRGBToYV24 : public GenericVideoFilter
+class ConvertRGBToYV24 : public GenericVideoFilter, public MatrixGenerator3x3
 {
 public:
   ConvertRGBToYV24(PClip src, int matrix, IScriptEnvironment* env);
@@ -98,13 +117,14 @@ public:
 private:
 };
 
-class ConvertYV24ToRGB : public GenericVideoFilter
+class ConvertYV24ToRGB : public GenericVideoFilter, public MatrixGenerator3x3
 {
 public:
   ConvertYV24ToRGB(PClip src, int matrix, int pixel_step, IScriptEnvironment* env);
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
   static AVSValue __cdecl Create24(AVSValue args, void*, IScriptEnvironment* env);
   static AVSValue __cdecl Create32(AVSValue args, void*, IScriptEnvironment* env);
+  ~ConvertYV24ToRGB();
 private:
   signed short* matrix;
   int offset_y;
