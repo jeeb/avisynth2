@@ -86,6 +86,7 @@ public:
   PVideoFrame __stdcall GetFrame(int n,IScriptEnvironment* env);
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);  
 private:
+  void convYUV422toY8(const unsigned char *src, unsigned char *py, int pitch1, int pitch2y, int width, int height);
   bool blit_luma_only;
   bool yuy2_input;
   bool rgb_input;
@@ -115,6 +116,9 @@ public:
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
 private:
+  void convYUV422to422(const unsigned char *src, unsigned char *py, unsigned char *pu, unsigned char *pv,
+       int pitch1, int pitch2y, int pitch2uv, int width, int height);
+
 };
 
 class ConvertYV24ToRGB : public GenericVideoFilter, public MatrixGenerator3x3
@@ -138,6 +142,8 @@ public:
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
 private:
+  void conv422toYUV422(const unsigned char *py, const unsigned char *pu, const unsigned char *pv, unsigned char *dst, 
+					   int pitch1Y, int pitch1UV, int pitch2, int width, int height);
 };
 
 class ConvertToPlanarGeneric : public GenericVideoFilter

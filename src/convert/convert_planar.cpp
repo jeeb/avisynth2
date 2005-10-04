@@ -105,14 +105,19 @@ PVideoFrame __stdcall ConvertToY8::GetFrame(int n, IScriptEnvironment* env) {
     return dst;
   }
 
-  // OPTME: Fast MMX should be obvious. Load+pack+store
   if (yuy2_input) {
+
     const BYTE* srcP = src->GetReadPtr();
     int srcPitch = src->GetPitch();
 
     BYTE* dstY = dst->GetWritePtr(PLANAR_Y);
 
     int dstPitch = dst->GetPitch(PLANAR_Y);
+
+    if (!(vi.width & 7)) {
+      this->convYUV422toY8(srcP, dstY, src->GetPitch(), dst->GetPitch(PLANAR_Y), vi.width, vi.height);
+      return dst;
+    }
 
     int w = dst->GetRowSize(PLANAR_Y);
     int h = dst->GetHeight(PLANAR_Y);
@@ -147,6 +152,39 @@ PVideoFrame __stdcall ConvertToY8::GetFrame(int n, IScriptEnvironment* env) {
   }
   return dst;
 }
+
+void ConvertToY8::convYUV422toY8(const unsigned char *src, unsigned char *py, 
+       int pitch1, int pitch2y, int width, int height)
+{
+	int widthdiv2 = width>>1;
+	__int64 Ymask = 0x00FF00FF00FF00FFi64;
+	__asm
+	{
+		mov edi,[src]
+		mov ebx,[py]
+		mov ecx,widthdiv2
+		movq mm5,Ymask
+	yloop:
+		xor eax,eax
+		align 16
+	xloop:
+		movq mm0,[edi+eax*4]   ; VYUYVYUY - 1
+		movq mm1,[edi+eax*4+8] ; VYUYVYUY - 2
+		pand mm0,mm5           ; 0Y0Y0Y0Y - 1
+		pand mm1,mm5           ; 0Y0Y0Y0Y - 2
+		packuswb mm0,mm1       ; YYYYYYYY
+		movq [ebx+eax*2],mm0   ; store y
+		add eax,4
+		cmp eax,ecx
+		jl xloop
+		add edi,pitch1
+		add ebx,pitch2y
+		dec height
+		jnz yloop
+		emms
+	}
+}
+
 
 AVSValue __cdecl ConvertToY8::Create(AVSValue args, void*, IScriptEnvironment* env) {
   PClip clip = args[0].AsClip();
@@ -502,6 +540,10 @@ PVideoFrame __stdcall ConvertYUY2ToYV16::GetFrame(int n, IScriptEnvironment* env
   BYTE* dstU = dst->GetWritePtr(PLANAR_U);
   BYTE* dstV = dst->GetWritePtr(PLANAR_V);
 
+  if (!(vi.width&7)) {  // Use MMX
+    this->convYUV422to422(srcP, dstY, dstU, dstV, src->GetPitch(), dst->GetPitch(PLANAR_Y), dst->GetPitch(PLANAR_U),  vi.width, vi.height);
+  }
+
   int w = vi.width/2;
   
   for (int y=0; y<vi.height; y++) { // ASM will probably not be faster here.
@@ -520,6 +562,55 @@ PVideoFrame __stdcall ConvertYUY2ToYV16::GetFrame(int n, IScriptEnvironment* env
   }
   return dst;
 }
+
+void ConvertYUY2ToYV16::convYUV422to422(const unsigned char *src, unsigned char *py, unsigned char *pu, unsigned char *pv,
+       int pitch1, int pitch2y, int pitch2uv, int width, int height)
+{
+	int widthdiv2 = width>>1;
+	__int64 Ymask = 0x00FF00FF00FF00FFi64;
+	__asm
+	{
+		mov edi,[src]
+		mov ebx,[py]
+		mov edx,[pu]
+		mov esi,[pv]
+		mov ecx,widthdiv2
+		movq mm5,Ymask
+	yloop:
+		xor eax,eax
+		align 16
+	xloop:
+		movq mm0,[edi+eax*4]   ; VYUYVYUY - 1
+		movq mm1,[edi+eax*4+8] ; VYUYVYUY - 2
+		movq mm2,mm0           ; VYUYVYUY - 1
+		movq mm3,mm1           ; VYUYVYUY - 2
+		pand mm0,mm5           ; 0Y0Y0Y0Y - 1
+		psrlw mm2,8 	       ; 0V0U0V0U - 1
+		pand mm1,mm5           ; 0Y0Y0Y0Y - 2
+		psrlw mm3,8            ; 0V0U0V0U - 2
+		packuswb mm0,mm1       ; YYYYYYYY
+		packuswb mm2,mm3       ; VUVUVUVU
+		movq mm4,mm2           ; VUVUVUVU
+		pand mm2,mm5           ; 0U0U0U0U
+		psrlw mm4,8            ; 0V0V0V0V
+		packuswb mm2,mm2       ; xxxxUUUU
+		packuswb mm4,mm4       ; xxxxVVVV
+		movq [ebx+eax*2],mm0   ; store y
+		movd [edx+eax],mm2     ; store u
+		movd [esi+eax],mm4     ; store v
+		add eax,4
+		cmp eax,ecx
+		jl xloop
+		add edi,pitch1
+		add ebx,pitch2y
+		add edx,pitch2uv
+		add esi,pitch2uv
+		dec height
+		jnz yloop
+		emms
+	}
+}
+
 
 AVSValue __cdecl ConvertYUY2ToYV16::Create(AVSValue args, void*, IScriptEnvironment* env) {
   PClip clip = args[0].AsClip();
@@ -551,6 +642,11 @@ PVideoFrame __stdcall ConvertYV16ToYUY2::GetFrame(int n, IScriptEnvironment* env
 
   BYTE* dstp = dst->GetWritePtr();
 
+  if (!(vi.width&7)) {  // Use MMX
+    this->conv422toYUV422(srcY, srcU, srcV, dstp, src->GetPitch(PLANAR_Y), src->GetPitch(PLANAR_U),
+      dst->GetPitch(), vi.width, vi.height);
+  }
+
   int w = vi.width/2;
   
   for (int y=0; y<vi.height; y++) { // ASM will probably not be faster here.
@@ -568,6 +664,43 @@ PVideoFrame __stdcall ConvertYV16ToYUY2::GetFrame(int n, IScriptEnvironment* env
     dstp += dst->GetPitch();
   }
   return dst;
+}
+
+void ConvertYV16ToYUY2::conv422toYUV422(const unsigned char *py, const unsigned char *pu, const unsigned char *pv, unsigned char *dst, 
+					   int pitch1Y, int pitch1UV, int pitch2, int width, int height)
+{
+	int widthdiv2 = width >> 1;
+	__asm
+	{
+		mov ebx,[py]
+		mov edx,[pu]
+		mov esi,[pv]
+		mov edi,[dst]
+		mov ecx,widthdiv2
+yloop:
+		xor eax,eax
+		align 16
+xloop:
+		movq mm0,[ebx+eax*2]   ;YYYYYYYY
+		movd mm1,[edx+eax]     ;0000UUUU
+		movd mm2,[esi+eax]     ;0000VVVV
+		movq mm3,mm0           ;YYYYYYYY
+		punpcklbw mm1,mm2      ;VUVUVUVU
+		punpcklbw mm0,mm1      ;VYUYVYUY
+		punpckhbw mm3,mm1      ;VYUYVYUY
+		movq [edi+eax*4],mm0   ;store
+		movq [edi+eax*4+8],mm3 ;store
+		add eax,4
+		cmp eax,ecx
+		jl xloop
+		add ebx,pitch1Y
+		add edx,pitch1UV
+		add esi,pitch1UV
+		add edi,pitch2
+		dec height
+		jnz yloop
+		emms
+	}
 }
 
 AVSValue __cdecl ConvertYV16ToYUY2::Create(AVSValue args, void*, IScriptEnvironment* env) {
