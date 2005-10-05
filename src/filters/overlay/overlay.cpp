@@ -74,6 +74,8 @@ enum {
 Overlay::Overlay(PClip _child, AVSValue args, IScriptEnvironment *env) :
 GenericVideoFilter(_child) {
 
+  full_range = args[ARG_FULL_RANGE].AsBool(false);  // Maintain CCIR601 range when converting to/from RGB.
+
   // Make copy of the VideoInfo
   inputVi = (VideoInfo*)malloc(sizeof(VideoInfo));
   memcpy(inputVi, &vi, sizeof(VideoInfo));
@@ -87,13 +89,22 @@ GenericVideoFilter(_child) {
   overlayVi = overlay->GetVideoInfo();
   overlayConv = SelectInputCS(&overlayVi, env);
 
-  if (!overlayConv) {
-    env->ThrowError("Overlay: Overlay image colorspace not supported.");
+  if (!overlayConv) {    
+    AVSValue new_args[3] = { overlay, false, (full_range) ? "PC.601" : "rec601" }; 
+    try {
+      overlay = env->Invoke("ConvertToYV24", AVSValue(new_args, 3)).AsClip(); 
+    } catch (...)  {}
+
+    overlayVi = overlay->GetVideoInfo();
+    overlayConv = SelectInputCS(&overlayVi, env);
+
+    if (!overlayConv) {  // ok - now we've tried everything ;)
+      env->ThrowError("Overlay: Overlay image colorspace not supported.");
+    }
   }
 
   greymask = args[ARG_GREYMASK].AsBool(true);  // Grey mask, default true
   ignore_conditional = args[ARG_IGNORE_CONDITIONAL].AsBool(false);  // Don't ignore conditionals by default
-  full_range = args[ARG_FULL_RANGE].AsBool(false);  // Maintain CCIR601 range when converting to/from RGB.
 
   if (args[ARG_MASK].Defined()) {  // Mask defined
     mask = args[ARG_MASK].AsClip();
@@ -107,7 +118,16 @@ GenericVideoFilter(_child) {
 
     maskConv = SelectInputCS(&maskVi, env);
     if (!maskConv) {
-       env->ThrowError("Overlay: Mask image colorspace not supported.");
+      AVSValue new_args[3] = { mask, false, (full_range) ? "PC.601" : "rec601" }; 
+
+      try {
+        mask = env->Invoke((greymask) ? "ConvertToY8" : "ConvertToYV24", AVSValue(new_args, 3)).AsClip(); 
+      } catch (...)  {}
+      maskVi = mask->GetVideoInfo();
+      maskConv = SelectInputCS(&maskVi, env);
+      if (!maskConv) {
+        env->ThrowError("Overlay: Mask image colorspace not supported.");
+      }
     }
 
     maskImg = new Image444(maskVi.width, maskVi.height);
@@ -123,7 +143,17 @@ GenericVideoFilter(_child) {
   inputConv = SelectInputCS(inputVi, env);
 
   if (!inputConv) {
-    env->ThrowError("Overlay: Colorspace not supported.");
+    AVSValue new_args[3] = { child, false, (full_range) ? "PC.601" : "rec601" }; 
+    try {
+      child = env->Invoke("ConvertToYV24", AVSValue(new_args, 3)).AsClip(); 
+    } catch (...)  {}
+
+    vi = child->GetVideoInfo();
+    memcpy(inputVi, &vi, sizeof(VideoInfo));
+    inputConv = SelectInputCS(inputVi, env);
+    if (!inputConv) {
+      env->ThrowError("Overlay: Colorspace not supported.");
+    }
   }
   
   if (args[ARG_OUTPUT].Defined())

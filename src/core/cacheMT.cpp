@@ -114,10 +114,11 @@ Mode5Gate::~Mode5Gate()
 {
 	if(!InterlockedDecrement(&refcount))
 	{
-		for(int i=0;i<nthreads;i++)
+    int i;
+		for(i=0;i<nthreads;i++)
 			PostQueuedCompletionStatus(WorkQueue,0,0,0);
 		WaitForMultipleObjects(nthreads,workerthreads,true,INFINITE);
-		for(int i=0;i<nthreads;i++)
+		for(i=0;i<nthreads;i++)
 			CloseHandle(workerthreads[i]);
 		delete workerthreads;
         CloseHandle(WorkQueue);

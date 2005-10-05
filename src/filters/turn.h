@@ -79,10 +79,12 @@ public:
 			if (vi.height%2) env->ThrowError("Turn: YUY2 data must have MOD2 height");
 			TurnFunc = TurnYUY2;
 		}
-		else if (vi.IsPlanar())
+		else if (vi.IsYV12() || vi.IsYV24() || vi.IsY8())
 		{
 			TurnPlanFunc = TurnPlanar;
-		}
+    } else {
+      env->ThrowError("Turn: Image format not supported!");
+    }
 	};
 
 	PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);

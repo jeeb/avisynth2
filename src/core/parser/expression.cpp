@@ -630,14 +630,15 @@ void ExpFunctionCall::InsertCache(AVSValue &result,AVSValue *args,IScriptEnviron
     case 4:
     {
     Mode3Gate* lastMode3Gate=0;
-    for(int i=0;i<=arg_expr_count;i++)
+    int i;
+    for(i=0;i<=arg_expr_count;i++)
       if(args[i].IsClip())  {
         lastMode3Gate=new Mode3Gate(args[i].AsClip(),lastMode3Gate,env);
         args[i]=lastMode3Gate;
       }
     int nthreads=env->GetMTMode(true);
     AVSValue *filters=new AVSValue[nthreads]; 
-    for(int i=0;i<nthreads;i++){
+    for(i=0;i<nthreads;i++){
 	  env->RestoreClipLocalStorage();
       filters[i]=env->Invoke(name, AVSValue(args+!implicit_last, arg_expr_count+implicit_last), arg_expr_names+!implicit_last);
 	}

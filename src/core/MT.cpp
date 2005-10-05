@@ -97,7 +97,8 @@ PVideoFrame Distributor::GetFrameForward(int n, IScriptEnvironment* env)
 PVideoFrame result=0;
 	int in=-1;
 	int nmax=n;
-	for(unsigned int i=0;i<nthreads;i++)
+  unsigned int i;
+	for(i=0;i<nthreads;i++)
 	{
 		if(thread[i].n>nmax)
 			nmax=thread[i].n;
@@ -114,7 +115,7 @@ PVideoFrame result=0;
 	if(result==0&&in==-1)
 		in=-2;
 	
-	for(unsigned int i=0;i<nthreads;++i==in?i++:i)
+	for(i=0;i<nthreads;++i==in?i++:i)
 	{
 		if(thread[i].n<=n&&thread[i].status==Thread::idle){
 			WaitForSingleObject(thread[i].done,INFINITE);
@@ -144,7 +145,8 @@ PVideoFrame Distributor::GetFrameBackward(int n, IScriptEnvironment* env)
 	PVideoFrame result=0;
 	int in=-1;
 	int nmin=n;
-	for(unsigned int i=0;i<nthreads;i++)
+  unsigned int i;
+	for(i=0;i<nthreads;i++)
 	{
 		if(thread[i].n<nmin)
 			nmin=thread[i].n;
@@ -160,7 +162,7 @@ PVideoFrame Distributor::GetFrameBackward(int n, IScriptEnvironment* env)
 	if(result==0&&in==-1)
 		in=-2;
 	
-	for(unsigned int i=0;i<nthreads;++i==in?i++:i)
+	for(i=0;i<nthreads;++i==in?i++:i)
 	{
 		if(thread[i].n>=n&&thread[i].status==Thread::idle){
 			WaitForSingleObject(thread[i].done,INFINITE);
