@@ -730,6 +730,26 @@ public:
   }
 };
 
+ class ClipLocalStorage : public IClipLocalStorage
+{
+public:
+	friend class ScriptEnvironment;
+	ClipLocalStorage* next;
+	ClipLocalStorage* prev;
+	void* data;
+	ClipLocalStorage(ClipLocalStorage* _prev):prev(_prev),next(0),data(0){}
+	~ClipLocalStorage(){
+		_RPT1(0, "ClipLocalStorage:%x: destructor called\n", this);
+		if(prev)prev->next=next;
+		if(next)next->prev=0;}
+	void* __stdcall GetValue()  {
+		return data;
+  }
+	void __stdcall SetValue(void* value)  {
+		data=value;
+  }
+};
+
 
 class ScriptEnvironment : public IScriptEnvironment {
 public:
@@ -766,6 +786,11 @@ public:
   PVideoFrame __stdcall Subframe(PVideoFrame src, int rel_offset, int new_pitch, int new_row_size, int new_height, int rel_offsetU, int rel_offsetV, int new_pitchUV);
   void __stdcall SetMTMode(int mode,int threads, bool temporary);
   int __stdcall  GetMTMode(bool return_nthreads);
+
+  IClipLocalStorage*  __stdcall AllocClipLocalStorage();
+
+  void __stdcall SaveClipLocalStorage();
+  void __stdcall RestoreClipLocalStorage();
 
 private:
   // Tritical May 2005
@@ -808,6 +833,10 @@ private:
   int mt_mode;
   int temp_mt_mode;
   DWORD nthreads;
+
+  ClipLocalStorage start_node;
+  ClipLocalStorage* CurrentCLS;
+  ClipLocalStorage* RestoreCLS;
 };
 
 long ScriptEnvironment::refcount=0;
@@ -820,6 +849,9 @@ ScriptEnvironment::ScriptEnvironment()
     mt_mode(-1),
 	temp_mt_mode(-5),
 	nthreads(0),
+	CurrentCLS(&start_node),
+	RestoreCLS(&start_node),
+	start_node(0),
 	PlanarChromaAlignmentState(true){ // Change to "true" for 2.5.7
 
   CPU_id = CPUCheckForExtensions();
@@ -1269,11 +1301,14 @@ PVideoFrame __stdcall ScriptEnvironment::NewVideoFrame(const VideoInfo& vi, int 
 
 bool ScriptEnvironment::MakeWritable(PVideoFrame* pvf) {
   const PVideoFrame& vf = *pvf;
+  EnterCriticalSection(&cs_relink_video_frame_buffer);//we don't want cacheMT::LockVFB to mess up the refcount
   // If the frame is already writable, do nothing.
   if (vf->IsWritable()) {
+	  InterlockedIncrement(&vf->vfb->sequence_number);
+    LeaveCriticalSection(&cs_relink_video_frame_buffer);
     return false;
   }
-
+  LeaveCriticalSection(&cs_relink_video_frame_buffer);
   // Otherwise, allocate a new frame (using NewVideoFrame) and
   // copy the data into it.  Then modify the passed PVideoFrame
   // to point to the new buffer.
@@ -2025,3 +2060,27 @@ IScriptEnvironment* __stdcall CreateScriptEnvironment(int version) {
   else
     return 0;
 }
+
+
+IClipLocalStorage* ScriptEnvironment::AllocClipLocalStorage()  {
+  EnterCriticalSection(&cs_var_table);
+  if(CurrentCLS->next==0)
+	CurrentCLS->next=new ClipLocalStorage(CurrentCLS);
+  else
+    InterlockedIncrement(&CurrentCLS->next->refcnt);
+  CurrentCLS=CurrentCLS->next;
+  LeaveCriticalSection(&cs_var_table);
+  return CurrentCLS;
+  }
+
+
+  void ScriptEnvironment::SaveClipLocalStorage()  {
+  RestoreCLS=CurrentCLS;
+  }
+  
+  void ScriptEnvironment::RestoreClipLocalStorage() {
+  CurrentCLS=RestoreCLS;
+  }
+
+
+  ScriptEnvironmentTLS::~ScriptEnvironmentTLS(){delete vartable;}//declared in MT.h but because vartables destructor is defined in avisynth.cpp the destructor is defined here(because it calls the vartable destructor)

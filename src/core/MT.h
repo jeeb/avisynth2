@@ -43,7 +43,7 @@ class ScriptEnvironmentTLS {
 public:
 	VarTable* vartable;
 	ScriptEnvironmentTLS():vartable(0){}
-	~ScriptEnvironmentTLS(){delete vartable;}
+	~ScriptEnvironmentTLS();//destructor is defined in avisynth.cpp
 };
 
 class Distributor : public GenericVideoFilter{

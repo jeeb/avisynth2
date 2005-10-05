@@ -532,6 +532,7 @@ AVSValue ExpFunctionCall::Call(IScriptEnvironment* env)
   }
   // first try without implicit "last"
   try {
+    env->SaveClipLocalStorage();
     result = env->Invoke(name, AVSValue(args+1, arg_expr_count), arg_expr_names+1);
 	if(result.IsClip())
       InsertCache(result,args,env,false);
@@ -543,6 +544,7 @@ AVSValue ExpFunctionCall::Call(IScriptEnvironment* env)
     if (!oop_notation) {
       try {
         args[0] = env->GetVar("last");
+		env->SaveClipLocalStorage();
         result = env->Invoke(name, AVSValue(args, arg_expr_count+1), arg_expr_names);
         if(result.IsClip())
           InsertCache(result,args,env,true);
@@ -606,9 +608,12 @@ void ExpFunctionCall::InsertCache(AVSValue &result,AVSValue *args,IScriptEnviron
       int nthreads=env->GetMTMode(true);
       AVSValue *filters= new AVSValue[nthreads]; 
       filters[0]=result;
-      for(int i=1;i<nthreads;i++)
+	  for(int i=1;i<nthreads;i++){
+		env->RestoreClipLocalStorage();
         filters[i]=env->Invoke(name, AVSValue(args+!implicit_last, arg_expr_count+implicit_last), arg_expr_names+!implicit_last);
+	  }
       result=new CacheMT2(AVSValue(filters,nthreads),env);
+	  delete[] filters;
 	  break;
     }
     case 3:
@@ -632,9 +637,12 @@ void ExpFunctionCall::InsertCache(AVSValue &result,AVSValue *args,IScriptEnviron
       }
     int nthreads=env->GetMTMode(true);
     AVSValue *filters=new AVSValue[nthreads]; 
-    for(int i=0;i<nthreads;i++)
+    for(int i=0;i<nthreads;i++){
+	  env->RestoreClipLocalStorage();
       filters[i]=env->Invoke(name, AVSValue(args+!implicit_last, arg_expr_count+implicit_last), arg_expr_names+!implicit_last);
+	}
     result=new CacheMT4(AVSValue(filters,nthreads),lastMode3Gate,env);
+	delete[] filters;
     break;
     }
     case 5:

@@ -187,6 +187,7 @@ class CacheMT2 : public CacheMT
 {
 public:
 	CacheMT2(AVSValue clip_array, IScriptEnvironment* env);
+	~CacheMT2();
 protected:
 	const unsigned int signature;
 	PClip* filters;

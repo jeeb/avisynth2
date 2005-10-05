@@ -954,6 +954,10 @@ CacheMT2::CacheMT2(AVSValue clip_array,IScriptEnvironment *env):CacheMT(clip_arr
 	}
 }
 
+CacheMT2::~CacheMT2(){
+	delete[] filters;
+}
+
 PVideoFrame CacheMT2::childGetFrame(int n, IScriptEnvironment* env){
 	unsigned int i=0;
 	PVideoFrame retval;
@@ -1021,6 +1025,7 @@ PVideoFrame CacheMT4::childGetFrame(int n, IScriptEnvironment* env){
 
 CacheMT4::~CacheMT4(){
 	DeleteCriticalSection(&csFilter);
+	delete[] filters;
 }
 
 /*************************************/

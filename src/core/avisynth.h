@@ -704,7 +704,7 @@ enum {
 #define MAX_INT 0x7fffffff
 #define MIN_INT -0x7fffffff
 
-
+class IClipLocalStorage;
 
 class IScriptEnvironment {
 public:
@@ -765,8 +765,54 @@ public:
 
   virtual void __stdcall SetMTMode(int mode,int threads,bool temporary)=0;
   virtual int __stdcall  GetMTMode(bool return_nthreads)=0;
+
+  virtual IClipLocalStorage* __stdcall AllocClipLocalStorage()=0;
+
+  virtual void __stdcall SaveClipLocalStorage()=0;
+  virtual void __stdcall RestoreClipLocalStorage()=0;
 };
 
+//For ClipLocalStorage
+
+
+class IClipLocalStorage {
+protected:
+  friend class PClipLocalStorage;
+  long refcnt;
+  virtual void __stdcall AddRef() { InterlockedIncrement(&refcnt); }
+  virtual void __stdcall Release() {
+	  if (!InterlockedDecrement(&refcnt))
+		  delete this; }
+  IClipLocalStorage():refcnt(1){}
+public:
+	virtual __stdcall ~IClipLocalStorage(){};
+	virtual void* __stdcall GetValue()=0;
+	virtual void __stdcall SetValue(void* value)=0;
+};
+
+class PClipLocalStorage {
+protected:
+  void Set(IClipLocalStorage* x) {
+    if (x) x->AddRef();
+    if (p) p->Release();
+    p=x;
+  }
+	IClipLocalStorage* p;
+public:
+	PClipLocalStorage(IScriptEnvironment* env):p(env->AllocClipLocalStorage()){}
+	PClipLocalStorage():p(0){}
+	void operator=(IClipLocalStorage* x) { Set(x); }
+    void operator=(const PClipLocalStorage& x) { Set(x.p); }
+
+    IClipLocalStorage* operator->() const { return p; }
+
+  // for conditional expressions
+  operator void*() const { return p; }
+  bool operator!() const { return !p; }
+
+  ~PClipLocalStorage() { 
+	  if (p) p->Release();}
+};
 
 // avisynth.dll exports this; it's a way to use it as a library, without
 // writing an AVS script or without going through AVIFile.
