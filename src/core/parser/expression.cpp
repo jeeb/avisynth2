@@ -36,6 +36,7 @@
 #include "stdafx.h"
 
 #include "expression.h"
+#include "../cliplocalstorage.h"
 
 
 
