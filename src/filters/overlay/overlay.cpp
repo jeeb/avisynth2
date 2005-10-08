@@ -175,10 +175,18 @@ Overlay::~Overlay() {
       maskImg->free_chroma();
     }
     maskImg->free_luma();
+    delete maskImg;
+    delete maskConv;
   }
   overlayImg->free();
+  delete overlayImg;
   img->free();
+  delete img;
   free(inputVi);
+  delete func;
+  delete outputConv;
+  delete inputConv;
+  delete overlayConv;
 }
 
 
