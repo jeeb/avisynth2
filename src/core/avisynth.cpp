@@ -42,6 +42,7 @@ using std::string;
 #include "../internal.h"
 #include "./parser/script.h"
 #include "memcpy_amd.h"
+#include "cliplocalstorage.h"
 
 #ifdef _MSC_VER
   #define strnicmp(a,b,c) _strnicmp(a,b,c)
@@ -1175,17 +1176,23 @@ PVideoFrame ScriptEnvironment::NewPlanarVideoFrame(const VideoInfo& vi, int alig
   int Yheight = PlaneHeight(vi, PLANAR_Y);
   int UVheight = PlaneHeight(vi, PLANAR_U);
 
-  if (align<0) {
-// Forced alignment - pack Y as specified, pack UV half that
-    align = -align;
-	  pitch = (Ywidth+align-1) / align * align;  // Y plane, width = 1 byte per pixel
-    if (vi.IsYV12()) {
-	    UVpitch = (pitch+1)>>1;  // UV plane, width = 1/2 byte per pixel - can't align UV planes seperately.
-    } else {
-	    UVpitch = (UVwidth+align-1) / align * align;
+  if (vi.IsYV12()) { // Must meet 2.5 series API expectations
+    if (align<0) { // Forced alignment - pack Y as specified, pack UV half that
+      align = -align;
+      pitch = (Ywidth+align-1) / align * align;  // Y plane, width = 1 byte per pixel
+      UVpitch = (pitch+1)>>1;  // UV plane, width = 1/2 byte per pixel - can't align UV planes seperately.
+    } 
+    else if (PlanarChromaAlignmentState) { // Align planes seperately
+      pitch = ((Ywidth+1)+align-1) / align * align;
+      UVpitch = ((UVwidth+1)+align-1) / align * align;
+    }
+    else { // Do legacy alignment
+      pitch = (Ywidth+align-1) / align * align;  // Y plane, width = 1 byte per pixel
+      UVpitch = (pitch+1)>>1;  // UV plane, width = 1/2 byte per pixel - can't align UV planes seperately.
     }
   } else {
-  // Align planes seperately
+    if (align<0) align = -align;
+// Align planes seperately
     pitch = ((Ywidth+1)+align-1) / align * align;
     UVpitch = ((UVwidth+1)+align-1) / align * align;
   }
@@ -1597,8 +1604,13 @@ LinkedVideoFrameBuffer* ScriptEnvironment::GetFrameBuffer2(int size) {
 VideoFrameBuffer* ScriptEnvironment::GetFrameBuffer(int size) {
   EnterCriticalSection(&cs_relink_video_frame_buffer);
   LinkedVideoFrameBuffer* result = GetFrameBuffer2(size);
+#if 0
   // Link onto head of video_frame_buffers chain.
   Relink(&video_frame_buffers, result, video_frame_buffers.next);
+#else
+  // Link onto tail of video_frame_buffers chain.
+  Relink(video_frame_buffers.prev, result, &video_frame_buffers);
+#endif
   LeaveCriticalSection(&cs_relink_video_frame_buffer);
   result->returned = false;
   return result;
