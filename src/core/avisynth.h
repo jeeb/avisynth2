@@ -39,7 +39,7 @@
 #ifndef __AVISYNTH_H__
 #define __AVISYNTH_H__
 
-enum { AVISYNTH_INTERFACE_VERSION = 2 };
+enum { AVISYNTH_INTERFACE_VERSION = 3 };
 
 
 /* Define all types necessary for interfacing with avisynth.dll
@@ -127,31 +127,32 @@ struct VideoInfo {
     CS_BGR = 1<<28,  
     CS_YUV = 1<<29,
     CS_INTERLEAVED = 1<<30,
-    CS_PLANAR = 1<<31
+    CS_PLANAR = 1<<31 // Probably should move and reserve this bit for 2.5 compatibility
   };
 
-  // Chroma placement bits 24 -> 27
+  // Chroma placement bits 20 -> 23  ::FIXME:: Really want a Class to support this
   enum {
-    CS_UNKOWN_CHROMA_PLACEMENT = 0 <<24,
-    CS_MPEG1_CHROMA_PLACEMENT = 1 <<24,
-    CS_MPEG2_CHROMA_PLACEMENT = 2 <<24,
-    CS_YUY2_CHROMA_PLACEMENT = 3 <<24,
-    CS_TOPLEFT_CHROMA_PLACEMENT = 4 <<24
+    CS_UNKNOWN_CHROMA_PLACEMENT = 0 <<20,
+    CS_MPEG1_CHROMA_PLACEMENT   = 1 <<20,
+    CS_MPEG2_CHROMA_PLACEMENT   = 2 <<20,
+    CS_YUY2_CHROMA_PLACEMENT    = 3 <<20,
+    CS_TOPLEFT_CHROMA_PLACEMENT = 4 <<20
   };
 
   // Specific colorformats
   enum { CS_UNKNOWN = 0,
          CS_BGR24 = 1<<0 | CS_BGR | CS_INTERLEAVED,
          CS_BGR32 = 1<<1 | CS_BGR | CS_INTERLEAVED,
-         CS_YUY2 = 1<<2 | CS_YUV | CS_INTERLEAVED,
-         CS_YV12 = 1<<3 | CS_YUV | CS_PLANAR,  // y-v-u, planar
-         CS_I420 = 1<<4 | CS_YUV | CS_PLANAR,  // y-u-v, planar
-         CS_IYUV = 1<<4 | CS_YUV | CS_PLANAR,  // same as above
+         CS_YUY2  = 1<<2 | CS_YUV | CS_INTERLEAVED,
+         CS_YV12  = 1<<3 | CS_YUV | CS_PLANAR,  // y-v-u, 4:2:0 planar
+         CS_I420  = 1<<4 | CS_YUV | CS_PLANAR,  // y-u-v, 4:2:0 planar
+         CS_IYUV  = 1<<4 | CS_YUV | CS_PLANAR,  // same as above
 // New as of 2.6:
-         CS_YV24 = 1<<6 | CS_YUV | CS_PLANAR,  // YUV 4:4:4 planar
-         CS_YV16 = 1<<7 | CS_YUV | CS_PLANAR,  // YUV 4:2:2 planar
-         CS_Y8 = 1<<8 | CS_YUV | CS_PLANAR,  // Y 4:0:0 planar
+         CS_YV24  = 1<<6 | CS_YUV | CS_PLANAR,  // YUV 4:4:4 planar
+         CS_YV16  = 1<<7 | CS_YUV | CS_PLANAR,  // YUV 4:2:2 planar
+         CS_Y8    = 1<<8 | CS_YUV | CS_PLANAR,  // Y   4:0:0 planar
          CS_YV411 = 1<<9 | CS_YUV | CS_PLANAR,  // YUV 4:1:1 planar
+//       CS_YUV9  = 1<<10| CS_YUV | CS_PLANAR,  // YUV 4:1:0 planar ::FIXME::
   };
   int pixel_type;                // changed to int as of 2.5
   
@@ -222,6 +223,8 @@ struct VideoInfo {
       case CS_YV12:
       case CS_I420:
         return 12;
+      case CS_YV411:
+        return 9;
       case CS_Y8:
         return 8;
       default:
@@ -318,7 +321,7 @@ class VideoFrameBuffer {
 
   friend class VideoFrame;
   friend class Cache;
-  friend class CacheMT;
+  friend class CacheMT;  // ::FIXME:: illegal extension
   friend class ScriptEnvironment;
   long refcount;
 
@@ -358,14 +361,10 @@ class VideoFrame {
 
   friend class ScriptEnvironment;
   friend class Cache;
-  friend class CacheMT;
+  friend class CacheMT;  // ::FIXME:: illegal extension
 
-//<<<<<<< avisynth.h
   VideoFrame(VideoFrameBuffer* _vfb, int _offset, int _pitch, int _row_size, int _height, int pixel_type);
   VideoFrame(VideoFrameBuffer* _vfb, int _offset, int _pitch, int _row_size, int _height, int _offsetU, int _offsetV, int _pitchUV, int _row_sizeUV, int _heightUV, int pixel_type);
-  // in plugins use env->SubFrame()
-  VideoFrame* Subframe(int rel_offset, int new_pitch, int new_row_size, int new_height) const;//If you really want to use these remember to increase vfb->refcount before calling and decrement it afterwards.
-  VideoFrame* Subframe(int rel_offset, int new_pitch, int new_row_size, int new_height, int rel_offsetU, int rel_offsetV, int pitchUV) const;
 
   void* operator new(unsigned size);
 // TESTME: OFFSET U/V may be switched to what could be expected from AVI standard!
@@ -398,6 +397,9 @@ public:
   int GetOffset() const { return offset; }
   int GetOffset(int plane) const { switch (plane) {case PLANAR_U: return offsetU;case PLANAR_V: return offsetV;default: return offset;}; }
 
+  // in plugins use env->SubFrame()
+  VideoFrame* Subframe(int rel_offset, int new_pitch, int new_row_size, int new_height) const;
+  VideoFrame* Subframe(int rel_offset, int new_pitch, int new_row_size, int new_height, int rel_offsetU, int rel_offsetV, int pitchUV) const;
 
 
   const BYTE* GetReadPtr() const { return vfb->GetReadPtr() + offset; }
@@ -689,20 +691,20 @@ private:
 // For GetCPUFlags.  These are backwards-compatible with those in VirtualDub.
 enum {                    
                     /* slowest CPU to support extension */
-  CPUF_FORCE			  = 0x01,   // N/A
-  CPUF_FPU			    = 0x02,   // 386/486DX
-  CPUF_MMX			    = 0x04,   // P55C, K6, PII
-  CPUF_INTEGER_SSE	= 0x08,		// PIII, Athlon
-  CPUF_SSE			    = 0x10,		// PIII, Athlon XP/MP
-  CPUF_SSE2			    = 0x20,		// PIV, Hammer
-  CPUF_3DNOW			  = 0x40,   // K6-2
-  CPUF_3DNOW_EXT		= 0x80,		// Athlon
-  CPUF_X86_64       = 0xA0,   // Hammer (note: equiv. to 3DNow + SSE2, which only Hammer
-                              //         will have anyway)
-  CPUF_SSE3			    = 0x100,		// PIV, Hammer
+  CPUF_FORCE            = 0x01,   // N/A
+  CPUF_FPU              = 0x02,   // 386/486DX
+  CPUF_MMX              = 0x04,   // P55C, K6, PII
+  CPUF_INTEGER_SSE      = 0x08,   // PIII, Athlon
+  CPUF_SSE              = 0x10,   // PIII, Athlon XP/MP
+  CPUF_SSE2             = 0x20,   // PIV, Hammer
+  CPUF_3DNOW            = 0x40,   // K6-2
+  CPUF_3DNOW_EXT        = 0x80,   // Athlon
+  CPUF_X86_64           = 0xA0,   // Hammer (note: equiv. to 3DNow + SSE2, which
+                                  //         only Hammer will have anyway)
+  CPUF_SSE3             = 0x100,  // PIV+, Hammer
 };
 #define MAX_INT 0x7fffffff
-#define MIN_INT -0x7fffffff
+#define MIN_INT -0x7fffffff  // ::FIXME:: research why this is not 0x80000000
 
 class IClipLocalStorage;
 
@@ -772,47 +774,6 @@ public:
   virtual void __stdcall RestoreClipLocalStorage()=0;
 };
 
-//For ClipLocalStorage
-
-
-class IClipLocalStorage {
-protected:
-  friend class PClipLocalStorage;
-  long refcnt;
-  virtual void __stdcall AddRef() { InterlockedIncrement(&refcnt); }
-  virtual void __stdcall Release() {
-	  if (!InterlockedDecrement(&refcnt))
-		  delete this; }
-  IClipLocalStorage():refcnt(1){}
-public:
-	virtual __stdcall ~IClipLocalStorage(){};
-	virtual void* __stdcall GetValue()=0;
-	virtual void __stdcall SetValue(void* value)=0;
-};
-
-class PClipLocalStorage {
-protected:
-  void Set(IClipLocalStorage* x) {
-    if (x) x->AddRef();
-    if (p) p->Release();
-    p=x;
-  }
-	IClipLocalStorage* p;
-public:
-	PClipLocalStorage(IScriptEnvironment* env):p(env->AllocClipLocalStorage()){}
-	PClipLocalStorage():p(0){}
-	void operator=(IClipLocalStorage* x) { Set(x); }
-    void operator=(const PClipLocalStorage& x) { Set(x.p); }
-
-    IClipLocalStorage* operator->() const { return p; }
-
-  // for conditional expressions
-  operator void*() const { return p; }
-  bool operator!() const { return !p; }
-
-  ~PClipLocalStorage() { 
-	  if (p) p->Release();}
-};
 
 // avisynth.dll exports this; it's a way to use it as a library, without
 // writing an AVS script or without going through AVIFile.
