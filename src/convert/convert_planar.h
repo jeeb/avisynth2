@@ -69,7 +69,11 @@ public:
   ~MatrixGenerator3x3();
 protected:
   void GenerateAssembly(int width, int faction_bits, IScriptEnvironment* env);
+  void GeneratePacker(int width, IScriptEnvironment* env);
+  void GenerateUnPacker(int width, IScriptEnvironment* env);
   DynamicAssembledCode assembly;
+  DynamicAssembledCode unpacker;
+  DynamicAssembledCode packer;
   BYTE* dyn_src;
   BYTE* dyn_dest;
   BYTE* dyn_matrix;
@@ -77,6 +81,11 @@ protected:
   __int64 rounder;
   int src_pixel_step;
   int dest_pixel_step;
+  const BYTE** unpck_src;
+  BYTE** unpck_dst;
+private:
+  int last_pix;
+  __int64* aligned_rounder;
 };
 
 class ConvertToY8 : public GenericVideoFilter

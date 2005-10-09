@@ -445,6 +445,11 @@ ConvertYV24ToRGB::ConvertYV24ToRGB(PClip src, int in_matrix, int _pixel_step, IS
   this->dest_pixel_step = pixel_step;
   this->pre_add = (offset_y & 0xffff) | ((__int64)(-127 & 0xffff)<<16) | ((__int64)(-127 & 0xffff)<<32);
   this->GenerateAssembly(vi.width, 13, env);
+
+  unpck_src = new const BYTE*[3];
+  unpck_dst = new BYTE*[1];
+  unpck_dst[0] = dyn_src;
+  this->GeneratePacker(vi.width, env);
 }
 
 ConvertYV24ToRGB::~ConvertYV24ToRGB() {
@@ -466,8 +471,15 @@ PVideoFrame __stdcall ConvertYV24ToRGB::GetFrame(int n, IScriptEnvironment* env)
   if (USE_DYNAMIC_COMPILER) {
     int* i_dyn_src = (int*)dyn_src;
     for (int y = 0; y < vi.height; y++) {
-      for (int x = 0; x < vi.width; x++) {
-        i_dyn_src[x] = srcY[x] | (srcU[x] << 8 ) | (srcV[x] << 16);
+      if (vi.width & 3) { //156fps
+        for (int x = 0; x < vi.width; x++) {
+          i_dyn_src[x] = srcY[x] | (srcU[x] << 8 ) | (srcV[x] << 16);
+        }
+      } else {
+        unpck_src[0] = srcY;
+        unpck_src[1] = srcU;
+        unpck_src[2] = srcV;
+        this->packer.Call();
       }
       dyn_dest = &dstp[(vi.height-y-1)*dst->GetPitch()];
       assembly.Call();
@@ -749,6 +761,11 @@ ConvertToPlanarGeneric::ConvertToPlanarGeneric(PClip src, int dst_space, bool in
 
   }
 
+  if (vi.IsYV12()) {
+    UsubSampling[1] = AVSValue(0.5); // Override Y chroma placement if destination is YV12
+    VsubSampling[1] = AVSValue(0.5); // Override Y chroma placement if destination is YV12
+  }
+
   vi.pixel_type = dst_space;
   if (!Y8input) {
     MitchellNetravaliFilter filter(1./3., 1./3.);
@@ -877,12 +894,431 @@ MatrixGenerator3x3::MatrixGenerator3x3() {
   pre_add = post_add = 0;
   src_pixel_step = 4;   // Change to 3 for RGB24 for instance.
   dest_pixel_step = 4;  // Note that 4 bytes will be written at the time, always.
+  aligned_rounder = NULL;
 }
 
 MatrixGenerator3x3::~MatrixGenerator3x3() {
   assembly.Free();
+  if (aligned_rounder) {
+    _aligned_free(aligned_rounder);
+    aligned_rounder = 0;
+  }
 }
 
+void MatrixGenerator3x3::GeneratePacker(int width, IScriptEnvironment* env) {
+
+  Assembler x86;   // This is the class that assembles the code.
+
+  bool isse = !!(env->GetCPUFlags() & CPUF_INTEGER_SSE);
+
+  int loops = width / 4;
+
+
+  // Store registers
+  x86.push(eax);
+  x86.push(ebx);
+  x86.push(ecx);
+  x86.push(edx);
+  x86.push(esi);
+  x86.push(edi);
+  x86.push(ebp);
+
+  x86.mov(eax, (int)&unpck_src);
+  x86.mov(edx, (int)&unpck_dst);  
+
+  x86.mov(esi, dword_ptr [eax]); // Pointer to array of src planes
+  x86.mov(edx, dword_ptr [edx]);  // Load dest pointer
+  x86.mov(eax, dword_ptr [esi]); // Plane 1
+  x86.mov(ebx, dword_ptr [esi+sizeof(BYTE*)]); // Plane 2
+  x86.mov(ecx, dword_ptr [esi+sizeof(BYTE*)*2]); // Plane 3
+  x86.mov(edi, dword_ptr [edx]);  // edx no longer used
+
+  x86.pxor(mm6,mm6);
+  x86.xor(esi, esi);
+
+  x86.mov(edx, loops);
+  x86.label("loopback");
+
+  x86.movd(mm0, dword_ptr[eax+esi]);  //P1
+  x86.pxor(mm7,mm7);
+
+  x86.movd(mm1, dword_ptr[ebx+esi]);  //P2
+  x86.punpcklbw(mm0,mm6); // 00P100P100P100P1
+
+  x86.movd(mm2, dword_ptr[ecx+esi]);  //P3
+  x86.punpcklbw(mm1,mm6);  // 00P200P200P200P2
+
+  x86.movq(mm3,mm0);
+  x86.punpcklbw(mm2,mm6); // 00P300P300P300P3
+
+  x86.movq(mm4,mm1);
+  x86.punpcklwd(mm0,mm6); // 000000P1000000P1  low
+
+  x86.movq(mm5,mm2);
+  x86.punpcklwd(mm1,mm6); // 000000P2000000P2  low
+
+  x86.punpcklwd(mm6,mm2); // 00P3000000P30000  low
+
+  x86.punpckhwd(mm3,mm7); // 000000P1000000P1  high
+  x86.psllq(mm1,8);        // 0000P2000000P200  low
+
+  x86.punpckhwd(mm4,mm7); // 000000P2000000P2  high
+  x86.por(mm0,mm6);
+
+  x86.psllq(mm4,8);        // 0000P2000000P200  high
+
+  x86.punpckhwd(mm7,mm5); // 00P3000000P30000  high
+  x86.por(mm0,mm1);
+
+  x86.por(mm3,mm4);
+  x86.movq(qword_ptr[edi+esi*4], mm0);
+
+  x86.por(mm3,mm7);
+  x86.pxor(mm6,mm6);
+
+  x86.movq(qword_ptr[edi+esi*4+8], mm3);
+  x86.add(esi, 4);
+
+  x86.dec(edx);
+  x86.jnz("loopback");
+  x86.emms();
+    // Restore registers
+  x86.pop(ebp);
+  x86.pop(edi);
+  x86.pop(esi);
+  x86.pop(edx);
+  x86.pop(ecx);
+  x86.pop(ebx);
+  x86.pop(eax);
+  x86.ret();
+  packer = DynamicAssembledCode(x86, env, "ConvertMatrix: Dynamic MMX code could not be compiled.");
+}
+
+/*
+void MatrixGenerator3x3::GenerateUnPacker(int width, IScriptEnvironment* env) {
+
+  Assembler x86;   // This is the class that assembles the code.
+
+  bool isse = !!(env->GetCPUFlags() & CPUF_INTEGER_SSE);
+
+  int loops = width / 4;
+
+
+  // Store registers
+  x86.push(eax);
+  x86.push(ebx);
+  x86.push(ecx);
+  x86.push(edx);
+  x86.push(esi);
+  x86.push(edi);
+  x86.push(ebp);
+
+  x86.mov(eax, (int)&unpck_src);
+  x86.mov(edx, (int)&unpck_dst);  
+
+  x86.mov(esi, dword_ptr [eax]); // Pointer to array of src planes
+  x86.mov(esi, dword_ptr [esi]); // Pointer to src plane
+  x86.mov(edx, dword_ptr [edx]);  // Load dest pointer
+  x86.mov(eax, dword_ptr [edx]); // Plane 1 dest
+  x86.mov(ebx, dword_ptr [edx+sizeof(BYTE*)]); // Plane 2 dest
+  x86.mov(ecx, dword_ptr [edx+sizeof(BYTE*)*2]); // Plane 3 dest  edx free
+
+  x86.pxor(mm6,mm6);
+  x86.xor(edi, edi);
+
+  x86.mov(edx, loops);
+  x86.label("loopback");
+
+  x86.movq(mm0, qword_ptr[esi+edi*4]);  //P1, P2
+  x86.movq(mm1, qword_ptr[esi+edi*4]);  //P3, P4
+
+  x86.movq(mm2,mm0);
+  x86.movq(mm3,mm1);
+  
+  x86.punpcklbw(mm0,mm6); // 00xx00P300P200P1  Pix 1
+  x86.punpcklbw(mm1,mm6); // 00xx00P300P200P1  Pix 3
+
+  x86.punpckhbw(mm2,mm6); // 00xx00P300P200P1  Pix 2
+  x86.punpckhbw(mm3,mm6); // 00xx00P300P200P1  Pix 4
+
+
+  // NOT FINISHED!!!
+  // Need to figure out if there is a fast way to do this.
+
+  x86.add(esi, 4);
+
+  x86.dec(edx);
+  x86.jnz("loopback");
+  x86.emms();
+    // Restore registers
+  x86.pop(ebp);
+  x86.pop(edi);
+  x86.pop(esi);
+  x86.pop(edx);
+  x86.pop(ecx);
+  x86.pop(ebx);
+  x86.pop(eax);
+  x86.ret();
+  unpacker = DynamicAssembledCode(x86, env, "ConvertMatrix: Dynamic MMX code could not be compiled.");
+}
+*/
+#if 1
+//170 fps
+/***
+ *
+ * (c) Klaus Post, 2005
+ *
+ * 8 bytes/loop
+ * 2 pixels/loop
+ * Following MUST be initialized prior to GenerateAssembly:
+ * pre_add, post_add, src_pixel_step, dest_pixel_step
+ * 
+ * Alternative 2 pixels/loop routine. 
+ * Unfortunately this deosn't seem to gain much speed, but it should
+ * be tested on a system with more memory bandwidth, as this
+ * might be the limiting factor on my system.
+ ***/
+
+void MatrixGenerator3x3::GenerateAssembly(int width, int frac_bits, IScriptEnvironment* env) {
+
+  Assembler x86;   // This is the class that assembles the code.
+  rounder = 0x0000000100000001 * (1<<(frac_bits-1)); 
+
+  bool isse = !!(env->GetCPUFlags() & CPUF_INTEGER_SSE);
+  bool unroll = false;   // Unrolled code ~30% slower on Athlon XP.
+
+  int loops = width / 2;
+  aligned_rounder = (__int64*)_aligned_malloc(sizeof(__int64),64);
+
+  *aligned_rounder = rounder;
+
+  if (pre_add && post_add)
+    env->ThrowError("Internal error - only pre_add OR post_add can be used.");
+
+  int last_pix_mask = 0;
+
+  if (dest_pixel_step == 3) 
+    last_pix_mask = 0xff000000;
+  if (dest_pixel_step == 2) 
+    last_pix_mask = 0xffff0000;
+  if (dest_pixel_step == 1) 
+    last_pix_mask = 0xffffff00;
+
+  // Store registers
+  x86.push(eax);
+  x86.push(ebx);
+  x86.push(ecx);
+  x86.push(edx);
+  x86.push(esi);
+  x86.push(edi);
+  x86.push(ebp);
+  
+  
+
+  x86.mov(eax, (int)&dyn_src);
+  x86.mov(ebx, (int)&dyn_matrix);  // Used in loop
+  x86.mov(edx, (int)&dyn_dest);
+  x86.mov(esi, dword_ptr [eax]); // eax no longer used
+  x86.mov(ebx, dword_ptr [ebx]);
+  x86.mov(edi, dword_ptr [edx]);  // edx no longer used
+
+  if (last_pix_mask) {
+    x86.mov(eax,(int)&last_pix); // Pointer to last pixel
+    x86.mov(edx, dword_ptr[edi+width*dest_pixel_step]);
+    x86.mov(dword_ptr[eax], edx);
+  }
+
+  if (pre_add) {
+    x86.mov(eax, (int)&pre_add);  
+    x86.movq(mm2, qword_ptr[eax]);  // Must be ready when entering loop
+  }
+  if (post_add) {
+    x86.mov(eax, (int)&post_add);  
+  }
+
+  x86.mov(edx,(int)aligned_rounder);  // Rounder pointer in edx
+  if (!unroll) {  // Should we create a loop instead of unrolling?
+    x86.mov(ecx, loops);
+    x86.label("loopback");
+    loops = 1;
+  }
+  x86.pxor(mm7,mm7);
+/****
+ * Inloop usage:
+ * eax: pre/post-add pointer
+ * ebx: matrix pointer
+ * ecx: loop counter
+ * edx: rounder pointer
+ * esi: source
+ * edi: destination
+ *****/
+  for (int i=0; i<loops; i++) {
+    if (isse && src_pixel_step == 4) {  // Load both.
+      x86.movq(mm0, qword_ptr[esi]);
+      x86.pswapd(mm1,mm0);
+    } else {
+      x86.movd(mm0, dword_ptr[esi]);
+      x86.movd(mm1, dword_ptr[esi+src_pixel_step]);
+    }
+
+    x86.punpcklbw(mm0, mm7);     // Unpack bytes -> words
+    x86.punpcklbw(mm1, mm7);     // Unpack bytes -> words
+
+    if (pre_add) {
+      x86.paddw(mm0,mm2);
+      x86.paddw(mm1,mm2);
+    }
+
+    x86.movq(mm4,qword_ptr [ebx]);
+    x86.movq(mm2, mm0);
+    x86.pmaddwd(mm0,mm4);  // Part 1/3
+
+    x86.movq(mm3, mm1);
+    x86.pmaddwd(mm1,mm4);  // mm4 free
+
+    if (!isse) {
+      x86.movq(mm6,mm0);  // pixel 1
+      x86.movq(mm5,mm1);  // pixel 2
+      x86.psrlq(mm6, 32);
+      x86.psrlq(mm5, 32);
+    } else {
+      x86.pswapd(mm6,mm0);  // Swap upper and lower on move
+      x86.pswapd(mm5,mm1);  // Swap upper and lower on move
+    }
+    x86.paddd(mm6, mm0);    // First ready in lower
+    x86.paddd(mm5, mm1);    // First ready in lower
+
+    x86.movq(mm4, qword_ptr [ebx+8]);
+    x86.punpckldq(mm6,mm5);  // Move mm5 lower to mm6 upper
+
+// Element 2/3
+    x86.movq(mm0, mm2);
+    x86.movq(mm1, mm3);
+
+    x86.pmaddwd(mm0,mm4);  // Part 1/3
+    x86.pmaddwd(mm1,mm4);  // mm4 free
+
+    if (!isse) {
+      x86.movq(mm7,mm0);
+      x86.movq(mm5,mm1);
+      x86.psrlq(mm7, 32);
+      x86.psrlq(mm5, 32);
+    } else {
+      x86.pswapd(mm7,mm0);  // Swap upper and lower on move
+      x86.pswapd(mm5,mm1);  // Swap upper and lower on move
+    }
+
+    x86.movq(mm4,qword_ptr [ebx+16]);
+    x86.paddd(mm7, mm0);    // First ready in lower
+
+    x86.pmaddwd(mm2,mm4);  // Part 1/3
+    x86.paddd(mm5, mm1);    // First ready in lower
+
+    x86.pmaddwd(mm3,mm4);  // mm4 free
+    x86.punpckldq(mm7,mm5);  // Move mm5 lower to mm7 upper
+
+// Element 3/3
+
+    if (!isse) {
+      x86.movq(mm4,mm2);
+      x86.movq(mm5,mm3);
+      x86.psrlq(mm4, 32);
+      x86.psrlq(mm5, 32);
+    } else {
+      x86.pswapd(mm4,mm2);  // Swap upper and lower on move
+      x86.pswapd(mm5,mm3);  // Swap upper and lower on move
+    }
+
+    x86.paddd(mm4, mm2);   // E3/3
+    x86.paddd(mm5, mm3);   // E3/3
+
+    x86.movq(mm0, qword_ptr[edx]);  // Load rounder
+    x86.punpckldq(mm4, mm5);  // Move mm5 lower to mm4 upper
+
+    x86.paddd(mm6, mm0);  // Add rounder  (1)
+    x86.paddd(mm7, mm0);  // Add rounder  (2)
+
+    x86.psrad(mm6, frac_bits);  // Shift down
+    x86.paddd(mm4, mm0);  // Add rounder  (3)
+
+    x86.psrad(mm7, frac_bits);  // Shift down
+    x86.movq(mm0,mm6);       // pixel 1
+
+    x86.psrad(mm4, frac_bits);  // Shift down
+
+    x86.punpckldq(mm0,mm7);  // Move mm7 lower to mm0 upper
+    x86.punpckhdq(mm6,mm7);  // Move mm6 high to low, put mm7 high in upper pixel 2
+
+    if (post_add) {
+      x86.movq(mm2, qword_ptr[eax]);
+    }
+
+    x86.packssdw(mm0, mm4);    // Pack results into words (pixel 1 ready)
+
+    if (isse) {
+      x86.pswapd(mm4,mm4);
+    } else {
+      x86.psrlq(mm4, 32);  // Shift down
+    }
+
+    x86.packssdw(mm6, mm4);    // Pack results into words (pixel 2 ready)
+
+    if (post_add) {
+      x86.paddw(mm0,mm2);
+      x86.paddw(mm6,mm2);
+    }
+
+    if (pre_add) {
+      x86.movq(mm2, qword_ptr[eax]);
+    }
+
+    if (dest_pixel_step == 4) {
+      x86.packuswb(mm0, mm6);    // Into bytes
+      x86. pxor(mm7,mm7);
+
+      x86.movq(qword_ptr[edi], mm0);  // Store
+    } else {
+      x86.packuswb(mm0, mm0);    // Into bytes
+      x86.packuswb(mm6, mm6);    // Into bytes
+
+      x86.movd(dword_ptr[edi], mm0);  // Store
+      x86.pxor(mm7,mm7);
+      x86.movd(dword_ptr[edi+dest_pixel_step], mm6);  // Store
+    }
+
+    x86.add(esi, src_pixel_step*2);
+    x86.add(edi, dest_pixel_step*2);
+  }
+  if (!unroll) {  // Loop on if not unrolling
+    x86.dec(ecx);
+    x86.jnz("loopback");
+  }
+
+  if (last_pix_mask) {
+    x86.mov(eax,(int)&last_pix); // Pointer to last pixel
+    x86.mov(ebx, dword_ptr[eax]);  // Load Stored pixel
+    x86.mov(ecx, dword_ptr[edi-dest_pixel_step]);  // Load new pixel
+    x86.and(ebx, last_pix_mask);
+    x86.and(ecx, last_pix_mask ^ 0xffffffff);
+    x86.or(ebx, ecx);
+    x86.mov(dword_ptr[edi-dest_pixel_step], ebx);  // Store new pixel
+  }
+
+   x86.emms();
+    // Restore registers
+   x86.pop(ebp);
+   x86.pop(edi);
+   x86.pop(esi);
+   x86.pop(edx);
+   x86.pop(ecx);
+   x86.pop(ebx);
+   x86.pop(eax);
+   x86.ret();
+  assembly = DynamicAssembledCode(x86, env, "ConvertMatrix: Dynamic MMX code could not be compiled.");
+}
+
+#else
+//165 fps
 /***
  *
  * (c) Klaus Post, 2005
@@ -896,13 +1332,21 @@ MatrixGenerator3x3::~MatrixGenerator3x3() {
  ***/
 
 void MatrixGenerator3x3::GenerateAssembly(int width, int frac_bits, IScriptEnvironment* env) {
-  __declspec(align(8))static const __int64 zeros = 0x0000000000000000;
 
   Assembler x86;   // This is the class that assembles the code.
   rounder = 0x0000000100000001 * (1<<(frac_bits-1)); 
 
   bool isse = !!(env->GetCPUFlags() & CPUF_INTEGER_SSE);
   bool unroll = false;   // Unrolled code ~30% slower on Athlon XP.
+
+  int last_pix_mask = 0;
+
+  if (dest_pixel_step == 3) 
+    last_pix_mask = 0xff000000;
+  if (dest_pixel_step == 2) 
+    last_pix_mask = 0xffff0000;
+  if (dest_pixel_step == 1) 
+    last_pix_mask = 0xffffff00;
 
   int loops = width;
 
@@ -932,10 +1376,17 @@ void MatrixGenerator3x3::GenerateAssembly(int width, int frac_bits, IScriptEnvir
   x86.mov(esi, dword_ptr [eax]); // eax no longer used
   x86.mov(ebx, dword_ptr [ebx]);
   x86.mov(edi, dword_ptr [edx]);  // edx no longer used
+
+  if (last_pix_mask) {
+    x86.mov(eax,(int)&last_pix); // Pointer to last pixel
+    x86.mov(edx, dword_ptr[edi+width*dest_pixel_step]);
+    x86.mov(dword_ptr[eax], edx);
+  }
+
   if (!(pre_add || post_add)) {
     x86.pxor(mm7,mm7);  // Cleared mmx register - Not touched!
   } else {
-    x86.mov(edx, (int)&zeros);
+    x86.pxor(mm5,mm5);  // Cleared mmx register - Overwritten on each pixel
   }
   x86.mov(eax,(int)&rounder);
   x86.movq(mm6, qword_ptr[eax]);  // Ones in mmx reg, eax no longer used
@@ -945,12 +1396,13 @@ void MatrixGenerator3x3::GenerateAssembly(int width, int frac_bits, IScriptEnvir
     x86.label("loopback");
     loops = 1;
   }
+  x86.pxor(mm5,mm5);
   for (int i=0; i<loops; i++) {
     x86.movd(mm0, dword_ptr[esi]);
     if (!(pre_add || post_add)) {
       x86.punpcklbw(mm0, mm7);     // Unpack bytes -> words
     } else {
-      x86.punpcklbw(mm0, qword_ptr[edx]);     // Unpack bytes -> words
+      x86.punpcklbw(mm0, mm5);     // Unpack bytes -> words
     }
     if (pre_add) {
       x86.paddw(mm0,mm7);
@@ -988,6 +1440,10 @@ void MatrixGenerator3x3::GenerateAssembly(int width, int frac_bits, IScriptEnvir
 
     x86.packssdw(mm0, mm2);    // Pack results into words
 
+    if (pre_add || post_add) {
+      x86.pxor(mm5,mm5);
+    }
+
     if (post_add) {
       x86.paddw(mm0,mm7);
     }
@@ -1002,6 +1458,17 @@ void MatrixGenerator3x3::GenerateAssembly(int width, int frac_bits, IScriptEnvir
     x86.dec(ecx);
     x86.jnz("loopback");
   }
+
+  if (last_pix_mask) {
+    x86.mov(eax,(int)&last_pix); // Pointer to last pixel
+    x86.mov(ebx, dword_ptr[eax]);  // Load Stored pixel
+    x86.mov(ecx, dword_ptr[edi-dest_pixel_step]);  // Load new pixel
+    x86.and(ebx, last_pix_mask);
+    x86.and(ecx, last_pix_mask ^ 0xffffffff);
+    x86.or(ebx, ecx);
+    x86.mov(dword_ptr[edi-dest_pixel_step], ebx);  // Store new pixel
+  }
+
   x86.emms();
     // Restore registers
    x86.pop(ebp);
@@ -1014,4 +1481,4 @@ void MatrixGenerator3x3::GenerateAssembly(int width, int frac_bits, IScriptEnvir
    x86.ret();
   assembly = DynamicAssembledCode(x86, env, "ConvertMatrix: Dynamic MMX code could not be compiled.");
 }
-
+#endif
