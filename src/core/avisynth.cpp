@@ -1592,7 +1592,7 @@ LinkedVideoFrameBuffer* ScriptEnvironment::GetFrameBuffer2(int size) {
   // Plan C: Steal the oldest, smallest free buffer that is greater in size
   if (j) {
     ++g_Mem_stats.PlanC;
-    InterlockedIncrement((long*)&i->sequence_number);  //  Signal to the cache that the vfb has been stolen
+    InterlockedIncrement((long*)&j->sequence_number);  //  Signal to the cache that the vfb has been stolen
     return j;
   }
 
