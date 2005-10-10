@@ -56,10 +56,10 @@ enum { AVISYNTH_INTERFACE_VERSION = 3 };
 #define in64 (__int64)(unsigned short)
 typedef unsigned long	Pixel;    // this will break on 64-bit machines!
 typedef unsigned long	Pixel32;
-typedef unsigned char Pixel8;
+typedef unsigned char	Pixel8;
 typedef long			PixCoord;
-typedef	long			PixDim;
-typedef	long			PixOffset;
+typedef long			PixDim;
+typedef long			PixOffset;
 
 
 /* Compiler-specific crap */
@@ -101,10 +101,10 @@ typedef	long			PixOffset;
 typedef float SFLOAT;
 
 enum {SAMPLE_INT8  = 1<<0,
-        SAMPLE_INT16 = 1<<1, 
-        SAMPLE_INT24 = 1<<2,    // Int24 is a very stupid thing to code, but it's supported by some hardware.
-        SAMPLE_INT32 = 1<<3,
-        SAMPLE_FLOAT = 1<<4};
+      SAMPLE_INT16 = 1<<1, 
+      SAMPLE_INT24 = 1<<2,    // Int24 is a very stupid thing to code, but it's supported by some hardware.
+      SAMPLE_INT32 = 1<<3,
+      SAMPLE_FLOAT = 1<<4};
 
 enum {
    PLANAR_Y=1<<0,
@@ -222,9 +222,10 @@ struct VideoInfo {
         return 16;
       case CS_YV12:
       case CS_I420:
-        return 12;
       case CS_YV411:
-        return 9;
+        return 12;
+//    case CS_YUV9:
+//      return 9;
       case CS_Y8:
         return 8;
       default:
@@ -321,7 +322,7 @@ class VideoFrameBuffer {
 
   friend class VideoFrame;
   friend class Cache;
-  friend class CacheMT;  // ::FIXME:: illegal extension
+  friend class CacheMT;  // ::FIXME:: illegal class extension
   friend class ScriptEnvironment;
   long refcount;
 
@@ -361,7 +362,7 @@ class VideoFrame {
 
   friend class ScriptEnvironment;
   friend class Cache;
-  friend class CacheMT;  // ::FIXME:: illegal extension
+  friend class CacheMT;  // ::FIXME:: illegal class extension
 
   VideoFrame(VideoFrameBuffer* _vfb, int _offset, int _pitch, int _row_size, int _height, int pixel_type);
   VideoFrame(VideoFrameBuffer* _vfb, int _offset, int _pitch, int _row_size, int _height, int _offsetU, int _offsetV, int _pitchUV, int _row_sizeUV, int _heightUV, int pixel_type);
@@ -398,6 +399,7 @@ public:
   int GetOffset(int plane) const { switch (plane) {case PLANAR_U: return offsetU;case PLANAR_V: return offsetV;default: return offset;}; }
 
   // in plugins use env->SubFrame()
+  //If you really want to use these remember to increase vfb->refcount before calling and decrement it afterwards.
   VideoFrame* Subframe(int rel_offset, int new_pitch, int new_row_size, int new_height) const;
   VideoFrame* Subframe(int rel_offset, int new_pitch, int new_row_size, int new_height, int rel_offsetU, int rel_offsetV, int pitchUV) const;
 
@@ -691,17 +693,17 @@ private:
 // For GetCPUFlags.  These are backwards-compatible with those in VirtualDub.
 enum {                    
                     /* slowest CPU to support extension */
-  CPUF_FORCE            = 0x01,   // N/A
-  CPUF_FPU              = 0x02,   // 386/486DX
-  CPUF_MMX              = 0x04,   // P55C, K6, PII
-  CPUF_INTEGER_SSE      = 0x08,   // PIII, Athlon
-  CPUF_SSE              = 0x10,   // PIII, Athlon XP/MP
-  CPUF_SSE2             = 0x20,   // PIV, Hammer
-  CPUF_3DNOW            = 0x40,   // K6-2
-  CPUF_3DNOW_EXT        = 0x80,   // Athlon
-  CPUF_X86_64           = 0xA0,   // Hammer (note: equiv. to 3DNow + SSE2, which
-                                  //         only Hammer will have anyway)
-  CPUF_SSE3             = 0x100,  // PIV+, Hammer
+  CPUF_FORCE        =  0x01,   //  N/A
+  CPUF_FPU          =  0x02,   //  386/486DX
+  CPUF_MMX          =  0x04,   //  P55C, K6, PII
+  CPUF_INTEGER_SSE  =  0x08,   //  PIII, Athlon
+  CPUF_SSE          =  0x10,   //  PIII, Athlon XP/MP
+  CPUF_SSE2         =  0x20,   //  PIV, Hammer
+  CPUF_3DNOW        =  0x40,   //  K6-2
+  CPUF_3DNOW_EXT    =  0x80,   //  Athlon
+  CPUF_X86_64       =  0xA0,   //  Hammer (note: equiv. to 3DNow + SSE2, which
+                               //          only Hammer will have anyway)
+  CPUF_SSE3         = 0x100,   //  PIV+, Hammer
 };
 #define MAX_INT 0x7fffffff
 #define MIN_INT -0x7fffffff  // ::FIXME:: research why this is not 0x80000000
