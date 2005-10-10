@@ -1605,8 +1605,8 @@ PClip FilteredResize::CreateResize(PClip clip, int target_width, int target_heig
     
     double subrange_width = args[2].AsFloat(vi.width), subrange_height = args[3].AsFloat(vi.height);
     // Crop style syntax
-    if (subrange_width  <= 0.0) subrange_width  = vi.width  - subrange_width;
-    if (subrange_height <= 0.0) subrange_height = vi.height - subrange_height;
+    if (subrange_width  <= 0.0) subrange_width  = vi.width  - subrange_left + subrange_width;
+    if (subrange_height <= 0.0) subrange_height = vi.height - subrange_top  + subrange_height;
     
     PClip result = clip;
     bool H = ((subrange_width != vi.width) || (target_width != vi.width));
