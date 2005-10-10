@@ -94,6 +94,7 @@ public:
   ConvertToY8(PClip src, int matrix, IScriptEnvironment* env);
   PVideoFrame __stdcall GetFrame(int n,IScriptEnvironment* env);
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);  
+  ~ConvertToY8();
 private:
   void convYUV422toY8(const unsigned char *src, unsigned char *py, int pitch1, int pitch2y, int width, int height);
   bool blit_luma_only;
@@ -111,6 +112,7 @@ public:
   ConvertRGBToYV24(PClip src, int matrix, IScriptEnvironment* env);
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
+  ~ConvertRGBToYV24();
 private:
   signed short* matrix;
   int offset_y;
