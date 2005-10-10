@@ -82,9 +82,15 @@ public:
 		else if (vi.IsYV12() || vi.IsYV24() || vi.IsY8())
 		{
 			TurnPlanFunc = TurnPlanar;
-    } else {
-      env->ThrowError("Turn: Image format not supported!");
-    }
+		}
+		else if (vi.IsPlanar() && (direction == 0)) // can only do 180
+		{
+			TurnPlanFunc = TurnPlanar;
+		}
+		else
+		{
+			env->ThrowError("Turn: Image format not supported!");
+		}
 	};
 
 	PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
