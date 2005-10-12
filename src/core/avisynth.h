@@ -116,6 +116,12 @@ enum {
    PLANAR_V_ALIGNED=PLANAR_V|PLANAR_ALIGNED,
   };
 
+class AvisynthError /* exception */ {
+public:
+  const char* const msg;
+  AvisynthError(const char* _msg) : msg(_msg) {}
+};
+
 struct VideoInfo {
   int width, height;    // width=0 means no video
   unsigned fps_numerator, fps_denominator;
@@ -195,8 +201,6 @@ struct VideoInfo {
   
   bool IsVPlaneFirst() const {return ((pixel_type & CS_YV12) == CS_YV12); }  // Don't use this 
   int BytesFromPixels(int pixels) const { return IsPlanar() ? pixels : pixels * (BitsPerPixel()>>3); }   // Will not work on planar images, but will return only luma planes
-  int RowSize() const { return BytesFromPixels(width); }  // Also only returns first plane on planar images
-  int BMPSize() const { if (IsPlanar()) {int p = height * ((RowSize()+3) & ~3); p+=p>>1; return p;  } return height * ((RowSize()+3) & ~3); }  // FIXME:  WRONG ON GENERAL PLANAR
   __int64 AudioSamplesFromFrames(__int64 frames) const { return (fps_numerator && HasVideo()) ? ((__int64)(frames) * audio_samples_per_second * fps_denominator / fps_numerator) : 0; }
   int FramesFromAudioSamples(__int64 samples) const { return (fps_denominator && HasAudio()) ? (int)((samples * (__int64)fps_numerator)/((__int64)fps_denominator * (__int64)audio_samples_per_second)) : 0; }
   __int64 AudioSamplesFromBytes(__int64 bytes) const { return HasAudio() ? bytes / BytesPerAudioSample() : 0; }
@@ -209,6 +213,56 @@ struct VideoInfo {
   void SetFieldBased(bool isfieldbased)  { if (isfieldbased) image_type|=IT_FIELDBASED; else  image_type&=~IT_FIELDBASED; }
   void Set(int property)  { image_type|=property; }
   void Clear(int property)  { image_type&=~property; }
+
+  int GetPlaneWidthSubsampling(int plane = 0) const {  // Subsampling in bitshifts!
+    if (!plane || plane == PLANAR_Y)  // No subsampling
+      return 0;
+    if (IsYV24())
+      return 0;
+    if (IsYV24() || IsYV16())
+      return 1;
+    if (IsYV411())
+      return 2;
+
+    throw AvisynthError("Filter error: GetPlaneWidthSubsampling called with unknown pixel type.");
+    return 0;
+  }
+
+  int GetPlaneHeightSubsampling(int plane = 0) const {  // Subsampling in bitshifts!
+    if (!plane || plane == PLANAR_Y)  // No subsampling
+      return 0;
+    if (IsYV12())
+      return 1;
+    if (IsYV24() || IsYV16() || IsYV411())
+      return 0;
+
+    throw AvisynthError("Filter error: GetPlaneHeightSubsampling called with unknown pixel type.");
+    return 0;
+  }
+
+  int RowSize(int plane = 0) const { 
+    if (!plane ||  plane == PLANAR_Y) {
+      return BytesFromPixels(width); 
+    }
+    if (IsY8()) {
+      return 0;
+    }
+    if (IsPlanar()) {
+      return BytesFromPixels(width)>>GetPlaneWidthSubsampling(plane); 
+    }
+    return BytesFromPixels(width); 
+  }
+
+  int BMPSize() const { 
+    if (IsPlanar()) {
+      // Y plane
+      int Ybytes = height * ((RowSize()+3) & ~3); 
+      int Ubytes = (Ybytes)>>(GetPlaneWidthSubsampling(PLANAR_U) + GetPlaneHeightSubsampling(PLANAR_U));
+      int Vbytes = (Ybytes)>>(GetPlaneWidthSubsampling(PLANAR_V) + GetPlaneHeightSubsampling(PLANAR_V));
+      return Ybytes+Ubytes+Vbytes;
+    } 
+    return height * ((RowSize()+3) & ~3); 
+  }  
 
   int BitsPerPixel() const { 
     switch (pixel_type) {
@@ -224,14 +278,13 @@ struct VideoInfo {
       case CS_I420:
       case CS_YV411:
         return 12;
-//    case CS_YUV9:
-//      return 9;
       case CS_Y8:
         return 8;
       default:
         return 0;
     }
   }
+
   int BytesPerChannelSample() const { 
     switch (sample_type) {
     case SAMPLE_INT8:
@@ -301,6 +354,7 @@ struct VideoInfo {
     if (IsYV12() && vi.IsYV12()) return TRUE;
     return FALSE;
   }
+
 
 };
 
@@ -617,11 +671,6 @@ public:
 };
 
 
-class AvisynthError /* exception */ {
-public:
-  const char* const msg;
-  AvisynthError(const char* _msg) : msg(_msg) {}
-};
 
 
 
