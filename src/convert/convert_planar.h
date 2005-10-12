@@ -68,7 +68,7 @@ public:
   MatrixGenerator3x3();
   ~MatrixGenerator3x3();
 protected:
-  void GenerateAssembly(int width, int faction_bits, IScriptEnvironment* env);
+  void GenerateAssembly(int width, int faction_bits, bool upper32_ones, IScriptEnvironment* env);
   void GeneratePacker(int width, IScriptEnvironment* env);
   DynamicAssembledCode assembly;
   DynamicAssembledCode unpacker;
