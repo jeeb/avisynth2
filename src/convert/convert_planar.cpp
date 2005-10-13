@@ -232,15 +232,15 @@ ConvertRGBToYV24::ConvertRGBToYV24(PClip src, int in_matrix, IScriptEnvironment*
     *m++ = (signed short)((219.0/255.0)*0.114*mulfac+0.5);  //B
     *m++ = (signed short)((219.0/255.0)*0.587*mulfac+0.5);  //G
     *m++ = (signed short)((219.0/255.0)*0.299*mulfac+0.5);  //R
-    *m++ = 0;  
+    *m++ = 0;
     *m++ = (signed short)((224.0/255.0)*0.500*mulfac+0.5);
     *m++ = (signed short)((224.0/255.0)*-0.331*mulfac+0.5);
     *m++ = (signed short)((224.0/255.0)*-0.169*mulfac+0.5);
-    *m++ = 0;  
+    *m++ = 0;
     *m++ = (signed short)((224.0/255.0)*-0.081*mulfac+0.5);
     *m++ = (signed short)((224.0/255.0)*-0.419*mulfac+0.5);
     *m++ = (signed short)((224.0/255.0)*0.5*mulfac+0.5);
-    *m++ = 0;  
+    *m++ = 0;
     offset_y = 16;
 
   } else if (in_matrix == PC_601) {
@@ -248,15 +248,15 @@ ConvertRGBToYV24::ConvertRGBToYV24(PClip src, int in_matrix, IScriptEnvironment*
     *m++ = (signed short)(0.114*mulfac+0.5);  //B
     *m++ = (signed short)(0.587*mulfac+0.5);  //G
     *m++ = (signed short)(0.299*mulfac+0.5);  //R
-    *m++ = 0;  
+    *m++ = 0;
     *m++ = (signed short)(0.500*mulfac+0.5);
     *m++ = (signed short)(-0.331*mulfac+0.5);
     *m++ = (signed short)(-0.169*mulfac+0.5);
-    *m++ = 0;  
+    *m++ = 0;
     *m++ = (signed short)(-0.081*mulfac+0.5);
     *m++ = (signed short)(-0.419*mulfac+0.5);
     *m++ = (signed short)(0.5*mulfac+0.5);
-    *m++ = 0;  
+    *m++ = 0;
     offset_y = 0;
   } else if (in_matrix == Rec709) {
     /*
@@ -268,30 +268,30 @@ ConvertRGBToYV24::ConvertRGBToYV24(PClip src, int in_matrix, IScriptEnvironment*
     *m++ = (signed short)((219.0/255.0)*0.0721*mulfac+0.5);  //B
     *m++ = (signed short)((219.0/255.0)*0.7154*mulfac+0.5);  //G
     *m++ = (signed short)((219.0/255.0)*0.2215*mulfac+0.5);  //R
-    *m++ = 0;  
+    *m++ = 0;
     *m++ = (signed short)((224.0/255.0)*0.5000*mulfac+0.5);
     *m++ = (signed short)((224.0/255.0)*-0.3855*mulfac+0.5);
     *m++ = (signed short)((224.0/255.0)*-0.1145*mulfac+0.5);
-    *m++ = 0;  
+    *m++ = 0;
     *m++ = (signed short)((224.0/255.0)*-0.0459*mulfac+0.5);
     *m++ = (signed short)((224.0/255.0)*-0.4556*mulfac+0.5);
     *m++ = (signed short)((224.0/255.0)*0.5016*mulfac+0.5);
-    *m++ = 0;  
+    *m++ = 0;
     offset_y = 16;
   } else if (in_matrix == PC_709) {
     signed short* m = matrix;
     *m++ = (signed short)(0.0721*mulfac+0.5);  //B
     *m++ = (signed short)(0.7154*mulfac+0.5);  //G
     *m++ = (signed short)(0.2215*mulfac+0.5);  //R
-    *m++ = 0;  
+    *m++ = 0;
     *m++ = (signed short)(0.5000*mulfac+0.5);
     *m++ = (signed short)(-0.3855*mulfac+0.5);
     *m++ = (signed short)(-0.1145*mulfac+0.5);
-    *m++ = 0;  
+    *m++ = 0;
     *m++ = (signed short)(-0.0459*mulfac+0.5);
     *m++ = (signed short)(-0.4556*mulfac+0.5);
     *m++ = (signed short)(0.5016*mulfac+0.5);
-    *m++ = 0;  
+    *m++ = 0;
     offset_y = 0;
   } else {
     _aligned_free(matrix);
@@ -324,7 +324,7 @@ PVideoFrame __stdcall ConvertRGBToYV24::GetFrame(int n, IScriptEnvironment* env)
   BYTE* dstU = dst->GetWritePtr(PLANAR_U);
   BYTE* dstV = dst->GetWritePtr(PLANAR_V);
 
-  if ((!(vi.width & 1)) && USE_DYNAMIC_COMPILER) {
+  if ((!(vi.width & 1)) && USE_DYNAMIC_COMPILER) { // Awidth ???
     int* i_dyn_dest = (int*)dyn_dest;
     for (int y = 0; y < vi.height; y++) {
       dyn_src = (unsigned char*)&srcp[(vi.height-y-1)*src->GetPitch()];
@@ -1057,7 +1057,299 @@ void MatrixGenerator3x3::GeneratePacker(int width, IScriptEnvironment* env) {
   x86.ret();
   packer = DynamicAssembledCode(x86, env, "ConvertMatrix: Dynamic MMX code could not be compiled.");
 }
+/*
 
+------------------------------------------				;
+
+			mov			eax,dword_ptr[unpck_src+0]		; Plane 1
+			mov			ebx,dword_ptr[unpck_src+4]		; Plane 2
+			mov			ecx,dword_ptr[unpck_src+8]		; Plane 3
+			mov			edi,dword_ptr[unpck_dst]		; Dest
+                                                  
+			pxor		mm6,mm6							; 
+			xor			esi,esi							; 
+			mov			edx,loops						; 
+loopback:
+			movd		mm0,dword_ptr[eax+esi]			; ........P1P1p1p1
+			pxor		mm7,mm7							; 
+			movd		mm1,dword_ptr[ebx+esi]			; ........P2P2p2p2
+			punpcklbw	mm0,mm6							; ..P1..P1..p1..p1
+			movd		mm2,dword_ptr[ecx+esi]			; ........P3P3p3p3
+			punpcklbw	mm1,mm6							; ..P2..P2..p2..p2
+			movq		mm3,mm0							; ..P1..P1..p1..p1
+			punpcklbw	mm2,mm6							; ..P3..P3..p3..p3
+			movq		mm4,mm1							; ..P2..P2..p2..p2
+			punpcklwd	mm0,mm6							; ......p1......p1  low
+			movq		mm5,mm2							; ..P3..P3..p3..p3
+			punpcklwd	mm1,mm6							; ......p2......p2  low
+			punpcklwd	mm6,mm2							; ..p3......p3....  low
+			por			mm0,qword_ptr[rounder_ones]		; 01....p101....p1  low
+			punpckhwd	mm3,mm7							; ......P1......P1  high
+			psllq		mm1,8							; ....p2......p2..  low
+			punpckhwd	mm4,mm7							; ......P2......P2  high
+			por			mm0,mm6							; ..p3..p1..p3..p1  low
+			psllq		mm4,8							; ....P2......P2..  high
+			por			mm3,qword_ptr[rounder_ones]		; 01....P101....P1  high
+			punpckhwd	mm7,mm5							; ..P3......P3....  high
+			por			mm0,mm1							; ..p3p2p1..p3p2p1  low
+			por			mm3,mm4							; ....P2P1....P2P1  high
+			movq		qword_ptr[edi+esi*4], mm0		; ..p3p2p1..p3p2p1  low
+			por			mm3,mm7							; ..P3P2P1..P3P2P1  high
+			pxor		mm6,mm6							; 
+			movq		qword_ptr[edi+esi*4+8], mm3		; ..P3P2P1..P3P2P1  high
+			add			esi, 4							; 
+			dec			edx								; 
+			jnz			loopback
+			emms
+
+
+------------------------------------------;
+
+
+
+// 4 Pixels per loop Packer
+===========================
+			mov			eax,dword_ptr[unpck_src+0]		; Plane 1
+			mov			ebx,dword_ptr[unpck_src+4]		; Plane 2
+			mov			ecx,dword_ptr[unpck_src+8]		; Plane 3
+			mov			edi,dword_ptr[unpck_dst]		; Dest
+                                                  
+			movd		mm7,dword_ptr[rounder_seed]		; ........+1+1+1+1
+			xor			esi,esi							; 
+			mov			edx,loops						; 
+loopback:
+			movd		mm0,dword_ptr[eax+esi]			; ........P1P1p1p1
+			movd		mm2,dword_ptr[ecx+esi]			; ........P3P3p3p3
+			punpcklbw	mm0,qword_ptr[ebx+esi]			; P2P1P2P1p2p1p2p1
+			punpcklbw	mm2,mm7							; +1P3+1P3+1p3+1p3
+			movq		mm1,mm0							; P2P1P2P1p2p1p2p1
+			punpcklwd	mm0,mm2							; +1p3p2p1+1p3p2p1
+			punpckhwd	mm1,mm2							; +1P3P2P1+1P3P2P1
+			movq		qword_ptr[edi+esi*4+0],mm0		; +1p3p2p1+1p3p2p1
+			movq		qword_ptr[edi+esi*4+8],mm1		; +1P3P2P1+1P3P2P1
+
+			add			esi, 4							; 
+			dec			edx								; 
+			jnz			loopback
+
+			emms
+
+
+2 movdmem (3+1ma) punpck 1 movq 2 memmovq 1 loop
+4         (6+2ma)        2      4         2
+------------------------------------------;
+2 movqmem (6+2ma) punpck 4 movq 4 memmovq 1 loop  =  2 movmem - 2 movq + 1 loop
+
+
+
+// 8 Pixels per loop Packer
+===========================
+			mov			eax,dword_ptr[unpck_src+0]		; Plane 1
+			mov			ebx,dword_ptr[unpck_src+4]		; Plane 2
+			mov			ecx,dword_ptr[unpck_src+8]		; Plane 3
+			mov			edi,dword_ptr[unpck_dst]		; Dest
+                                                  
+			movd		mm7,dword_ptr[rounder_seed]		; ........+1+1+1+1
+			punpckldq	mm7,mm7							; +1+1+1+1+1+1+1+1
+			xor			esi,esi							; 
+			mov			edx,loops						; 
+loopback:
+			movq		mm0,qword_ptr[eax+esi]			; S1R1Q1P1s1r1q1p1
+			movq		mm2,qword_ptr[ecx+esi]			; S3R3Q3P3s3r3q3p3
+
+			movq		mm4,mm0							; S1R1Q1P1s1r1q1p1
+			movq		mm6,mm2							; S3R3Q3P3s3r3q3p3
+
+			punpcklbw	mm0,qword_ptr[ebx+esi]			; s2s1r2r1q2q1p2p1
+			punpckhbw	mm4,qword_ptr[ebx+esi]			; S2S1R2R1Q2Q1P2P1
+			punpcklbw	mm2,mm7							; +1s3+1r3+1q3+1p3
+			punpckhbw	mm6,mm7							; +1S3+1R3+1Q3+1P3
+
+			movq		mm1,mm0							; s2s1r2r1q2q1p2p1
+			movq		mm5,mm4							; S2S1R2R1Q2Q1P2P1
+
+			punpcklwd	mm0,mm2							; +1q3q2q1+1p3p2p1
+			punpckhwd	mm1,mm2							; +1s3s2s1+1r3r2r1
+			punpcklwd	mm4,mm6							; +1Q3Q2Q1+1P3P2P1
+			punpckhwd	mm5,mm6							; +1S3S2S1+1R3R2R1
+
+			movq		qword_ptr[edi+esi*4+ 0],mm0		; +1q3q2q1+1p3p2p1
+			movq		qword_ptr[edi+esi*4+ 8],mm1		; +1s3s2s1+1r3r2r1
+			movq		qword_ptr[edi+esi*4+16],mm4		; +1Q3Q2Q1+1P3P2P1
+			movq		qword_ptr[edi+esi*4+24],mm5		; +1S3S2S1+1R3R2R1
+
+			add			esi, 8							; 
+			dec			edx								; 
+			jnz			loopback
+
+			emms
+
+
+
+------------------------------------------;
+*/
+
+/*
+void MatrixGenerator3x3::GenerateUnPacker(int width, IScriptEnvironment* env) {
+
+  Assembler x86;   // This is the class that assembles the code.
+
+  bool isse = !!(env->GetCPUFlags() & CPUF_INTEGER_SSE);
+
+  int loops = width / 4;
+
+
+  // Store registers
+  x86.push(eax);
+  x86.push(ebx);
+  x86.push(ecx);
+  x86.push(edx);
+  x86.push(esi);
+  x86.push(edi);
+  x86.push(ebp);
+
+  x86.mov(eax, (int)&unpck_src);
+  x86.mov(edx, (int)&unpck_dst);  
+
+  x86.mov(esi, dword_ptr [eax]); // Pointer to array of src planes
+  x86.mov(esi, dword_ptr [esi]); // Pointer to src plane
+  x86.mov(edx, dword_ptr [edx]);  // Load dest pointer
+  x86.mov(eax, dword_ptr [edx]); // Plane 1 dest
+  x86.mov(ebx, dword_ptr [edx+sizeof(BYTE*)]); // Plane 2 dest
+  x86.mov(ecx, dword_ptr [edx+sizeof(BYTE*)*2]); // Plane 3 dest  edx free
+
+  x86.pxor(mm6,mm6);
+  x86.xor(edi, edi);
+
+  x86.mov(edx, loops);
+  x86.label("loopback");
+
+  x86.movq(mm0, qword_ptr[esi+edi*4]);  //P1, P2
+  x86.movq(mm1, qword_ptr[esi+edi*4]);  //P3, P4
+
+--------------------------------------------;
+// 4 pixels per loop UnPacker
+===========================
+
+			movq		mm0,[esi+edi*4]		; XXP3P2P1xxp3p2p1
+			movq		mm1,[esi+edi*4+8]	; XXQ3Q2Q1xxq3q2q1
+
+			punpckldq	mm2,mm0				; xxp3p2p1........
+			punpckldq	mm3,mm1				; xxq3q2q1........
+
+			punpckhbw	mm2,mm0				; XXxxP3p3P2p2P1p1
+			punpckhbw	mm3,mm1				; XXxxQ3q3Q2q2Q1q1
+
+			movq		mm0,mm2				; XXxxP3p3P2p2P1p1
+
+			punpcklwd	mm2,mm3				; Q2q2P2p2Q1q1P1p1
+			punpckhwd	mm0,mm3				; XXxxXXxxQ3q3P3p3
+
+			movd		[eax+edi],mm2		;         Q1q1P1p1
+			punpckhdq	mm2,mm2				; Q2q2P2p2Q2q2P2p2
+			movd		[ecx+edi],mm0		;         Q3q3P3p3
+			movd		[ebx+edi],mm2		;         Q2q2P2p2
+
+			add			edi,4
+
+2 movqmem  7 punpck 1 movq 3 memmovd 1 loop
+4         14        2      6         2
+--------------------------------------------;
+4 movqmem 15 punpck 3 movq 3 memmovq 1 loop  =  -1 punpck -1 movq + 3 memmov + 1 loop
+// 8 pixels per loop UnPacker
+===========================
+
+			movq		mm0,[esi+edi*4]		; XXP3P2P1xxp3p2p1
+			movq		mm1,[esi+edi*4+8]	; XXQ3Q2Q1xxq3q2q1
+			movq		mm2,[esi+edi*4+16]	; XXR3R2R1xxr3r2r1
+			movq		mm3,[esi+edi*4+24]	; XXS3S2S1xxs3s2s1
+
+			punpckldq	mm4,mm0				; xxp3p2p1........
+			punpckldq	mm5,mm1				; xxq3q2q1........
+			punpckldq	mm6,mm2				; xxr3r2r1........
+			punpckldq	mm7,mm3				; xxs3s2s1........
+			
+			punpckhbw	mm4,mm0				; XXxxP3p3P2p2P1p1
+			punpckhbw	mm5,mm1				; XXxxQ3q3Q2q2Q1q1
+			punpckhbw	mm6,mm2				; XXxxR3r3R2r2R1r1
+			punpckhbw	mm7,mm3				; XXxxS3s3S2s2S1s1
+			
+			movq		mm0,mm4				; XXxxP3p3P2p2P1p1
+			movq		mm2,mm6				; XXxxR3r3R2r2R1r1
+
+			punpcklwd	mm4,mm5				; Q2q2P2p2Q1q1P1p1
+			punpckhwd	mm0,mm5				; XXxxXXxxQ3q3P3p3
+			punpcklwd	mm6,mm7				; S2s2R2r2S1s1R1r1
+			punpckhwd	mm2,mm7				; XXxxXXxxS3q3R3r3
+			
+			movq		mm1,mm4				; Q2q2P2p2Q1q1P1p1
+
+			punpckldq	mm4,mm6				; S1s1R1r1Q1q1P1p1
+			punpckhdq	mm1,mm6				; S2s2R2r2Q2q2P2p2
+			punpckldq	mm0,mm2				; S3s3R3r3Q3q3P3p3
+
+			movq		[eax+edi],mm4		; S1s1R1r1Q1q1P1p1
+			movq		[ebx+edi],mm1		; S2s2R2r2Q2q2P2p2
+			movq		[ecx+edi],mm0		; S3s3R3r3Q3q3P3p3
+
+			add			edi,8
+
+--------------------------------------------;
+4 movdmem (7+4mu) punpck 3 movq 3 memmovq 1 loop  =  (-8+4mu) punpck
+
+
+
+// 8 pixels per loop UnPacker :- alignment challanged version
+=============================
+
+; Please be aligned 16
+			movd		mm0,[esi+edi*4+ 0]	; [XXP3P2P1]-xxp3p2p1
+			movd		mm1,[esi+edi*4+ 8]	; [XXQ3Q2Q1]-xxq3q2q1
+			movd		mm2,[esi+edi*4+16]	; [XXR3R2R1]-xxr3r2r1
+			movd		mm3,[esi+edi*4+24]	; [XXS3S2S1]-xxs3s2s1
+; Groval to L1 cache!
+			punpcklbw	mm0,[esi+edi*4+ 4]	; XXxxP3p3P2p2P1p1
+			punpcklbw	mm1,[esi+edi*4+12]	; XXxxQ3q3Q2q2Q1q1
+			punpcklbw	mm2,[esi+edi*4+20]	; XXxxR3r3R2r2R1r1
+			punpcklbw	mm3,[esi+edi*4+28]	; XXxxS3s3S2s2S1s1
+			
+			movq		mm4,mm0				; XXxxP3p3P2p2P1p1
+			movq		mm6,mm2				; XXxxR3r3R2r2R1r1
+
+			punpcklwd	mm4,mm1				; Q2q2P2p2Q1q1P1p1
+			punpckhwd	mm0,mm1				; XXxxXXxxQ3q3P3p3
+			punpcklwd	mm6,mm3				; S2s2R2r2S1s1R1r1
+			punpckhwd	mm2,mm3				; XXxxXXxxS3q3R3r3
+			
+			movq		mm1,mm4				; Q2q2P2p2Q1q1P1p1
+
+			punpckldq	mm4,mm6				; S1s1R1r1Q1q1P1p1
+			punpckhdq	mm1,mm6				; S2s2R2r2Q2q2P2p2
+			punpckldq	mm0,mm2				; S3s3R3r3Q3q3P3p3
+
+			movq		[eax+edi],mm4		; S1s1R1r1Q1q1P1p1
+			movq		[ebx+edi],mm1		; S2s2R2r2Q2q2P2p2
+			movq		[ecx+edi],mm0		; S3s3R3r3Q3q3P3p3
+
+			add			edi,8
+
+--------------------------------------------;
+
+  x86.dec(edx);
+  x86.jnz("loopback");
+  x86.emms();
+    // Restore registers
+  x86.pop(ebp);
+  x86.pop(edi);
+  x86.pop(esi);
+  x86.pop(edx);
+  x86.pop(ecx);
+  x86.pop(ebx);
+  x86.pop(eax);
+  x86.ret();
+  unpacker = DynamicAssembledCode(x86, env, "ConvertMatrix: Dynamic MMX code could not be compiled.");
+}
+*/
 
 
 /***
