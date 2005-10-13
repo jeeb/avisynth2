@@ -136,15 +136,6 @@ struct VideoInfo {
     CS_PLANAR = 1<<31 // Probably should move and reserve this bit for 2.5 compatibility
   };
 
-  // Chroma placement bits 20 -> 23  ::FIXME:: Really want a Class to support this
-  enum {
-    CS_UNKNOWN_CHROMA_PLACEMENT = 0 <<20,
-    CS_MPEG1_CHROMA_PLACEMENT   = 1 <<20,
-    CS_MPEG2_CHROMA_PLACEMENT   = 2 <<20,
-    CS_YUY2_CHROMA_PLACEMENT    = 3 <<20,
-    CS_TOPLEFT_CHROMA_PLACEMENT = 4 <<20
-  };
-
   // Specific colorformats
   enum { CS_UNKNOWN = 0,
          CS_BGR24 = 1<<0 | CS_BGR | CS_INTERLEAVED,
@@ -176,6 +167,15 @@ struct VideoInfo {
     IT_BFF = 1<<0,
     IT_TFF = 1<<1,
     IT_FIELDBASED = 1<<2
+  };
+
+  // Chroma placement bits 20 -> 23  ::FIXME:: Really want a Class to support this
+  enum {
+    CS_UNKNOWN_CHROMA_PLACEMENT = 0 << 3,
+    CS_MPEG1_CHROMA_PLACEMENT   = 1 << 4,
+    CS_MPEG2_CHROMA_PLACEMENT   = 2 << 5,
+    CS_YUY2_CHROMA_PLACEMENT    = 3 << 6,
+    CS_TOPLEFT_CHROMA_PLACEMENT = 4 << 7
   };
 
   // useful functions of the above
@@ -254,6 +254,9 @@ struct VideoInfo {
   }
 
   int BMPSize() const { 
+    if (IsY8())
+      return height * ((RowSize()+3) & ~3); 
+
     if (IsPlanar()) {
       // Y plane
       int Ybytes = height * ((RowSize()+3) & ~3); 
