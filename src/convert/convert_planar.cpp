@@ -299,10 +299,16 @@ ConvertRGBToYV24::ConvertRGBToYV24(PClip src, int in_matrix, IScriptEnvironment*
     env->ThrowError("ConvertRGBToYV24: Unknown matrix.");
   }
   dyn_matrix = (BYTE*)matrix;
-  dyn_dest = (BYTE*)_aligned_malloc(vi.width * 4, 64);
+  dyn_dest = (BYTE*)_aligned_malloc(vi.width * 4 +32, 64);
   this->src_pixel_step = pixel_step;
   this->post_add = (offset_y & 0xffff) | ((__int64)(128 & 0xffff)<<16) | ((__int64)(128 & 0xffff)<<32);
   this->GenerateAssembly(vi.width, 15, false, env);
+
+  unpck_src = new const BYTE*[1];
+  unpck_dst = new BYTE*[3];
+  unpck_src[0] = dyn_dest;
+  this->GenerateUnPacker(vi.width+7, env);
+
 }
 
 ConvertRGBToYV24::~ConvertRGBToYV24() {
@@ -324,16 +330,32 @@ PVideoFrame __stdcall ConvertRGBToYV24::GetFrame(int n, IScriptEnvironment* env)
   BYTE* dstU = dst->GetWritePtr(PLANAR_U);
   BYTE* dstV = dst->GetWritePtr(PLANAR_V);
 
-  if ((!(vi.width & 1)) && USE_DYNAMIC_COMPILER) { // Awidth ???
+  int awidth = dst->GetRowSize(PLANAR_Y_ALIGNED);
+
+  bool wide_enough = (!(vi.width & 1)); // We need to check if input is wide enough
+
+  if (!wide_enough) {
+    if (src->GetPitch()-src->GetRowSize() >= (vi.BytesFromPixels(1)))
+      wide_enough = true;  // We have one more pixel (at least) in width.
+  }
+
+  if (wide_enough && USE_DYNAMIC_COMPILER) { 
     int* i_dyn_dest = (int*)dyn_dest;
     for (int y = 0; y < vi.height; y++) {
       dyn_src = (unsigned char*)&srcp[(vi.height-y-1)*src->GetPitch()];
       assembly.Call();
-      for (int x = 0; x < vi.width; x++) {
-        int p = i_dyn_dest[x];
-        dstY[x] = p&0xff;
-        dstU[x] = (p>>8)&0xff;
-        dstV[x] = (p>>16)&0xff;
+      if (awidth & 7) {  // Should never happend, as all planar formats must have mod8 pitch
+        for (int x = 0; x < vi.width; x++) {
+          int p = i_dyn_dest[x];
+          dstY[x] = p&0xff;
+          dstU[x] = (p>>8)&0xff;
+          dstV[x] = (p>>16)&0xff;
+        }
+      } else {
+        unpck_dst[0] = dstY;
+        unpck_dst[1] = dstU;
+        unpck_dst[2] = dstV;
+        this->unpacker.Call();
       }
       dstY += dst->GetPitch(PLANAR_Y);
       dstU += dst->GetPitch(PLANAR_U);
@@ -467,7 +489,7 @@ ConvertYV24ToRGB::ConvertYV24ToRGB(PClip src, int in_matrix, int _pixel_step, IS
     env->ThrowError("ConvertYV24ToRGB: Unknown matrix.");
   }
   dyn_matrix = (BYTE*)matrix;
-  dyn_src = (BYTE*)_aligned_malloc(vi.width * 4 + 8, 64);
+  dyn_src = (BYTE*)_aligned_malloc(vi.width * 4 + 32, 64);
   this->dest_pixel_step = pixel_step;
   this->pre_add = (offset_y & 0xffff) | ((__int64)(-128 & 0xffff)<<16) | ((__int64)(-128 & 0xffff)<<32);
   this->GenerateAssembly(vi.width, 13, true, env);
@@ -475,7 +497,7 @@ ConvertYV24ToRGB::ConvertYV24ToRGB(PClip src, int in_matrix, int _pixel_step, IS
   unpck_src = new const BYTE*[3];
   unpck_dst = new BYTE*[1];
   unpck_dst[0] = dyn_src;
-  this->GeneratePacker(vi.width+3, env);
+  this->GeneratePacker(vi.width+7, env);
 }
 
 ConvertYV24ToRGB::~ConvertYV24ToRGB() {
@@ -503,7 +525,7 @@ PVideoFrame __stdcall ConvertYV24ToRGB::GetFrame(int n, IScriptEnvironment* env)
   if ((!(vi.width & 1)) && USE_DYNAMIC_COMPILER) {
     int* i_dyn_src = (int*)dyn_src;
     for (int y = 0; y < vi.height; y++) {
-      if (awidth & 3) { // This should be very safe to assume
+      if (awidth & 7) { // This should be very safe to assume to never happend
         for (int x = 0; x < vi.width; x++) {
           i_dyn_src[x] = srcY[x] | (srcU[x] << 8 ) | (srcV[x] << 16) | (1<<24); 
         }
@@ -796,16 +818,33 @@ ConvertToPlanarGeneric::ConvertToPlanarGeneric(PClip src, int dst_space, bool in
                                                AVSValue* UsubSampling, AVSValue* VsubSampling,
                                                IScriptEnvironment* env) : GenericVideoFilter(src) {
   Y8input = vi.IsY8();
+
+  if (! (vi.IsYV12() || dst_space == VideoInfo::CS_YV12 || dst_space == VideoInfo::CS_I420)) {
+    interlaced = false;  // Ignore, if YV12 is not involved.
+  } 
+
+  if (interlaced)
+    vi.SetFieldBased(false);
+
   if (!Y8input) {
     Usource = new SwapUVToY(child, SwapUVToY::UToY8, env);  
     Vsource = new SwapUVToY(child, SwapUVToY::VToY8, env);
+    if (interlaced) Usource = new SeparateFields(Usource, env);
+    if (interlaced) Vsource = new SeparateFields(Vsource, env);
   }
+
   int uv_width = vi.width;
   int uv_height = vi.height;
+
+  if (interlaced && (vi.IsYV12() || dst_space == VideoInfo::CS_YV12 || dst_space == VideoInfo::CS_I420)) {
+    uv_height /=  2;
+  } 
+
   switch (dst_space) {
   case VideoInfo::CS_YV12:
   case VideoInfo::CS_I420:
-      uv_width /= 2; uv_height /= 2;
+      uv_width /= 2; 
+      uv_height /=  2;
       break;
     case VideoInfo::CS_YV24:
       uv_width /= 1; uv_height /= 1;
@@ -827,6 +866,7 @@ ConvertToPlanarGeneric::ConvertToPlanarGeneric(PClip src, int dst_space, bool in
   }
 
   vi.pixel_type = dst_space;
+
   if (!Y8input) {
     MitchellNetravaliFilter filter(1./3., 1./3.);
     UsubSampling[2] = AVSValue(Usource->GetVideoInfo().width+UsubSampling[0].AsFloat(0.0));
@@ -835,6 +875,8 @@ ConvertToPlanarGeneric::ConvertToPlanarGeneric(PClip src, int dst_space, bool in
     VsubSampling[3] = AVSValue(Vsource->GetVideoInfo().height+VsubSampling[1].AsFloat(0.0));
     Usource = FilteredResize::CreateResize(Usource, uv_width, uv_height, UsubSampling, &filter, env);
     Vsource = FilteredResize::CreateResize(Vsource, uv_width, uv_height, VsubSampling, &filter, env);
+    if (interlaced) Usource = new SelectEvery(new DoubleWeaveFields(Usource), 2, 0);
+    if (interlaced) Vsource = new SelectEvery(new DoubleWeaveFields(Vsource), 2, 0);
   }
 }
 
@@ -843,14 +885,14 @@ PVideoFrame __stdcall ConvertToPlanarGeneric::GetFrame(int n, IScriptEnvironment
   PVideoFrame dst = env->NewVideoFrame(vi);
 
   env->BitBlt(dst->GetWritePtr(PLANAR_Y), dst->GetPitch(PLANAR_Y), src->GetReadPtr(PLANAR_Y), src->GetPitch(PLANAR_Y), src->GetRowSize(PLANAR_Y_ALIGNED), src->GetHeight(PLANAR_Y));
-  if (!Y8input) {
-    src = Usource->GetFrame(n, env);
-    env->BitBlt(dst->GetWritePtr(PLANAR_U), dst->GetPitch(PLANAR_U), src->GetReadPtr(PLANAR_Y), src->GetPitch(PLANAR_Y), src->GetRowSize(PLANAR_Y_ALIGNED), src->GetHeight(PLANAR_Y));
-    src = Vsource->GetFrame(n, env);
-    env->BitBlt(dst->GetWritePtr(PLANAR_V), dst->GetPitch(PLANAR_V), src->GetReadPtr(PLANAR_Y), src->GetPitch(PLANAR_Y), src->GetRowSize(PLANAR_Y_ALIGNED), src->GetHeight(PLANAR_Y));
+  if (Y8input) {
+    memset(dst->GetWritePtr(PLANAR_U), 0x7f, dst->GetHeight(PLANAR_U)*dst->GetPitch(PLANAR_U));
+    memset(dst->GetWritePtr(PLANAR_V), 0x7f, dst->GetHeight(PLANAR_V)*dst->GetPitch(PLANAR_V));
   } else {
-    memset(dst->GetWritePtr(PLANAR_U), 128, dst->GetHeight(PLANAR_U)*dst->GetPitch(PLANAR_U));
-    memset(dst->GetWritePtr(PLANAR_V), 128, dst->GetHeight(PLANAR_V)*dst->GetPitch(PLANAR_V));
+    src = Usource->GetFrame(n, env);
+    env->BitBlt(dst->GetWritePtr(PLANAR_U), dst->GetPitch(PLANAR_U), src->GetReadPtr(PLANAR_Y), src->GetPitch(PLANAR_Y), src->GetRowSize(PLANAR_Y_ALIGNED), dst->GetHeight(PLANAR_U));
+    src = Vsource->GetFrame(n, env);
+    env->BitBlt(dst->GetWritePtr(PLANAR_V), dst->GetPitch(PLANAR_V), src->GetReadPtr(PLANAR_Y), src->GetPitch(PLANAR_Y), src->GetRowSize(PLANAR_Y_ALIGNED), dst->GetHeight(PLANAR_V));
   }
   return dst;
 }
@@ -871,10 +913,8 @@ AVSValue __cdecl ConvertToPlanarGeneric::CreateYV12(AVSValue args, void*, IScrip
     env->ThrowError("ConvertToYV12: Can only convert from Planar YUV.");
 
   bool interlaced = args[1].AsBool(false);
-  if (interlaced) clip = new SeparateFields(clip, env);
   AVSValue subs[4] = { 0.0, -0.5, 0.0, 0.0 }; // Move chroma down 0.5 lines
   clip = new ConvertToPlanarGeneric(clip ,VideoInfo::CS_YV12,args[1].AsBool(false),subs, subs, env);
-  if (interlaced) clip = new SelectEvery(new DoubleWeaveFields(clip), 2, 0);
   return clip;
 }
 
@@ -893,12 +933,8 @@ AVSValue __cdecl ConvertToPlanarGeneric::CreateYV16(AVSValue args, void*, IScrip
   if (!clip->GetVideoInfo().IsPlanar())
     env->ThrowError("ConvertToYV16: Can only convert from Planar YUV.");
 
-  bool interlaced = args[1].AsBool(false) && clip->GetVideoInfo().IsYV12();
-  if (interlaced) clip = new SeparateFields(clip, env);
-
   AVSValue subs[4] = { 0.0, 0.0, 0.0, 0.0 }; 
   clip = new ConvertToPlanarGeneric(clip ,VideoInfo::CS_YV16,args[1].AsBool(false),subs, subs, env);
-  if (interlaced) clip = new SelectEvery(new DoubleWeaveFields(clip), 2, 0);
   return clip;
 }
 
@@ -917,12 +953,8 @@ AVSValue __cdecl ConvertToPlanarGeneric::CreateYV24(AVSValue args, void*, IScrip
   if (!clip->GetVideoInfo().IsPlanar())
     env->ThrowError("ConvertToYV24: Can only convert from Planar YUV.");
 
-  bool interlaced = args[1].AsBool(false) && clip->GetVideoInfo().IsYV12();
-  if (interlaced) clip = new SeparateFields(clip, env);
-
   AVSValue subs[4] = { 0.0, 0.0, 0.0, 0.0 }; 
   clip = new ConvertToPlanarGeneric(clip ,VideoInfo::CS_YV24,args[1].AsBool(false),subs, subs, env);
-  if (interlaced) clip = new SelectEvery(new DoubleWeaveFields(clip), 2, 0);
   return clip;
 }
 
@@ -941,12 +973,8 @@ AVSValue __cdecl ConvertToPlanarGeneric::CreateYV411(AVSValue args, void*, IScri
   if (!clip->GetVideoInfo().IsPlanar())
     env->ThrowError("ConvertToYV411: Can only convert from Planar YUV.");
 
-  bool interlaced = args[1].AsBool(false) && clip->GetVideoInfo().IsYV12();
-  if (interlaced) clip = new SeparateFields(clip, env);
-
   AVSValue subs[4] = { 0.0, 0.0, 0.0, 0.0 }; 
   clip = new ConvertToPlanarGeneric(clip ,VideoInfo::CS_YV411,args[1].AsBool(false),subs, subs, env);
-  if (interlaced) clip = new SelectEvery(new DoubleWeaveFields(clip), 2, 0);
   return clip;
 }
 
@@ -964,17 +992,21 @@ MatrixGenerator3x3::~MatrixGenerator3x3() {
     aligned_rounder = 0;
   }
 }
+/***************************
+ * Planar to interleaved converter
+ *
+ * MMX code by IanB
+ ***************************/
 
 void MatrixGenerator3x3::GeneratePacker(int width, IScriptEnvironment* env) {
 
-  __declspec(align(8)) static const __int64 rounder_ones = 0x0100000001000000; 
+  __declspec(align(8)) static const __int64 rounder_ones = 0x0101010101010101; 
 
   Assembler x86;   // This is the class that assembles the code.
 
   bool isse = !!(env->GetCPUFlags() & CPUF_INTEGER_SSE);
 
-  int loops = width / 4;
-
+  int loops = width / 8;
 
   // Store registers
   x86.push(eax);
@@ -994,57 +1026,42 @@ void MatrixGenerator3x3::GeneratePacker(int width, IScriptEnvironment* env) {
   x86.mov(ebx, dword_ptr [esi+sizeof(BYTE*)]); // Plane 2
   x86.mov(ecx, dword_ptr [esi+sizeof(BYTE*)*2]); // Plane 3
   x86.mov(edi, dword_ptr [edx]);  // edx no longer used
+	x86.movq(mm7, qword_ptr[(int)&rounder_ones]);
 
-  x86.pxor(mm6,mm6);
   x86.xor(esi, esi);
 
   x86.mov(edx, loops);
   x86.label("loopback");
 
-  x86.movd(mm0, dword_ptr[eax+esi]);  //P1
-  x86.pxor(mm7,mm7);
+	x86.movq(mm0,qword_ptr[eax+esi]);			// S1R1Q1P1s1r1q1p1
+	x86.movq(mm2,qword_ptr[ecx+esi]);			// S3R3Q3P3s3r3q3p3
 
-  x86.movd(mm1, dword_ptr[ebx+esi]);  //P2
-  x86.punpcklbw(mm0,mm6); // 00P100P100P100P1
+	x86.movq(mm4,mm0);  						// S1R1Q1P1s1r1q1p1
+	x86.movq(mm6,mm2);  						// S3R3Q3P3s3r3q3p3
 
-  x86.movd(mm2, dword_ptr[ecx+esi]);  //P3
-  x86.punpcklbw(mm1,mm6);  // 00P200P200P200P2
+  x86.punpcklbw(mm0,qword_ptr[ebx+esi]);			// s2s1r2r1q2q1p2p1
+  x86.punpckhbw(mm4,qword_ptr[ebx+esi]);			// S2S1R2R1Q2Q1P2P1
+  x86.punpcklbw(mm2,mm7);					        		// +1s3+1r3+1q3+1p3
+  x86.punpckhbw(mm6,mm7);							        // +1S3+1R3+1Q3+1P3
 
-  x86.movq(mm3,mm0);
-  x86.punpcklbw(mm2,mm6); // 00P300P300P300P3
+  x86.movq(mm1,mm0);							// s2s1r2r1q2q1p2p1
+  x86.movq(mm5,mm4);							// S2S1R2R1Q2Q1P2P1
 
-  x86.movq(mm4,mm1);
-  x86.punpcklwd(mm0,mm6); // 000000P1000000P1  low
+  x86.punpcklwd(mm0,mm2);							// +1q3q2q1+1p3p2p1
+  x86.punpckhwd(mm1,mm2);							// +1s3s2s1+1r3r2r1
+  x86.punpcklwd(mm4,mm6);							// +1Q3Q2Q1+1P3P2P1
+  x86.punpckhwd(mm5,mm6);							// +1S3S2S1+1R3R2R1
 
-  x86.movq(mm5,mm2);
-  x86.punpcklwd(mm1,mm6); // 000000P2000000P2  low
+  x86.movq(qword_ptr[edi+esi*4+ 0],mm0);		// +1q3q2q1+1p3p2p1
+  x86.movq(qword_ptr[edi+esi*4+ 8],mm1);		// +1s3s2s1+1r3r2r1
+  x86.movq(qword_ptr[edi+esi*4+16],mm4);		// +1Q3Q2Q1+1P3P2P1
+  x86.movq(qword_ptr[edi+esi*4+24],mm5);		// +1S3S2S1+1R3R2R1
 
-  x86.punpcklwd(mm6,mm2); // 00P3000000P30000  low
-  x86.por(mm0,qword_ptr[(int)&rounder_ones]);       // 010000P1010000P1 low
-
-  x86.punpckhwd(mm3,mm7); // 000000P1000000P1  high
-  x86.psllq(mm1,8);        // 0000P2000000P200  low
-
-  x86.punpckhwd(mm4,mm7); // 000000P2000000P2  high
-  x86.por(mm0,mm6);       // 00P300P100P300P1 low
-
-  x86.psllq(mm4,8);        // 0000P2000000P200  high
-  x86.por(mm3,qword_ptr[(int)&rounder_ones]);       // 010000P1010000P1 high
-
-  x86.punpckhwd(mm7,mm5); // 00P3000000P30000  high
-  x86.por(mm0,mm1);       //  00P3P2P100P3P2P1 low
-
-  x86.por(mm3,mm4);       // 00P300P100P300P1 high
-  x86.movq(qword_ptr[edi+esi*4], mm0);
-
-  x86.por(mm3,mm7);   // 00P3P2P100P3P2P1 high
-  x86.pxor(mm6,mm6);
-
-  x86.movq(qword_ptr[edi+esi*4+8], mm3);
-  x86.add(esi, 4);
-
+  x86.add(esi, 8);
+  
   x86.dec(edx);
   x86.jnz("loopback");
+
   x86.emms();
     // Restore registers
   x86.pop(ebp);
@@ -1057,146 +1074,22 @@ void MatrixGenerator3x3::GeneratePacker(int width, IScriptEnvironment* env) {
   x86.ret();
   packer = DynamicAssembledCode(x86, env, "ConvertMatrix: Dynamic MMX code could not be compiled.");
 }
-/*
-
-------------------------------------------				;
-
-			mov			eax,dword_ptr[unpck_src+0]		; Plane 1
-			mov			ebx,dword_ptr[unpck_src+4]		; Plane 2
-			mov			ecx,dword_ptr[unpck_src+8]		; Plane 3
-			mov			edi,dword_ptr[unpck_dst]		; Dest
-                                                  
-			pxor		mm6,mm6							; 
-			xor			esi,esi							; 
-			mov			edx,loops						; 
-loopback:
-			movd		mm0,dword_ptr[eax+esi]			; ........P1P1p1p1
-			pxor		mm7,mm7							; 
-			movd		mm1,dword_ptr[ebx+esi]			; ........P2P2p2p2
-			punpcklbw	mm0,mm6							; ..P1..P1..p1..p1
-			movd		mm2,dword_ptr[ecx+esi]			; ........P3P3p3p3
-			punpcklbw	mm1,mm6							; ..P2..P2..p2..p2
-			movq		mm3,mm0							; ..P1..P1..p1..p1
-			punpcklbw	mm2,mm6							; ..P3..P3..p3..p3
-			movq		mm4,mm1							; ..P2..P2..p2..p2
-			punpcklwd	mm0,mm6							; ......p1......p1  low
-			movq		mm5,mm2							; ..P3..P3..p3..p3
-			punpcklwd	mm1,mm6							; ......p2......p2  low
-			punpcklwd	mm6,mm2							; ..p3......p3....  low
-			por			mm0,qword_ptr[rounder_ones]		; 01....p101....p1  low
-			punpckhwd	mm3,mm7							; ......P1......P1  high
-			psllq		mm1,8							; ....p2......p2..  low
-			punpckhwd	mm4,mm7							; ......P2......P2  high
-			por			mm0,mm6							; ..p3..p1..p3..p1  low
-			psllq		mm4,8							; ....P2......P2..  high
-			por			mm3,qword_ptr[rounder_ones]		; 01....P101....P1  high
-			punpckhwd	mm7,mm5							; ..P3......P3....  high
-			por			mm0,mm1							; ..p3p2p1..p3p2p1  low
-			por			mm3,mm4							; ....P2P1....P2P1  high
-			movq		qword_ptr[edi+esi*4], mm0		; ..p3p2p1..p3p2p1  low
-			por			mm3,mm7							; ..P3P2P1..P3P2P1  high
-			pxor		mm6,mm6							; 
-			movq		qword_ptr[edi+esi*4+8], mm3		; ..P3P2P1..P3P2P1  high
-			add			esi, 4							; 
-			dec			edx								; 
-			jnz			loopback
-			emms
 
 
-------------------------------------------;
+/***************************
+ * Interleaved to planar converter
+ *
+ * MMX code by IanB
+ ***************************/
 
 
-
-// 4 Pixels per loop Packer
-===========================
-			mov			eax,dword_ptr[unpck_src+0]		; Plane 1
-			mov			ebx,dword_ptr[unpck_src+4]		; Plane 2
-			mov			ecx,dword_ptr[unpck_src+8]		; Plane 3
-			mov			edi,dword_ptr[unpck_dst]		; Dest
-                                                  
-			movd		mm7,dword_ptr[rounder_seed]		; ........+1+1+1+1
-			xor			esi,esi							; 
-			mov			edx,loops						; 
-loopback:
-			movd		mm0,dword_ptr[eax+esi]			; ........P1P1p1p1
-			movd		mm2,dword_ptr[ecx+esi]			; ........P3P3p3p3
-			punpcklbw	mm0,qword_ptr[ebx+esi]			; P2P1P2P1p2p1p2p1
-			punpcklbw	mm2,mm7							; +1P3+1P3+1p3+1p3
-			movq		mm1,mm0							; P2P1P2P1p2p1p2p1
-			punpcklwd	mm0,mm2							; +1p3p2p1+1p3p2p1
-			punpckhwd	mm1,mm2							; +1P3P2P1+1P3P2P1
-			movq		qword_ptr[edi+esi*4+0],mm0		; +1p3p2p1+1p3p2p1
-			movq		qword_ptr[edi+esi*4+8],mm1		; +1P3P2P1+1P3P2P1
-
-			add			esi, 4							; 
-			dec			edx								; 
-			jnz			loopback
-
-			emms
-
-
-2 movdmem (3+1ma) punpck 1 movq 2 memmovq 1 loop
-4         (6+2ma)        2      4         2
-------------------------------------------;
-2 movqmem (6+2ma) punpck 4 movq 4 memmovq 1 loop  =  2 movmem - 2 movq + 1 loop
-
-
-
-// 8 Pixels per loop Packer
-===========================
-			mov			eax,dword_ptr[unpck_src+0]		; Plane 1
-			mov			ebx,dword_ptr[unpck_src+4]		; Plane 2
-			mov			ecx,dword_ptr[unpck_src+8]		; Plane 3
-			mov			edi,dword_ptr[unpck_dst]		; Dest
-                                                  
-			movd		mm7,dword_ptr[rounder_seed]		; ........+1+1+1+1
-			punpckldq	mm7,mm7							; +1+1+1+1+1+1+1+1
-			xor			esi,esi							; 
-			mov			edx,loops						; 
-loopback:
-			movq		mm0,qword_ptr[eax+esi]			; S1R1Q1P1s1r1q1p1
-			movq		mm2,qword_ptr[ecx+esi]			; S3R3Q3P3s3r3q3p3
-
-			movq		mm4,mm0							; S1R1Q1P1s1r1q1p1
-			movq		mm6,mm2							; S3R3Q3P3s3r3q3p3
-
-			punpcklbw	mm0,qword_ptr[ebx+esi]			; s2s1r2r1q2q1p2p1
-			punpckhbw	mm4,qword_ptr[ebx+esi]			; S2S1R2R1Q2Q1P2P1
-			punpcklbw	mm2,mm7							; +1s3+1r3+1q3+1p3
-			punpckhbw	mm6,mm7							; +1S3+1R3+1Q3+1P3
-
-			movq		mm1,mm0							; s2s1r2r1q2q1p2p1
-			movq		mm5,mm4							; S2S1R2R1Q2Q1P2P1
-
-			punpcklwd	mm0,mm2							; +1q3q2q1+1p3p2p1
-			punpckhwd	mm1,mm2							; +1s3s2s1+1r3r2r1
-			punpcklwd	mm4,mm6							; +1Q3Q2Q1+1P3P2P1
-			punpckhwd	mm5,mm6							; +1S3S2S1+1R3R2R1
-
-			movq		qword_ptr[edi+esi*4+ 0],mm0		; +1q3q2q1+1p3p2p1
-			movq		qword_ptr[edi+esi*4+ 8],mm1		; +1s3s2s1+1r3r2r1
-			movq		qword_ptr[edi+esi*4+16],mm4		; +1Q3Q2Q1+1P3P2P1
-			movq		qword_ptr[edi+esi*4+24],mm5		; +1S3S2S1+1R3R2R1
-
-			add			esi, 8							; 
-			dec			edx								; 
-			jnz			loopback
-
-			emms
-
-
-
-------------------------------------------;
-*/
-
-/*
 void MatrixGenerator3x3::GenerateUnPacker(int width, IScriptEnvironment* env) {
 
   Assembler x86;   // This is the class that assembles the code.
 
   bool isse = !!(env->GetCPUFlags() & CPUF_INTEGER_SSE);
 
-  int loops = width / 4;
+  int loops = width / 8;
 
 
   // Store registers
@@ -1227,114 +1120,40 @@ void MatrixGenerator3x3::GenerateUnPacker(int width, IScriptEnvironment* env) {
   x86.movq(mm0, qword_ptr[esi+edi*4]);  //P1, P2
   x86.movq(mm1, qword_ptr[esi+edi*4]);  //P3, P4
 
---------------------------------------------;
-// 4 pixels per loop UnPacker
-===========================
+  x86.movq(mm0,qword_ptr[esi+edi*4]);    //   XXP3P2P1xxp3p2p1
+  x86.movq(mm1,qword_ptr[esi+edi*4+8]);  //   XXQ3Q2Q1xxq3q2q1
+  x86.movq(mm2,qword_ptr[esi+edi*4+16]); //   XXR3R2R1xxr3r2r1
+  x86.movq(mm3,qword_ptr[esi+edi*4+24]); //   XXS3S2S1xxs3s2s1
 
-			movq		mm0,[esi+edi*4]		; XXP3P2P1xxp3p2p1
-			movq		mm1,[esi+edi*4+8]	; XXQ3Q2Q1xxq3q2q1
+  x86.punpckldq(mm4,mm0); //   xxp3p2p1........
+  x86.punpckldq(mm5,mm1); //   xxq3q2q1........
+  x86.punpckldq(mm6,mm2); //   xxr3r2r1........
+  x86.punpckldq(mm7,mm3); //   xxs3s2s1........
 
-			punpckldq	mm2,mm0				; xxp3p2p1........
-			punpckldq	mm3,mm1				; xxq3q2q1........
+  x86.punpckhbw(mm4,mm0); //   XXxxP3p3P2p2P1p1
+  x86.punpckhbw(mm5,mm1); //   XXxxQ3q3Q2q2Q1q1
+  x86.punpckhbw(mm6,mm2); //   XXxxR3r3R2r2R1r1
+  x86.punpckhbw(mm7,mm3); //   XXxxS3s3S2s2S1s1
 
-			punpckhbw	mm2,mm0				; XXxxP3p3P2p2P1p1
-			punpckhbw	mm3,mm1				; XXxxQ3q3Q2q2Q1q1
+  x86.movq(mm0,mm4);      //   XXxxP3p3P2p2P1p1
+  x86.movq(mm2,mm6);      //   XXxxR3r3R2r2R1r1
 
-			movq		mm0,mm2				; XXxxP3p3P2p2P1p1
+  x86.punpcklwd(mm4,mm5); //   Q2q2P2p2Q1q1P1p1
+  x86.punpckhwd(mm0,mm5); //   XXxxXXxxQ3q3P3p3
+  x86.punpcklwd(mm6,mm7); //   S2s2R2r2S1s1R1r1
+  x86.punpckhwd(mm2,mm7); //   XXxxXXxxS3q3R3r3
 
-			punpcklwd	mm2,mm3				; Q2q2P2p2Q1q1P1p1
-			punpckhwd	mm0,mm3				; XXxxXXxxQ3q3P3p3
+  x86.movq(mm1,mm4);      //   Q2q2P2p2Q1q1P1p1
+  x86.punpckldq(mm4,mm6); //   S1s1R1r1Q1q1P1p1
 
-			movd		[eax+edi],mm2		;         Q1q1P1p1
-			punpckhdq	mm2,mm2				; Q2q2P2p2Q2q2P2p2
-			movd		[ecx+edi],mm0		;         Q3q3P3p3
-			movd		[ebx+edi],mm2		;         Q2q2P2p2
+  x86.punpckhdq(mm1,mm6); //   S2s2R2r2Q2q2P2p2
+  x86.punpckldq(mm0,mm2); //   S3s3R3r3Q3q3P3p3
 
-			add			edi,4
-
-2 movqmem  7 punpck 1 movq 3 memmovd 1 loop
-4         14        2      6         2
---------------------------------------------;
-4 movqmem 15 punpck 3 movq 3 memmovq 1 loop  =  -1 punpck -1 movq + 3 memmov + 1 loop
-// 8 pixels per loop UnPacker
-===========================
-
-			movq		mm0,[esi+edi*4]		; XXP3P2P1xxp3p2p1
-			movq		mm1,[esi+edi*4+8]	; XXQ3Q2Q1xxq3q2q1
-			movq		mm2,[esi+edi*4+16]	; XXR3R2R1xxr3r2r1
-			movq		mm3,[esi+edi*4+24]	; XXS3S2S1xxs3s2s1
-
-			punpckldq	mm4,mm0				; xxp3p2p1........
-			punpckldq	mm5,mm1				; xxq3q2q1........
-			punpckldq	mm6,mm2				; xxr3r2r1........
-			punpckldq	mm7,mm3				; xxs3s2s1........
-			
-			punpckhbw	mm4,mm0				; XXxxP3p3P2p2P1p1
-			punpckhbw	mm5,mm1				; XXxxQ3q3Q2q2Q1q1
-			punpckhbw	mm6,mm2				; XXxxR3r3R2r2R1r1
-			punpckhbw	mm7,mm3				; XXxxS3s3S2s2S1s1
-			
-			movq		mm0,mm4				; XXxxP3p3P2p2P1p1
-			movq		mm2,mm6				; XXxxR3r3R2r2R1r1
-
-			punpcklwd	mm4,mm5				; Q2q2P2p2Q1q1P1p1
-			punpckhwd	mm0,mm5				; XXxxXXxxQ3q3P3p3
-			punpcklwd	mm6,mm7				; S2s2R2r2S1s1R1r1
-			punpckhwd	mm2,mm7				; XXxxXXxxS3q3R3r3
-			
-			movq		mm1,mm4				; Q2q2P2p2Q1q1P1p1
-
-			punpckldq	mm4,mm6				; S1s1R1r1Q1q1P1p1
-			punpckhdq	mm1,mm6				; S2s2R2r2Q2q2P2p2
-			punpckldq	mm0,mm2				; S3s3R3r3Q3q3P3p3
-
-			movq		[eax+edi],mm4		; S1s1R1r1Q1q1P1p1
-			movq		[ebx+edi],mm1		; S2s2R2r2Q2q2P2p2
-			movq		[ecx+edi],mm0		; S3s3R3r3Q3q3P3p3
-
-			add			edi,8
-
---------------------------------------------;
-4 movdmem (7+4mu) punpck 3 movq 3 memmovq 1 loop  =  (-8+4mu) punpck
-
-
-
-// 8 pixels per loop UnPacker :- alignment challanged version
-=============================
-
-; Please be aligned 16
-			movd		mm0,[esi+edi*4+ 0]	; [XXP3P2P1]-xxp3p2p1
-			movd		mm1,[esi+edi*4+ 8]	; [XXQ3Q2Q1]-xxq3q2q1
-			movd		mm2,[esi+edi*4+16]	; [XXR3R2R1]-xxr3r2r1
-			movd		mm3,[esi+edi*4+24]	; [XXS3S2S1]-xxs3s2s1
-; Groval to L1 cache!
-			punpcklbw	mm0,[esi+edi*4+ 4]	; XXxxP3p3P2p2P1p1
-			punpcklbw	mm1,[esi+edi*4+12]	; XXxxQ3q3Q2q2Q1q1
-			punpcklbw	mm2,[esi+edi*4+20]	; XXxxR3r3R2r2R1r1
-			punpcklbw	mm3,[esi+edi*4+28]	; XXxxS3s3S2s2S1s1
-			
-			movq		mm4,mm0				; XXxxP3p3P2p2P1p1
-			movq		mm6,mm2				; XXxxR3r3R2r2R1r1
-
-			punpcklwd	mm4,mm1				; Q2q2P2p2Q1q1P1p1
-			punpckhwd	mm0,mm1				; XXxxXXxxQ3q3P3p3
-			punpcklwd	mm6,mm3				; S2s2R2r2S1s1R1r1
-			punpckhwd	mm2,mm3				; XXxxXXxxS3q3R3r3
-			
-			movq		mm1,mm4				; Q2q2P2p2Q1q1P1p1
-
-			punpckldq	mm4,mm6				; S1s1R1r1Q1q1P1p1
-			punpckhdq	mm1,mm6				; S2s2R2r2Q2q2P2p2
-			punpckldq	mm0,mm2				; S3s3R3r3Q3q3P3p3
-
-			movq		[eax+edi],mm4		; S1s1R1r1Q1q1P1p1
-			movq		[ebx+edi],mm1		; S2s2R2r2Q2q2P2p2
-			movq		[ecx+edi],mm0		; S3s3R3r3Q3q3P3p3
-
-			add			edi,8
-
---------------------------------------------;
-
+  x86.movq(qword_ptr[eax+edi],mm4); //   S1s1R1r1Q1q1P1p1
+  x86.movq(qword_ptr[ebx+edi],mm1); //   S2s2R2r2Q2q2P2p2
+  x86.movq(qword_ptr[ecx+edi],mm0); //   S3s3R3r3Q3q3P3p3
+ 
+  x86.add(edi,8);
   x86.dec(edx);
   x86.jnz("loopback");
   x86.emms();
@@ -1349,7 +1168,8 @@ void MatrixGenerator3x3::GenerateUnPacker(int width, IScriptEnvironment* env) {
   x86.ret();
   unpacker = DynamicAssembledCode(x86, env, "ConvertMatrix: Dynamic MMX code could not be compiled.");
 }
-*/
+
+
 
 
 /***
@@ -1614,87 +1434,3 @@ void MatrixGenerator3x3::GenerateAssembly(int width, int frac_bits, bool upper32
 }
 
 
-/*
-              mov       esi, dyn_src
-              mov       ebx, dyn_matrix
-              mov       edi, dyn_dest
-
-              movq      mm6, rounder	           ; Ones in mmx reg
-              movq      mm7, pre_add // post_add // pxor mm7, mm7
-
-              mov       ecx, loops	
-loopback:
-              movd      mm0, dword_ptr[esi]	       ; 0|0|0|0|d|c|b|a
-              punpcklbw mm0, zeros // mm7          ; 0d|0c|0b|0a
-if(pre_add)   paddw     mm0, mm7                   ; += k3|k2|k1|k0
-              movq      mm1, mm0	
-              movq      mm2, mm0	
-
-              pmaddwd	mm0, qword_ptr[ebx]	       ; m3*0d+m2*0c|m1*0b+m0*0a
-              pmaddwd	mm1, qword_ptr[ebx+8]
-              pmaddwd	mm2, qword_ptr[ebx+16]
-
-              pswapd	mm3, mm0           	       ; m1*0b+m0*0a|m3*0d+m2*0c
-              pswapd	mm4, mm1
-              pswapd	mm5, mm2
-
-              paddd     mm0, mm3           	       ; X=m3*0d+m2*0c+m1*0b+m0*0a|...
-              paddd     mm1, mm4                   ; Y=...
-              paddd     mm2, mm5                   ; Z=...
-
-              punpckldq	mm0, mm1                   ; YYYY|XXXX
-
-              paddd     mm0, mm6                   ; += 0.5
-              paddd     mm2, mm6
-              psrad     mm0, frac_bits             ; /= 8192
-              psrad     mm2, frac_bits	  
-              packssdw  mm0, mm2                   ; ZZ|ZZ|YY|XX
-if(post_add)  paddw     mm0, mm7                   ; += k3|k2|k1|k0
-              packuswb  mm0, mm0                   ; Z|Z|Y|X|Z|Z|Y|X
-              movd      dword_ptr[edi], mm0
-
-              add       esi, src_pixel_step	
-              add       edi, dest_pixel_step	
-              dec       ecx	
-              jnz       loopback
-              emms
-=======================================
-This arrangement should be 10% faster
-Arrange for m3*0d = 1 << (frac_bits-1)
-
-              mov       esi, dyn_src
-              mov       ebx, dyn_matrix
-              mov       edi, dyn_dest
-
-              movq      mm7, pre_add // post_add
-              pxor      mm6, mm6
-
-              mov       ecx, loops
-loopback:
-              movd      mm0, dword_ptr[esi]        ; 0|0|0|0|d|c|b|a
-              punpcklbw mm0, mm6                   ; 0d|0c|0b|0a
-if(pre_add)   paddw     mm0, mm7                   ; += k3|k2|k1|k0
-              movq      mm1, mm0
-              pmaddwd   mm0, qword_ptr[ebx]        ; m3*0d+m2*0c|m1*0b+m0*0a
-              movq      mm2, mm1
-              pmaddwd   mm1, qword_ptr[ebx+8]
-              punpckldq mm3, mm0                   ; m1*0b+m0*0a|????
-              pmaddwd   mm2, qword_ptr[ebx+16]
-              punpckldq mm4, mm1
-              paddd     mm0, mm3                   ; X=m3*0d+m2*0c+m1*0b+m0*0a|????
-              punpckldq mm5, mm2
-              paddd     mm1, mm4                   ; Y=...
-              paddd     mm2, mm5                   ; Z=...
-              punpckhdq mm0, mm1                   ; YYYY|XXXX
-              psraq     mm2, frac_bits+32  
-              psrad     mm0, frac_bits
-              add       esi, src_pixel_step
-              packssdw  mm0, mm2                   ; ??|ZZ|YY|XX
-if(post_add)  paddw     mm0, mm7                   ; += k3|k2|k1|k0
-              add       edi, dest_pixel_step
-              packuswb  mm0, mm0                   ; ?|Z|Y|X|?|Z|Y|X
-              dec       ecx
-              movd      dword_ptr[edi-dest_pixel_step], mm0
-              jnz       loopback
-              emms
-*/

@@ -70,6 +70,7 @@ public:
 protected:
   void GenerateAssembly(int width, int faction_bits, bool upper32_ones, IScriptEnvironment* env);
   void GeneratePacker(int width, IScriptEnvironment* env);
+  void GenerateUnPacker(int width, IScriptEnvironment* env);
   DynamicAssembledCode assembly;
   DynamicAssembledCode unpacker;
   DynamicAssembledCode packer;
