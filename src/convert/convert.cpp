@@ -279,6 +279,8 @@ AVSValue __cdecl ConvertToYV12::Create(AVSValue args, void*, IScriptEnvironment*
   if (vi.IsYV12()) return clip;
   if (vi.IsYUY2())
     return  new ConvertToYV12(clip,args[1].AsBool(false),env);
+  if (vi.IsRGB())
+    return ConvertToPlanarGeneric::CreateYV12(args,0,env);
   if (vi.IsPlanar())
     return ConvertToPlanarGeneric::CreateYV12(args,0,env);
   return clip;
