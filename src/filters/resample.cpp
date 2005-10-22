@@ -156,20 +156,10 @@ DynamicAssembledCode FilteredResizeH::GenerateResizer(int gen_plane, IScriptEnvi
   int vi_dst_width;
   int vi_src_width;
 
-  if (vi.IsYV12() || vi.IsYV16()) {
-    vi_height = (gen_plane == PLANAR_Y) ? vi.height : (vi.height/2);
-    vi_dst_width = (gen_plane == PLANAR_Y) ? vi.width : (vi.width/2);
-    vi_src_width = (gen_plane == PLANAR_Y) ? original_width : (original_width/2);
-  } else if (vi.IsYV24()){
-    vi_height = vi.height;
-    vi_dst_width = vi.width;
-    vi_src_width = original_width;
-  } else if (vi.IsY8()) {
-    vi_height = (gen_plane == PLANAR_Y) ? vi.height : 0;
-    vi_dst_width = (gen_plane == PLANAR_Y) ? vi.width : 0;
-    vi_src_width = (gen_plane == PLANAR_Y) ? original_width : 0;
-  } else {
-    env->ThrowError("ResizeH: Unknown colorspace");
+  if (vi.IsPlanar()) {
+    vi_height = vi.height >> vi.GetPlaneHeightSubsampling(gen_plane);
+    vi_dst_width = vi.width >> vi.GetPlaneWidthSubsampling(gen_plane);
+    vi_src_width = original_width >> vi.GetPlaneWidthSubsampling(gen_plane);
   }
 
   int mod16_w = ((vi_src_width)/16);  // Src size!

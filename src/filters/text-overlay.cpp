@@ -984,6 +984,8 @@ PVideoFrame FilterInfo::GetFrame(int n, IScriptEnvironment* env)
       }
     }
 
+    const char* cpumsg = GetCpuMsg(env).c_str();
+
     char text[400];
     RECT r= { 32, 16, min(3440,vi.width*8), 868*2 };
     sprintf(text,
@@ -1012,7 +1014,7 @@ PVideoFrame FilterInfo::GetFrame(int n, IScriptEnvironment* env)
       ,s_type
       ,vi.audio_samples_per_second
       ,vi.num_audio_samples
-      ,GetCpuMsg(env).c_str()
+      ,cpumsg
     );
 
     DrawText(hdcAntialias, text, -1, &r, 0);
