@@ -223,6 +223,8 @@ struct VideoInfo {
       return 1;
     if (IsYV411())
       return 2;
+    if (IsY8())
+      throw AvisynthError("Filter error: GetPlaneWidthSubsampling not available on Y8 pixel type.");
 
     throw AvisynthError("Filter error: GetPlaneWidthSubsampling called with unknown pixel type.");
     return 0;
@@ -235,6 +237,8 @@ struct VideoInfo {
       return 1;
     if (IsYV24() || IsYV16() || IsYV411())
       return 0;
+    if (IsY8())
+      throw AvisynthError("Filter error: GetPlaneHeightSubsampling not available on Y8 pixel type.");
 
     throw AvisynthError("Filter error: GetPlaneHeightSubsampling called with unknown pixel type.");
     return 0;

@@ -983,40 +983,59 @@ PVideoFrame FilterInfo::GetFrame(int n, IScriptEnvironment* env)
         s_parity = vi.IsBFF() ? t_ABFF : t_BFF;
       }
     }
+    string s = GetCpuMsg(env);
+    const char* cpumsg = s.c_str();
 
-    const char* cpumsg = GetCpuMsg(env).c_str();
+    char text[800];
+    char text2[400];
+    RECT r= { 32, 16, min(3440,vi.width*8), 900*2 };
 
-    char text[400];
-    RECT r= { 32, 16, min(3440,vi.width*8), 868*2 };
+    int vLenInMsecs = 0;
+    int cPosInMsecs = 0;
+    if (vi.HasVideo()) {
+      vLenInMsecs = (int)(1000.0 * (double)vi.num_frames * (double)vi.fps_denominator / (double)vi.fps_numerator);
+      cPosInMsecs = (int)(1000.0 * (double)n * (double)vi.fps_denominator / (double)vi.fps_numerator);
+    }
+
     sprintf(text,
-      "Frame: %-8u / %-8u\n"
+      "Frame: %8u of %-8u\n"
+      "Time: %02d:%02d:%02d:%03d of %02d:%02d:%02d:%03d\n"
       "ColorSpace: %s\n"
       "Width:%4u pixels, Height:%4u pixels.\n"
       "Frames per second: %7.4f\n"
       "FieldBased (Separated) Video: %s\n"
       "Parity: %s\n"
       "Video Pitch: %4u bytes.\n"
-      "Has Audio: %s\n"
-      "Audio Channels: %-8u\n"
-      "Sample Type: %s\n"
-      "Samples Per Second: %4d\n"
-      "Audio length: %d samples.\n"
-      "CPU detected: %s\n"
       ,n, vi.num_frames
+      ,(cPosInMsecs/(60*60*1000)), (cPosInMsecs/(60*1000)) % 60, (cPosInMsecs/1000) % 60, cPosInMsecs % 1000
+      ,(vLenInMsecs/(60*60*1000)), (vLenInMsecs/(60*1000)) % 60, (vLenInMsecs/1000) % 60, vLenInMsecs % 1000
       ,c_space
       ,vi.width,vi.height
       ,(float)vi.fps_numerator/(float)vi.fps_denominator
       ,vi.IsFieldBased() ? t_YES : t_NO
       ,s_parity
       ,frame->GetPitch()
+    );
+    int aLenInMsecs = 0;
+    if (vi.HasAudio()) {
+      aLenInMsecs = (int)(1000.0 * (double)vi.num_audio_samples / (double)vi.audio_samples_per_second);
+    }
+    sprintf(text2,
+      "Has Audio: %s\n"
+      "Audio Channels: %-8u\n"
+      "Sample Type: %s\n"
+      "Samples Per Second: %4d\n"
+      "Audio length: %u%u samples. %02d:%02d:%02d:%03d\n"
+      "CPU detected: %s\n"
       ,vi.HasAudio() ? t_YES : t_NO
       ,vi.AudioChannels()
       ,s_type
       ,vi.audio_samples_per_second
-      ,vi.num_audio_samples
+      ,(unsigned int)(vi.num_audio_samples>>32),(unsigned int)(vi.num_audio_samples&0xfffffffff), (aLenInMsecs/(60*60*1000)), (aLenInMsecs/(60*1000)) % 60, (aLenInMsecs/1000) % 60, aLenInMsecs % 1000
       ,cpumsg
     );
 
+    strcat(text, text2);
     DrawText(hdcAntialias, text, -1, &r, 0);
     GdiFlush();
 

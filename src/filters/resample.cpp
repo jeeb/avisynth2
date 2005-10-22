@@ -119,7 +119,9 @@ FilteredResizeH::FilteredResizeH( PClip _child, double subrange_left, double sub
   if (use_dynamic_code) {
     if (vi.IsPlanar()) {
       assemblerY = GenerateResizer(PLANAR_Y, env);
-      assemblerUV = GenerateResizer(PLANAR_U, env);
+      if (!vi.IsY8()) {
+        assemblerUV = GenerateResizer(PLANAR_U, env);
+      }
     }
   }
 	}
@@ -422,6 +424,8 @@ PVideoFrame __stdcall FilteredResizeH::GetFrame(int n, IScriptEnvironment* env)
         if (src->GetRowSize(PLANAR_U)) {
           gen_src_pitch = src->GetPitch(PLANAR_U);
           gen_dst_pitch = dst->GetPitch(PLANAR_U);
+          if (vi.IsY8())  // Y8 is finished here
+            return dst;
           if (vi.IsVPlaneFirst()) {  // Process in order - also to avoid 2 byte overwrite, when rowsize=pitch=(mod6 rowsize).
             gen_srcp = (BYTE*)src->GetReadPtr(PLANAR_V);
             gen_dstp = dst->GetWritePtr(PLANAR_V);
