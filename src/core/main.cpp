@@ -505,11 +505,6 @@ bool CAVIFileSynth::DelayInit() {
         vi = &filter_graph->GetVideoInfo();
 /**** FORCED CONVERSIONS FOR NOW - ENABLE WHEN IMPLEMENTED  ****/
 /*
-        if (vi->IsY8()) {
-          AVSValue args[1] = { filter_graph };
-          filter_graph = env->Invoke("ConvertToYV12", AVSValue(args,1)).AsClip();
-          vi = &filter_graph->GetVideoInfo();
-        }
         if (vi->IsY16() || vi->IsYV411()) {
           AVSValue args[1] = { filter_graph };
           filter_graph = env->Invoke("ConvertToYUY2", AVSValue(args,1)).AsClip();
@@ -756,6 +751,8 @@ STDMETHODIMP_(LONG) CAVIStreamSynth::Info(AVISTREAMINFOW *psi, LONG lSize) {
         asi.fccHandler = '42VY'; 
       else if (vi->IsYV16()) 
         asi.fccHandler = '61VY'; 
+      else if (vi->IsYV411()) 
+        asi.fccHandler = 'B14Y'; 
       
       else {
         _ASSERT(FALSE);
@@ -958,11 +955,12 @@ STDMETHODIMP CAVIStreamSynth::ReadFormat(LONG lPos, LPVOID lpFormat, LONG *lpcbF
         bi.biCompression = '42VY'; 
       else if (vi->IsYV16()) 
         bi.biCompression = '61VY'; 
+      else if (vi->IsYV411()) 
+        bi.biCompression = 'B14Y'; 
       else {
         _ASSERT(FALSE);
       }
     bi.biSizeImage = vi->BMPSize();
-//    bi.biSizeImage = bi.biWidth * bi.biHeight * bi.biBitCount / 8;
     memcpy(lpFormat, &bi, min(size_t(*lpcbFormat), sizeof(bi)));
   }
   return S_OK;

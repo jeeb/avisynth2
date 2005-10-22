@@ -81,6 +81,7 @@ DWORD Distributor::getframes(LPVOID param){
 	}
 	delete((ScriptEnvironmentTLS*) TlsGetValue(TlsIndex));
 	ExitThread(0);
+  return 0;
 }
 
 void Distributor::AssignFramesToThread(int n){

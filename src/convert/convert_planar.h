@@ -38,7 +38,7 @@
 #define __Convert_PLANAR_H__
 
 #include "../internal.h"
-#include "../core/softwire_helpers.h"
+#include "convert_matrix.h"
 
 enum {Rec601=0, Rec709=1, PC_601=2, PC_709=3 };
 
@@ -62,31 +62,6 @@ static int getMatrix( const char* matrix, IScriptEnvironment* env) {
 }
 
 
-class MatrixGenerator3x3 : public  CodeGenerator
-{
-public:
-  MatrixGenerator3x3();
-  ~MatrixGenerator3x3();
-protected:
-  void GenerateAssembly(int width, int faction_bits, bool upper32_ones, IScriptEnvironment* env);
-  void GeneratePacker(int width, IScriptEnvironment* env);
-  void GenerateUnPacker(int width, IScriptEnvironment* env);
-  DynamicAssembledCode assembly;
-  DynamicAssembledCode unpacker;
-  DynamicAssembledCode packer;
-  BYTE* dyn_src;
-  BYTE* dyn_dest;
-  BYTE* dyn_matrix;
-  __int64 pre_add, post_add;
-  __int64 rounder;
-  int src_pixel_step;
-  int dest_pixel_step;
-  const BYTE** unpck_src;
-  BYTE** unpck_dst;
-private:
-  int last_pix;
-  __int64* aligned_rounder;
-};
 
 class ConvertToY8 : public GenericVideoFilter
 {

@@ -1183,8 +1183,8 @@ PVideoFrame ScriptEnvironment::NewPlanarVideoFrame(const VideoInfo& vi, int alig
       UVpitch = (pitch+1)>>1;  // UV plane, width = 1/2 byte per pixel - can't align UV planes seperately.
     } 
     else if (PlanarChromaAlignmentState) { // Align planes seperately
-      pitch = ((Ywidth+1)+align-1) / align * align;
-      UVpitch = ((UVwidth+1)+align-1) / align * align;
+      pitch = (Ywidth+align-1) / align * align;
+      UVpitch = (UVwidth+align-1) / align * align;
     }
     else { // Do legacy alignment
       pitch = (Ywidth+align-1) / align * align;  // Y plane, width = 1 byte per pixel
@@ -1193,8 +1193,8 @@ PVideoFrame ScriptEnvironment::NewPlanarVideoFrame(const VideoInfo& vi, int alig
   } else {
     if (align<0) align = -align;
 // Align planes seperately
-    pitch = ((Ywidth+1)+align-1) / align * align;
-    UVpitch = ((UVwidth+1)+align-1) / align * align;
+    pitch = (Ywidth+align-1) / align * align;
+    UVpitch = (UVwidth+align-1) / align * align;
   }
 
   int size = pitch *  Yheight + 2 * UVpitch * UVheight;

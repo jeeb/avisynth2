@@ -68,33 +68,38 @@ Greyscale::Greyscale(PClip _child, const char* matrix, IScriptEnvironment* env)
 PVideoFrame Greyscale::GetFrame(int n, IScriptEnvironment* env) 
 {
   PVideoFrame frame = child->GetFrame(n, env);
+  if (vi.IsY8())
+    return frame;
+
   env->MakeWritable(&frame);
   BYTE* srcp = frame->GetWritePtr();
   int pitch = frame->GetPitch();
   int myy = vi.height;
   int myx = vi.width;
-  if (vi.IsYV12()) {
-	pitch = frame->GetPitch(PLANAR_U)/4;
-	int *srcpUV = (int*)frame->GetWritePtr(PLANAR_U);
-	myx = frame->GetRowSize(PLANAR_U_ALIGNED)/4;
-	myy = frame->GetHeight(PLANAR_U);
-	  for (int y=0; y<myy; y++) {
-		for (int x=0; x<myx; x++) {
-		  srcpUV[x] = 0x80808080;  // mod 8
-		}
-		srcpUV += pitch;
-	  }
-	pitch = frame->GetPitch(PLANAR_V)/4;
-	srcpUV = (int*)frame->GetWritePtr(PLANAR_V);
-	myx = frame->GetRowSize(PLANAR_V_ALIGNED)/4;
-	myy = frame->GetHeight(PLANAR_V);
+
+  if (vi.IsPlanar()) {
+	  pitch = frame->GetPitch(PLANAR_U)/4;
+	  int *srcpUV = (int*)frame->GetWritePtr(PLANAR_U);
+	  myx = frame->GetRowSize(PLANAR_U_ALIGNED)/4;
+	  myy = frame->GetHeight(PLANAR_U);
+	    for (int y=0; y<myy; y++) {
+		  for (int x=0; x<myx; x++) {
+		    srcpUV[x] = 0x7f7f7f7f;  // mod 8
+		  }
+		  srcpUV += pitch;
+	    }
+	  pitch = frame->GetPitch(PLANAR_V)/4;
+	  srcpUV = (int*)frame->GetWritePtr(PLANAR_V);
+	  myx = frame->GetRowSize(PLANAR_V_ALIGNED)/4;
+	  myy = frame->GetHeight(PLANAR_V);
 	  for (y=0; y<myy; ++y) {
-		for (int x=0; x<myx; x++) {
-		  srcpUV[x] = 0x80808080;  // mod 8
-		}
-		srcpUV += pitch;
+		  for (int x=0; x<myx; x++) {
+		    srcpUV[x] = 0x7f7f7f7f;  // mod 8
+		  }
+		  srcpUV += pitch;
 	  }
   }
+
   else if (vi.IsYUY2() && (env->GetCPUFlags() & CPUF_MMX)) {
 	__declspec(align(8)) static const __int64 oxooffooffooffooff = 0x00ff00ff00ff00ff; 
 	__declspec(align(8)) static const __int64 ox80oo80oo80oo80oo = 0x8000800080008000; 

@@ -1284,9 +1284,11 @@ AVIReadHandler::AVIReadHandler(PAVIFILE paf) {
 		const char *s;
 
 		if (pAvisynthClipInfo->GetError(&s)) {
+      char* msg = strdup(s);
 			pAvisynthClipInfo->Release();
 			paf->Release();
-			throw MyError("Avisynth open failure:\n%s", s);
+			throw MyError("Avisynth open failure:%s\n", msg);
+      // msg will leak, but we are throwing an error.
 		}
 	}
 }
@@ -1898,6 +1900,10 @@ bool AVIReadHandler::_parseStreamHeader(List2<AVIStreamNode>& streamlist, DWORD 
 						case 'YVYU':
 						case 'UYVY':
 						case '21VY':
+						case '61VY':
+						case '42VY':
+						case 'B14Y':
+						case '008Y':
 						case '024I':
 						case 'P14Y':
 						case 'vuyc':

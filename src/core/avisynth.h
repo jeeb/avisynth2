@@ -199,7 +199,7 @@ struct VideoInfo {
   bool IsBFF() const { return !!(image_type & IT_BFF); }
   bool IsTFF() const { return !!(image_type & IT_TFF); }
   
-  bool IsVPlaneFirst() const {return ((pixel_type & CS_YV12) == CS_YV12); }  // Don't use this 
+  bool IsVPlaneFirst() const {return IsYV16()|| IsYV24() || IsYV411() || ((pixel_type & CS_YV12) == CS_YV12); }  // Don't use this 
   int BytesFromPixels(int pixels) const { return IsPlanar() ? pixels : pixels * (BitsPerPixel()>>3); }   // Will not work on planar images, but will return only luma planes
   __int64 AudioSamplesFromFrames(__int64 frames) const { return (fps_numerator && HasVideo()) ? ((__int64)(frames) * audio_samples_per_second * fps_denominator / fps_numerator) : 0; }
   int FramesFromAudioSamples(__int64 samples) const { return (fps_denominator && HasAudio()) ? (int)((samples * (__int64)fps_numerator)/((__int64)fps_denominator * (__int64)audio_samples_per_second)) : 0; }
@@ -263,10 +263,14 @@ struct VideoInfo {
 
     if (IsPlanar()) {
       // Y plane
-      int Ybytes = height * ((RowSize()+3) & ~3); 
-      int Ubytes = (Ybytes)>>(GetPlaneWidthSubsampling(PLANAR_U) + GetPlaneHeightSubsampling(PLANAR_U));
-      int Vbytes = (Ybytes)>>(GetPlaneWidthSubsampling(PLANAR_V) + GetPlaneHeightSubsampling(PLANAR_V));
-      return Ybytes+Ubytes+Vbytes;
+      int Ybytes = height * ((RowSize()+3) & ~3);
+      if (IsYV12()) {
+        int UVbytes = Ybytes/2;  // Legacy alignment
+        return Ybytes+UVbytes;
+      }
+      int UVbytes = (((RowSize()>>GetPlaneWidthSubsampling(PLANAR_U))+3) & ~3);
+      UVbytes *= (height>>GetPlaneHeightSubsampling(PLANAR_V)) * 2;
+      return Ybytes+UVbytes;
     } 
     return height * ((RowSize()+3) & ~3); 
   }  

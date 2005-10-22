@@ -191,14 +191,6 @@ SOURCE=.\core\cacheMT.h
 # End Source File
 # Begin Source File
 
-SOURCE=.\core\MT.cpp
-# End Source File
-# Begin Source File
-
-SOURCE=.\core\MT.h
-# End Source File
-# Begin Source File
-
 SOURCE=.\core\clip_info.h
 # End Source File
 # Begin Source File
@@ -221,6 +213,14 @@ SOURCE=.\core\memcpy_amd.cpp
 # Begin Source File
 
 SOURCE=.\core\memcpy_amd.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\core\MT.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\core\MT.h
 # End Source File
 # Begin Source File
 
@@ -740,6 +740,14 @@ InputName=convert_a
 
 !ENDIF 
 
+# End Source File
+# Begin Source File
+
+SOURCE=.\convert\convert_matrix.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\convert\convert_matrix.h
 # End Source File
 # Begin Source File
 
