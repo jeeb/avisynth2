@@ -41,6 +41,8 @@
 
 #include "../internal.h"
 #include "turnfunc.h"
+#include "resample.h"
+#include "planeswap.h"
 
 
 class Turn : public GenericVideoFilter {
@@ -58,11 +60,14 @@ void (*TurnPlanFunc) (const unsigned char *srcp_y, unsigned char *dstp_y,
 				  const int direction);
 
 	int			direction;
+	PClip		Usource;
+	PClip		Vsource;
 
 public:
-    Turn(PClip _child, int _direction, IScriptEnvironment* env):GenericVideoFilter(_child){
+    Turn(PClip _child, int _direction, IScriptEnvironment* env)
+	 : GenericVideoFilter(_child), Usource(0), Vsource(0) {
 		if (_direction) {
-			int src_height = vi.height;
+			const int src_height = vi.height;
 			vi.height = vi.width;
 			vi.width = src_height;
 		}
@@ -76,16 +81,37 @@ public:
 		}
 		else if (vi.IsYUY2())
 		{
-			if (vi.height%2) env->ThrowError("Turn: YUY2 data must have MOD2 height");
+			if (vi.width%2) env->ThrowError("Turn: YUY2 data must have MOD2 height");
 			TurnFunc = TurnYUY2;
 		}
-		else if (vi.IsYV12() || vi.IsYV24() || vi.IsY8())
+		else if (vi.IsPlanar())
 		{
 			TurnPlanFunc = TurnPlanar;
-		}
-		else if (vi.IsPlanar() && (direction == 0)) // can only do 180
-		{
-			TurnPlanFunc = TurnPlanar;
+			// rectangular formats?
+			if (direction && (vi.GetPlaneWidthSubsampling(PLANAR_U) != vi.GetPlaneHeightSubsampling(PLANAR_U)))
+			{
+				if (vi.width % (1<<vi.GetPlaneWidthSubsampling(PLANAR_U))) // YV16 & YV411
+					env->ThrowError("Turn: Planar data must have MOD%d height",
+									1<<vi.GetPlaneWidthSubsampling(PLANAR_U));
+
+				if (vi.height % (1<<vi.GetPlaneHeightSubsampling(PLANAR_U))) // No current formats
+					env->ThrowError("Turn: Planar data must have MOD%d width",
+									1<<vi.GetPlaneHeightSubsampling(PLANAR_U));
+
+				MitchellNetravaliFilter filter(1./3., 1./3.);
+				AVSValue subs[4] = { 0.0, 0.0, 0.0, 0.0 }; 
+
+				Usource = new SwapUVToY(child, SwapUVToY::UToY8, env);  
+				Vsource = new SwapUVToY(child, SwapUVToY::VToY8, env);
+
+				const VideoInfo vi_u = Usource->GetVideoInfo();
+
+				const int uv_height = vi_u.height;
+				const int uv_width  = vi_u.width;
+
+				Usource = FilteredResize::CreateResize(Usource, uv_height, uv_width, subs, &filter, env);
+				Vsource = FilteredResize::CreateResize(Vsource, uv_height, uv_width, subs, &filter, env);
+			}
 		}
 		else
 		{
