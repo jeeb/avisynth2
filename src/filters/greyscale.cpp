@@ -84,7 +84,7 @@ PVideoFrame Greyscale::GetFrame(int n, IScriptEnvironment* env)
 	  myy = frame->GetHeight(PLANAR_U);
 	    for (int y=0; y<myy; y++) {
 		  for (int x=0; x<myx; x++) {
-		    srcpUV[x] = 0x7f7f7f7f;  // mod 8
+		    srcpUV[x] = 0x80808080;  // mod 8
 		  }
 		  srcpUV += pitch;
 	    }
@@ -94,7 +94,7 @@ PVideoFrame Greyscale::GetFrame(int n, IScriptEnvironment* env)
 	  myy = frame->GetHeight(PLANAR_V);
 	  for (y=0; y<myy; ++y) {
 		  for (int x=0; x<myx; x++) {
-		    srcpUV[x] = 0x7f7f7f7f;  // mod 8
+		    srcpUV[x] = 0x80808080;  // mod 8
 		  }
 		  srcpUV += pitch;
 	  }
@@ -365,5 +365,11 @@ rgb2lum_even:
 
 AVSValue __cdecl Greyscale::Create(AVSValue args, void*, IScriptEnvironment* env) 
 {
+  PClip clip = args[0].AsClip();
+  const VideoInfo& vi = clip->GetVideoInfo();
+
+  if (vi.IsY8())
+    return clip;
+
   return new Greyscale(args[0].AsClip(), args[1].AsString(0), env);
 }
