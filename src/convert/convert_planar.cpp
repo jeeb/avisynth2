@@ -109,6 +109,8 @@ PVideoFrame __stdcall ConvertToY8::GetFrame(int n, IScriptEnvironment* env) {
   PVideoFrame dst = env->NewVideoFrame(vi);
 
   if (blit_luma_only) {
+// Add private ScriptEnvironment function to clone planes -- avoid a needless blit
+//  return new VideoFrame(src->vfb, src->offset, src->pitch, src->row_size, src->height, src->offset, src->offset, 0, 0, 0, vi.pixel_type);
     env->BitBlt(dst->GetWritePtr(PLANAR_Y), dst->GetPitch(PLANAR_Y),
                 src->GetReadPtr(PLANAR_Y),  src->GetPitch(PLANAR_Y),
                 src->GetRowSize(PLANAR_Y_ALIGNED), src->GetHeight(PLANAR_Y));
