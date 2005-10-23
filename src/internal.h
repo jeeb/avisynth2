@@ -36,8 +36,8 @@
 #ifndef __Internal_H__
 #define __Internal_H__
 
-#define AVS_VERSION 2.56
-#define AVS_VERSTR "AviSynth 2.56, build:"__DATE__" ["__TIME__"]"
+#define AVS_VERSION 2.60
+#define AVS_VERSTR "AviSynth 2.60, build:"__DATE__" ["__TIME__"]"
 
 
 // env->ManageCache() Non user keys definition
@@ -45,6 +45,7 @@
 //
 #define MC_ReturnVideoFrameBuffer  0xFFFF0001
 #define MC_PromoteVideoFrameBuffer 0xFFFF0002
+
 #define MC_LockVFBList  0xFFFF0003
 #define MC_UnlockVFBList 0xFFFF0004
 
