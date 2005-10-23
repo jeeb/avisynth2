@@ -886,8 +886,8 @@ PVideoFrame __stdcall ConvertToPlanarGeneric::GetFrame(int n, IScriptEnvironment
 
   env->BitBlt(dst->GetWritePtr(PLANAR_Y), dst->GetPitch(PLANAR_Y), src->GetReadPtr(PLANAR_Y), src->GetPitch(PLANAR_Y), src->GetRowSize(PLANAR_Y_ALIGNED), src->GetHeight(PLANAR_Y));
   if (Y8input) {
-    memset(dst->GetWritePtr(PLANAR_U), 0x7f, dst->GetHeight(PLANAR_U)*dst->GetPitch(PLANAR_U));
-    memset(dst->GetWritePtr(PLANAR_V), 0x7f, dst->GetHeight(PLANAR_V)*dst->GetPitch(PLANAR_V));
+    memset(dst->GetWritePtr(PLANAR_U), 0x80, dst->GetHeight(PLANAR_U)*dst->GetPitch(PLANAR_U));
+    memset(dst->GetWritePtr(PLANAR_V), 0x80, dst->GetHeight(PLANAR_V)*dst->GetPitch(PLANAR_V));
   } else {
     src = Usource->GetFrame(n, env);
     env->BitBlt(dst->GetWritePtr(PLANAR_U), dst->GetPitch(PLANAR_U), src->GetReadPtr(PLANAR_Y), src->GetPitch(PLANAR_Y), src->GetRowSize(PLANAR_Y_ALIGNED), dst->GetHeight(PLANAR_U));
