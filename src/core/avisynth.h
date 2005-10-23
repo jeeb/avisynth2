@@ -1,4 +1,4 @@
-// Avisynth v2.5.  Copyright 2002 Ben Rudiak-Gould et al.
+// Avisynth v2.6.  Copyright 2002, 2005 Ben Rudiak-Gould et al.
 // http://www.avisynth.org
 
 // This program is free software; you can redistribute it and/or modify
@@ -22,9 +22,9 @@
 //
 // As a special exception, the copyright holders of Avisynth give you
 // permission to link Avisynth with independent modules that communicate with
-// Avisynth solely through the interfaces defined in avisynth.h, regardless of the license
-// terms of these independent modules, and to copy and distribute the
-// resulting combined work under terms of your choice, provided that
+// Avisynth solely through the interfaces defined in avisynth.h, regardless of
+// the license terms of these independent modules, and to copy and distribute
+// the resulting combined work under terms of your choice, provided that
 // every copy of the combined work is accompanied by a complete copy of
 // the source code of Avisynth (the version of Avisynth used to produce the
 // combined work), being distributed under the terms of the GNU General
@@ -171,11 +171,11 @@ struct VideoInfo {
 
   // Chroma placement bits 20 -> 23  ::FIXME:: Really want a Class to support this
   enum {
-    CS_UNKNOWN_CHROMA_PLACEMENT = 0 << 3,
-    CS_MPEG1_CHROMA_PLACEMENT   = 1 << 4,
-    CS_MPEG2_CHROMA_PLACEMENT   = 2 << 5,
-    CS_YUY2_CHROMA_PLACEMENT    = 3 << 6,
-    CS_TOPLEFT_CHROMA_PLACEMENT = 4 << 7
+    CS_UNKNOWN_CHROMA_PLACEMENT = 0 << 20,
+    CS_MPEG1_CHROMA_PLACEMENT   = 1 << 20,
+    CS_MPEG2_CHROMA_PLACEMENT   = 2 << 20,
+    CS_YUY2_CHROMA_PLACEMENT    = 3 << 20,
+    CS_TOPLEFT_CHROMA_PLACEMENT = 4 << 20
   };
 
   // useful functions of the above
@@ -289,6 +289,8 @@ struct VideoInfo {
       case CS_I420:
       case CS_YV411:
         return 12;
+//    case CS_YUV9:
+//      return 9;
       case CS_Y8:
         return 8;
       default:
