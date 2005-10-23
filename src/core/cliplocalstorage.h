@@ -52,16 +52,22 @@ protected:
   IClipLocalStorage():refcnt(1){}
 public:
 	virtual __stdcall ~IClipLocalStorage(){};
-	virtual void* __stdcall GetValue()=0;//This will return the stored void pointer. If it hasn't been initialized a NULL pointer will be returned
+	virtual void* __stdcall GetValue()=0;// This will return the stored void pointer.
+	                                     // If it hasn't been initialized a NULL pointer
+										 // will be returned
 	virtual void __stdcall SetValue(void* value)=0;  //Set the void pointer to value. 
 };
 
-//The purpose with PClipLocalStorage is to handle synchronisation between filter class instances when using MTMode 2 and 4
-//very usefull if a filter uses an internal cache. The cache pointer is stored using SetValue by the first instance(when GetValue return NULL) of the class
-//and the following instances get a pointer to the cache pointer so the cache content is shared between the different instances(instead of being created in every 
-//instance. Note that the implementation of the internal cache should be threadsafe.
-//To use this you just need to create a PClipLocalStorage class variable (don't use it as a local variable in the constructor because the destructor must first be
-//called in the class destructor
+// The purpose with PClipLocalStorage is to handle synchronisation between filter
+// class instances when using MTMode 2 and 4 very usefull if a filter uses an
+// internal cache. The cache pointer is stored using SetValue by the first
+// instance(when GetValue return NULL) of the class and the following instances
+// get a pointer to the cache pointer so the cache content is shared between the
+// different instances(instead of being created in every instance. Note that the
+// implementation of the internal cache should be threadsafe. To use this you
+// just need to create a PClipLocalStorage class variable (don't use it as a
+// local variable in the constructor because the destructor must first be called
+// in the class destructor
 
 class PClipLocalStorage {
 protected:
