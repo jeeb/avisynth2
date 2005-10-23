@@ -187,9 +187,6 @@ void MatrixGenerator3x3::GenerateUnPacker(int width, IScriptEnvironment* env) {
   x86.mov(edx, loops);
   x86.label("loopback");
 
-  x86.movq(mm0, qword_ptr[esi+edi*4]);  //P1, P2
-  x86.movq(mm1, qword_ptr[esi+edi*4]);  //P3, P4
-
   x86.movq(mm0,qword_ptr[esi+edi*4]);    //   XXP3P2P1xxp3p2p1
   x86.movq(mm1,qword_ptr[esi+edi*4+8]);  //   XXQ3Q2Q1xxq3q2q1
   x86.movq(mm2,qword_ptr[esi+edi*4+16]); //   XXR3R2R1xxr3r2r1
