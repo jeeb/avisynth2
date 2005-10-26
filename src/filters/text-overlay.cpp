@@ -149,22 +149,17 @@ void Antialiaser::Apply( const VideoInfo& vi, PVideoFrame* frame, int pitch)
     ApplyYV12((*frame)->GetWritePtr(), pitch,
               (*frame)->GetPitch(PLANAR_U),
 			  (*frame)->GetWritePtr(PLANAR_U), (*frame)->GetWritePtr(PLANAR_V) );
-  else if (vi.IsYV24())
-    ApplyPlanar((*frame)->GetWritePtr(), pitch,
-              (*frame)->GetPitch(PLANAR_U),
-			  (*frame)->GetWritePtr(PLANAR_U), (*frame)->GetWritePtr(PLANAR_V),0,0);
   else if (vi.IsY8())
     ApplyPlanar((*frame)->GetWritePtr(), pitch,
               (*frame)->GetPitch(PLANAR_U),
 			  0, 0,0,0);
-  else if (vi.IsYV16())
+  else if (vi.IsPlanar())
     ApplyPlanar((*frame)->GetWritePtr(), pitch,
               (*frame)->GetPitch(PLANAR_U),
-			  (*frame)->GetWritePtr(PLANAR_U), (*frame)->GetWritePtr(PLANAR_V),1,0);
-  else if (vi.IsYV411())
-    ApplyPlanar((*frame)->GetWritePtr(), pitch,
-              (*frame)->GetPitch(PLANAR_U),
-			  (*frame)->GetWritePtr(PLANAR_U), (*frame)->GetWritePtr(PLANAR_V),2,0);
+			  (*frame)->GetWritePtr(PLANAR_U),
+			  (*frame)->GetWritePtr(PLANAR_V),
+			  vi.GetPlaneWidthSubsampling(PLANAR_U),
+			  vi.GetPlaneHeightSubsampling(PLANAR_U));
     
 }
 
