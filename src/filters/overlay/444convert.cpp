@@ -133,8 +133,8 @@ void Convert444FromYV24::ConvertImageLumaOnly(PVideoFrame src, Image444* dst, IS
 void Convert444FromY8::ConvertImage(PVideoFrame src, Image444* dst, IScriptEnvironment* env) {
   env->BitBlt(dst->GetPtr(PLANAR_Y), dst->pitch, 
     src->GetReadPtr(PLANAR_Y),src->GetPitch(PLANAR_Y), src->GetRowSize(PLANAR_Y), src->GetHeight(PLANAR_Y));
-  memset((void *)dst->GetPtr(PLANAR_U), (char)0x7f, dst->pitch * dst->h());
-  memset((void *)dst->GetPtr(PLANAR_V), (char)0x7f, dst->pitch * dst->h());
+  memset((void *)dst->GetPtr(PLANAR_U), (char)0x80, dst->pitch * dst->h());
+  memset((void *)dst->GetPtr(PLANAR_V), (char)0x80, dst->pitch * dst->h());
 }
 
 void Convert444FromY8::ConvertImageLumaOnly(PVideoFrame src, Image444* dst, IScriptEnvironment* env) {
