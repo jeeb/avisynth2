@@ -88,10 +88,12 @@ FilteredResizeH::FilteredResizeH( PClip _child, double subrange_left, double sub
   {
     if ((target_width&1) && (vi.IsYUY2()))
       env->ThrowError("Resize: YUY2 width must be even");
+    if ((target_width&1) && (vi.IsYV12()))
+      env->ThrowError("Resize: YV12 width must be even.");
     if ((target_width&1) && (vi.IsYV16()))
       env->ThrowError("Resize: YV16 width must be even");
-    if ((target_width&3) && (vi.IsYV12()))
-      env->ThrowError("Resize: YV12 width must be mutiple of 4.");
+    if ((target_width&3) && (vi.IsYV411()))
+      env->ThrowError("Resize: YV411 width must be mutiple of 4.");
 
     tempY = (BYTE*) _aligned_malloc(original_width*2+4+32, 64);   // aligned for Athlon cache line
     tempUV = (BYTE*) _aligned_malloc(original_width*4+8+32, 64);  // aligned for Athlon cache line
@@ -1543,10 +1545,10 @@ out_bloop:
 
 FilteredResizeV::~FilteredResizeV(void)
 {
-  if (resampling_pattern) _aligned_free(resampling_pattern); resampling_pattern = 0;
-  if (resampling_patternUV) _aligned_free(resampling_patternUV); resampling_patternUV = 0;
-  if (yOfs) delete[] yOfs;
-  if (yOfsUV) delete[] yOfsUV;
+  if (resampling_pattern) { _aligned_free(resampling_pattern); resampling_pattern = 0; }
+  if (resampling_patternUV) { _aligned_free(resampling_patternUV); resampling_patternUV = 0; }
+  if (yOfs) { delete[] yOfs; yOfs = 0; }
+  if (yOfsUV) { delete[] yOfsUV; yOfsUV = 0; }
 }
 
 
