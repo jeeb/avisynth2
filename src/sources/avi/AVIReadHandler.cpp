@@ -1284,11 +1284,15 @@ AVIReadHandler::AVIReadHandler(PAVIFILE paf) {
 		const char *s;
 
 		if (pAvisynthClipInfo->GetError(&s)) {
-      char* msg = strdup(s);
+			char* msg = strdup(s);
 			pAvisynthClipInfo->Release();
 			paf->Release();
-			throw MyError("Avisynth open failure:%s\n", msg);
-      // msg will leak, but we are throwing an error.
+			try {
+				throw MyError("Avisynth open failure:%s\n", msg);
+			} catch (...) {
+				free(msg);
+				throw;
+			}
 		}
 	}
 }
