@@ -219,7 +219,7 @@ struct VideoInfo {
       return 0;
     if (IsYV24())
       return 0;
-    if (IsYV24() || IsYV16())
+    if (IsYV12() || IsYV16() || IsYUY2())
       return 1;
     if (IsYV411())
       return 2;
@@ -235,7 +235,7 @@ struct VideoInfo {
       return 0;
     if (IsYV12())
       return 1;
-    if (IsYV24() || IsYV16() || IsYV411())
+    if (IsYV24() || IsYV16() || IsYUY2() || IsYV411())
       return 0;
     if (IsY8())
       throw AvisynthError("Filter error: GetPlaneHeightSubsampling not available on Y8 pixel type.");
