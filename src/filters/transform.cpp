@@ -221,17 +221,26 @@ Crop::Crop(int _left, int _top, int _width, int _height, int _align, PClip _chil
   if (_height<=0)
     env->ThrowError("Crop: Destination height is 0 or less.");
   if (vi.IsYUV()) {
-    // YUY2 can only crop to even pixel boundaries horizontally
-    if (_left&1)
-      env->ThrowError("Crop: YUV images can only be cropped by even numbers (left side).");
-    if (_width&1)
-      env->ThrowError("Crop: YUV images can only be cropped by even numbers (right side).");
-    if (vi.IsYV12()) {
-      if (_top&1)
-        env->ThrowError("Crop: YV12 images can only be cropped by even numbers (top).");
-      if (_height&1)
-        env->ThrowError("Crop: YV12 images can only be cropped by even numbers (bottom).");
+    if (vi.IsY8()) {
+      xsub=0;
+      ysub=0;
     }
+    else {
+      xsub=vi.GetPlaneWidthSubsampling(PLANAR_U);
+      ysub=vi.GetPlaneHeightSubsampling(PLANAR_U);
+    }
+    const int xmask = (1 << xsub) - 1;
+    const int ymask = (1 << ysub) - 1;
+
+    // YUY2, etc, ... can only crop to even pixel boundaries horizontally
+    if (_left   & xmask)
+      env->ThrowError("Crop: YUV images can only be cropped by Mod %d (left side).", xmask+1);
+    if (_width  & xmask)
+      env->ThrowError("Crop: YUV images can only be cropped by Mod %d (right side).", xmask+1);
+    if (_top    & ymask)
+      env->ThrowError("Crop: YUV images can only be cropped by Mod %d (top).", ymask+1);
+    if (_height & ymask)
+      env->ThrowError("Crop: YUV images can only be cropped by Mod %d (bottom).", ymask+1);
   } else {
     // RGB is upside-down
     _top = vi.height - _height - _top;
@@ -271,37 +280,26 @@ PVideoFrame Crop::GetFrame(int n, IScriptEnvironment* env)
       frame->GetPitch(PLANAR_Y), dst->GetRowSize(PLANAR_Y), dst->GetHeight(PLANAR_Y));
 
     env->BitBlt(dst->GetWritePtr(PLANAR_U), dst->GetPitch(PLANAR_U),
-      frame->GetReadPtr(PLANAR_U) + (top>>1) *  frame->GetPitch(PLANAR_U) + (left_bytes>>1),
+      frame->GetReadPtr(PLANAR_U) + (top>>ysub) *  frame->GetPitch(PLANAR_U) + (left_bytes>>xsub),
       frame->GetPitch(PLANAR_U), dst->GetRowSize(PLANAR_U), dst->GetHeight(PLANAR_U));
 
     env->BitBlt(dst->GetWritePtr(PLANAR_V), dst->GetPitch(PLANAR_V),
-      frame->GetReadPtr(PLANAR_V) + (top>>1) *  frame->GetPitch(PLANAR_V) + (left_bytes>>1),
+      frame->GetReadPtr(PLANAR_V) + (top>>ysub) *  frame->GetPitch(PLANAR_V) + (left_bytes>>xsub),
       frame->GetPitch(PLANAR_V), dst->GetRowSize(PLANAR_V), dst->GetHeight(PLANAR_V));
 
     return dst;
   }
 
-  if (!vi.IsPlanar()) {
-    return env->Subframe(frame,top * frame->GetPitch() + left_bytes, frame->GetPitch(), vi.RowSize(), vi.height);
-  } else {
-    if (vi.IsYV12()) {
-      return env->Subframe(frame,top * frame->GetPitch() + left_bytes, frame->GetPitch(), vi.RowSize(), vi.height, (top/2) * frame->GetPitch(PLANAR_U) + (left_bytes/2), (top/2) * frame->GetPitch(PLANAR_V) + (left_bytes/2), frame->GetPitch(PLANAR_U));
-    }
-    if (vi.IsYV24()) {
-      return env->Subframe(frame,top * frame->GetPitch() + left_bytes, frame->GetPitch(), vi.RowSize(), vi.height, top * frame->GetPitch(PLANAR_U) + left_bytes, top * frame->GetPitch(PLANAR_V) + left_bytes, frame->GetPitch(PLANAR_U));
-    }
-    if (vi.IsYV16()) {
-      return env->Subframe(frame,top * frame->GetPitch() + left_bytes, frame->GetPitch(), vi.RowSize(), vi.height, top * frame->GetPitch(PLANAR_U) + (left_bytes/2), top * frame->GetPitch(PLANAR_V) + (left_bytes/2), frame->GetPitch(PLANAR_U));
-    }
-    if (vi.IsYV411()) {
-      return env->Subframe(frame,top * frame->GetPitch() + left_bytes, frame->GetPitch(), vi.RowSize(), vi.height, top * frame->GetPitch(PLANAR_U) + (left_bytes/4), top * frame->GetPitch(PLANAR_V) + (left_bytes/4), frame->GetPitch(PLANAR_U));
-    }
-    if (vi.IsY8()) {
-      return env->Subframe(frame,top * frame->GetPitch() + left_bytes, frame->GetPitch(), vi.RowSize(), vi.height, 0, 0, frame->GetPitch(PLANAR_U));
-    }
-  }
-  env->ThrowError("Crop: Unknown Colorspace");
-  return frame;
+  if (!vi.IsPlanar())
+    return env->Subframe(frame, top * frame->GetPitch() + left_bytes, frame->GetPitch(), vi.RowSize(), vi.height);
+  else if (vi.IsY8())
+    return env->Subframe(frame, top * frame->GetPitch() + left_bytes, frame->GetPitch(), vi.RowSize(), vi.height,
+                         0, 0, frame->GetPitch(PLANAR_U));
+  else
+    return env->Subframe(frame, top * frame->GetPitch() + left_bytes, frame->GetPitch(), vi.RowSize(), vi.height,
+                         (top>>ysub) * frame->GetPitch(PLANAR_U) + (left_bytes>>xsub),
+                         (top>>ysub) * frame->GetPitch(PLANAR_V) + (left_bytes>>xsub),
+                         frame->GetPitch(PLANAR_U));
 }
 
 
