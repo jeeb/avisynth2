@@ -64,9 +64,6 @@ AVSFunction Swap_filters[] = {
  *  Swap - swaps UV on planar maps
  **************************************/
 
-__declspec(align(8)) static __int64 I1=0x00ff00ff00ff00ff;  // Luma mask
-__declspec(align(8)) static __int64 I2=0xff00ff00ff00ff00;  // Chroma mask
-
 AVSValue __cdecl SwapUV::CreateSwapUV(AVSValue args, void* user_data, IScriptEnvironment* env) {
   PClip p = args[0].AsClip();
   if (p->GetVideoInfo().IsY8())
@@ -143,7 +140,8 @@ PVideoFrame __stdcall SwapUV::GetFrame(int n, IScriptEnvironment* env) {
 
 void SwapUV::isse_inplace_yuy2_swap(const BYTE* srcp, BYTE* dstp, int rowsize16, int rowsize8, int rowsize4, int height, int srcpitch, int dstpitch) {
         __asm {
-          movq      mm7,[I1]			; 0x00ff00ff00ff00ff
+            pcmpeqb   mm7,mm7			; 0xffffffffffffffff
+            psrlw     mm7,8 			; 0x00ff00ff00ff00ff
             
             mov       ecx,[height]
             xor       eax,eax
@@ -155,12 +153,12 @@ void SwapUV::isse_inplace_yuy2_swap(const BYTE* srcp, BYTE* dstp, int rowsize16,
             mov       edi,[dstp]
             align     16
 yloop:
-          cmp       eax,edx
+            cmp       eax,edx
             jge       twoleft
             
-            align     16					; Process 8 pixels(16 bytes) per loop
+            align     16				; Process 8 pixels(16 bytes) per loop
 xloop:
-          movq      mm0,[esi+eax]		; VYUY HI VYUY LO
+            movq      mm0,[esi+eax]		; VYUY HI VYUY LO
             movq      mm1,[esi+eax+8]	; vyuy hi vyuy lo
             movq      mm2,mm0
             punpckhbw mm0,mm1			; vVyY uUyY hi HI
@@ -170,34 +168,34 @@ xloop:
             pshufw    mm0,mm0,01101100b	; uUyY vVyY hi HI
             add       eax,16
             pshufw    mm2,mm2,01101100b	; uUyY vVyY lo LO
-            pand      mm1,mm0				; 0U0Y 0V0Y HI
-            psrlw     mm0,8					; 0u0y 0v0y hi
-            pand      mm3,mm2				; 0U0Y 0V0Y LO
-            psrlw     mm2,8					; 0u0y 0v0y lo
-            packuswb  mm3,mm1				; UYVY HI UYVY LO
+            pand      mm1,mm0			; 0U0Y 0V0Y HI
+            psrlw     mm0,8				; 0u0y 0v0y hi
+            pand      mm3,mm2			; 0U0Y 0V0Y LO
+            psrlw     mm2,8				; 0u0y 0v0y lo
+            packuswb  mm3,mm1			; UYVY HI UYVY LO
             cmp       eax,edx
-            packuswb  mm2,mm0				; uyvy hi uyvy lo
+            packuswb  mm2,mm0			; uyvy hi uyvy lo
             movq      [edi+eax-16],mm3
             movq      [edi+eax-8],mm2
             jl        xloop
             align     16
 twoleft:
-          cmp       eax,[rowsize8]
+            cmp       eax,[rowsize8]
             jge       oneleft
             
             movq      mm0,[esi+eax]		; VYUY HI VYUY LO
             pxor      mm1,mm1
             movq      mm2,mm0
             punpckhbw mm0,mm1			; _V_Y _U_Y HI
-            punpcklbw mm2,mm1				; _V_Y _U_Y LO
+            punpcklbw mm2,mm1			; _V_Y _U_Y LO
             pshufw    mm0,mm0,01101100b	; _U_Y _V_Y HI
             pshufw    mm2,mm2,01101100b	; _U_Y _V_Y LO
             add       eax,8
-            packuswb  mm2,mm0				; UYVY HI UYVY LO
+            packuswb  mm2,mm0			; UYVY HI UYVY LO
             movq      [edi+eax-8],mm2
             align     16
 oneleft:
-          cmp       eax,[rowsize4]
+            cmp       eax,[rowsize4]
             jge       noneleft
             
             movd      mm0,[esi+eax]		; ____ HI VYUY LO
@@ -392,20 +390,24 @@ SwapYToUV::SwapYToUV(PClip _child, PClip _clip, PClip _clipY, IScriptEnvironment
     }
     if (vi.IsPlanar()) {  // Autodetect destination colorformat
       if (vi3.width % vi.width || vi3.height % vi.height) 
-        env->ThrowError("YToUV: Width and height not divideable by eachother");
+        env->ThrowError("YToUV: Width and/or height not divideable by other planes");
 
-      if (vi3.width / vi.width == 2 && vi3.height / vi.height == 2) {
+      if (vi3.width == vi.width * 2 && vi3.height == vi.height * 2) {
         vi.pixel_type = VideoInfo::CS_YV12;
         vi.width *=2; vi.height *=2;
-      } else if (vi3.width / vi.width == 1 && vi3.height / vi.height == 1) {
+
+      } else if (vi3.width == vi.width * 1 && vi3.height == vi.height * 1) {
         vi.width *=1; vi.height *=1;
         vi.pixel_type = VideoInfo::CS_YV24;
-      } else if (vi3.width / vi.width == 2 && vi3.height / vi.height == 1) {
+
+      } else if (vi3.width == vi.width * 2 && vi3.height == vi.height * 1) {
         vi.width *=2; vi.height *=1;
         vi.pixel_type = VideoInfo::CS_YV16;
-      } else if (vi3.width / vi.width == 4 && vi3.height / vi.height == 1) {
+
+      } else if (vi3.width == vi.width * 4 && vi3.height == vi.height * 1) {
         vi.width *=4; vi.height *=1;
         vi.pixel_type = VideoInfo::CS_YV411;
+
       } else
         env->ThrowError("YToUV: Video proportions does not match any internal colorspace.");
     }
