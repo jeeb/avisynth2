@@ -220,9 +220,11 @@ ConvertRGBToYV24::ConvertRGBToYV24(PClip src, int in_matrix, IScriptEnvironment*
 
   pixel_step = vi.BytesFromPixels(1);
   vi.pixel_type = VideoInfo::CS_YV24;
-  matrix = (signed short*)_aligned_malloc(sizeof(short)*12,64);
+  matrix = (signed short*)_aligned_malloc(sizeof(short)*16,64);
+  signed short* m = matrix;
 
-  double mulfac = 32768.0;
+  const int    shift  = 15;
+  const double mulfac = double(1<<shift);
   
   if (in_matrix == Rec601) {
     /*
@@ -230,35 +232,33 @@ ConvertRGBToYV24::ConvertRGBToYV24(PClip src, int in_matrix, IScriptEnvironment*
     Cb=-0.169*R' - 0.331*G' + 0.500*B'
     Cr= 0.500*R' - 0.419*G' - 0.081*B' 
     */
-    signed short* m = matrix;
     *m++ = (signed short)((219.0/255.0)*0.114*mulfac+0.5);  //B
     *m++ = (signed short)((219.0/255.0)*0.587*mulfac+0.5);  //G
     *m++ = (signed short)((219.0/255.0)*0.299*mulfac+0.5);  //R
-    *m++ = 0;
+    *m++ = (signed short)(-0.5*mulfac);  // Rounder
     *m++ = (signed short)((224.0/255.0)*0.500*mulfac+0.5);
     *m++ = (signed short)((224.0/255.0)*-0.331*mulfac+0.5);
     *m++ = (signed short)((224.0/255.0)*-0.169*mulfac+0.5);
-    *m++ = 0;
+    *m++ = (signed short)(-0.5*mulfac);  // Rounder
     *m++ = (signed short)((224.0/255.0)*-0.081*mulfac+0.5);
     *m++ = (signed short)((224.0/255.0)*-0.419*mulfac+0.5);
     *m++ = (signed short)((224.0/255.0)*0.5*mulfac+0.5);
-    *m++ = 0;
+    *m++ = (signed short)(-0.5*mulfac);  // Rounder
     offset_y = 16;
 
   } else if (in_matrix == PC_601) {
-    signed short* m = matrix;
     *m++ = (signed short)(0.114*mulfac+0.5);  //B
     *m++ = (signed short)(0.587*mulfac+0.5);  //G
     *m++ = (signed short)(0.299*mulfac+0.5);  //R
-    *m++ = 0;
+    *m++ = (signed short)(-0.5*mulfac);  // Rounder
     *m++ = (signed short)(0.500*mulfac+0.5);
     *m++ = (signed short)(-0.331*mulfac+0.5);
     *m++ = (signed short)(-0.169*mulfac+0.5);
-    *m++ = 0;
+    *m++ = (signed short)(-0.5*mulfac);  // Rounder
     *m++ = (signed short)(-0.081*mulfac+0.5);
     *m++ = (signed short)(-0.419*mulfac+0.5);
     *m++ = (signed short)(0.5*mulfac+0.5);
-    *m++ = 0;
+    *m++ = (signed short)(-0.5*mulfac);  // Rounder
     offset_y = 0;
   } else if (in_matrix == Rec709) {
     /*
@@ -266,45 +266,47 @@ ConvertRGBToYV24::ConvertRGBToYV24(PClip src, int in_matrix, IScriptEnvironment*
     Cb=-0.1145*R' - 0.3855*G' + 0.5000*B'
     Cr= 0.5016*R' - 0.4556*G' - 0.0459*B'
     */
-    signed short* m = matrix;
     *m++ = (signed short)((219.0/255.0)*0.0721*mulfac+0.5);  //B
     *m++ = (signed short)((219.0/255.0)*0.7154*mulfac+0.5);  //G
     *m++ = (signed short)((219.0/255.0)*0.2215*mulfac+0.5);  //R
-    *m++ = 0;
+    *m++ = (signed short)(-0.5*mulfac);  // Rounder
     *m++ = (signed short)((224.0/255.0)*0.5000*mulfac+0.5);
     *m++ = (signed short)((224.0/255.0)*-0.3855*mulfac+0.5);
     *m++ = (signed short)((224.0/255.0)*-0.1145*mulfac+0.5);
-    *m++ = 0;
+    *m++ = (signed short)(-0.5*mulfac);  // Rounder
     *m++ = (signed short)((224.0/255.0)*-0.0459*mulfac+0.5);
     *m++ = (signed short)((224.0/255.0)*-0.4556*mulfac+0.5);
     *m++ = (signed short)((224.0/255.0)*0.5016*mulfac+0.5);
-    *m++ = 0;
+    *m++ = (signed short)(-0.5*mulfac);  // Rounder
     offset_y = 16;
   } else if (in_matrix == PC_709) {
-    signed short* m = matrix;
     *m++ = (signed short)(0.0721*mulfac+0.5);  //B
     *m++ = (signed short)(0.7154*mulfac+0.5);  //G
     *m++ = (signed short)(0.2215*mulfac+0.5);  //R
-    *m++ = 0;
+    *m++ = (signed short)(-0.5*mulfac);  // Rounder
     *m++ = (signed short)(0.5000*mulfac+0.5);
     *m++ = (signed short)(-0.3855*mulfac+0.5);
     *m++ = (signed short)(-0.1145*mulfac+0.5);
-    *m++ = 0;
+    *m++ = (signed short)(-0.5*mulfac);  // Rounder
     *m++ = (signed short)(-0.0459*mulfac+0.5);
     *m++ = (signed short)(-0.4556*mulfac+0.5);
     *m++ = (signed short)(0.5016*mulfac+0.5);
-    *m++ = 0;
+    *m++ = (signed short)(-0.5*mulfac);  // Rounder
     offset_y = 0;
   } else {
     _aligned_free(matrix);
     matrix = 0;
     env->ThrowError("ConvertRGBToYV24: Unknown matrix.");
   }
+  *m++ = (signed short)0x0000;
+  *m++ = (signed short)0xff00;
+  *m++ = (signed short)0x0000;
+  *m++ = (signed short)0xff00;
   dyn_matrix = (BYTE*)matrix;
   dyn_dest = (BYTE*)_aligned_malloc(vi.width * 4 +32, 64);
   this->src_pixel_step = pixel_step;
   this->post_add = (offset_y & 0xffff) | ((__int64)(128 & 0xffff)<<16) | ((__int64)(128 & 0xffff)<<32);
-  this->GenerateAssembly(vi.width, 15, false, env);
+  this->GenerateAssembly(vi.width, shift, false, env);
 
   unpck_src = new const BYTE*[1];
   unpck_dst = new BYTE*[3];
@@ -411,9 +413,11 @@ ConvertYV24ToRGB::ConvertYV24ToRGB(PClip src, int in_matrix, int _pixel_step, IS
     env->ThrowError("ConvertYV24ToRGB: Only YV24 data input accepted");
 
   vi.pixel_type = (pixel_step == 3) ? VideoInfo::CS_BGR24 : VideoInfo::CS_BGR32;
-  matrix = (signed short*)_aligned_malloc(sizeof(short)*12,64);
+  matrix = (signed short*)_aligned_malloc(sizeof(short)*16,64);
+  signed short* m = matrix;
 
-  const double mulfac = 8192.0;
+  const int    shift  = 13;
+  const double mulfac = double(1<<shift);
 
   if (in_matrix == Rec601) {
     /*
@@ -421,7 +425,6 @@ ConvertYV24ToRGB::ConvertYV24ToRGB(PClip src, int in_matrix, int _pixel_step, IS
     G'= Y' - 0.344*U' - 0.714*V'
     R'= Y' + 0.000*U' + 1.403*V'
     */
-    signed short* m = matrix;
     *m++ = (signed short)((255.0/219.0)*1.000*mulfac+0.5);  //Y
     *m++ = (signed short)((255.0/224.0)*1.773*mulfac+0.5);  //U
     *m++ = (signed short)((255.0/224.0)*0.000*mulfac+0.5);  //V
@@ -436,7 +439,6 @@ ConvertYV24ToRGB::ConvertYV24ToRGB(PClip src, int in_matrix, int _pixel_step, IS
     *m++ = (signed short)(0.5*mulfac);  // Rounder
     offset_y = -16;
   } else if (in_matrix == PC_601) {
-    signed short* m = matrix;
     *m++ = (signed short)(1.000*mulfac+0.5);  //Y
     *m++ = (signed short)(1.773*mulfac+0.5);  //U
     *m++ = (signed short)(0.000*mulfac+0.5);  //V
@@ -456,7 +458,6 @@ ConvertYV24ToRGB::ConvertYV24ToRGB(PClip src, int in_matrix, int _pixel_step, IS
     G'= Y' - 0.1870*Cb - 0.4664*Cr
     R'= Y' + 0.0000*Cb + 1.5701*Cr
     */
-    signed short* m = matrix;
     *m++ = (signed short)((255.0/219.0)*1.000*mulfac+0.5);  //Y
     *m++ = (signed short)((255.0/224.0)*1.8556*mulfac+0.5); //U
     *m++ = (signed short)((255.0/224.0)*0.000*mulfac+0.5);  //V
@@ -471,7 +472,6 @@ ConvertYV24ToRGB::ConvertYV24ToRGB(PClip src, int in_matrix, int _pixel_step, IS
     *m++ = (signed short)(0.5*mulfac);  // Rounder
     offset_y = -16;
   } else if (in_matrix == PC_709) {
-    signed short* m = matrix;
     *m++ = (signed short)(1.000*mulfac+0.5);  //Y
     *m++ = (signed short)(1.8556*mulfac+0.5);  //U
     *m++ = (signed short)(0.000*mulfac+0.5);  //V
@@ -490,11 +490,15 @@ ConvertYV24ToRGB::ConvertYV24ToRGB(PClip src, int in_matrix, int _pixel_step, IS
     matrix = 0;
     env->ThrowError("ConvertYV24ToRGB: Unknown matrix.");
   }
+  *m++ = (signed short)0x0000;
+  *m++ = (signed short)0xff00;
+  *m++ = (signed short)0x0000;
+  *m++ = (signed short)0xff00;
   dyn_matrix = (BYTE*)matrix;
   dyn_src = (BYTE*)_aligned_malloc(vi.width * 4 + 32, 64);
   this->dest_pixel_step = pixel_step;
   this->pre_add = (offset_y & 0xffff) | ((__int64)(-128 & 0xffff)<<16) | ((__int64)(-128 & 0xffff)<<32);
-  this->GenerateAssembly(vi.width, 13, true, env);
+  this->GenerateAssembly(vi.width, shift, true, env);
 
   unpck_src = new const BYTE*[3];
   unpck_dst = new BYTE*[1];
