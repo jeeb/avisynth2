@@ -124,11 +124,14 @@ LRESULT AVISource::DecompressBegin(LPBITMAPINFOHEADER lpbiSrc, LPBITMAPINFOHEADE
 
 LRESULT AVISource::DecompressFrame(int n, bool preroll, BYTE* buf) {
   _RPT2(0,"AVISource: Decompressing frame %d%s\n", n, preroll ? " (preroll)" : "");
+  long bytes_read;
   if (!hic) {
-    pvideo->Read(n, 1, buf, vi.BMPSize(), NULL, NULL);
+    bytes_read = vi.BMPSize();
+    pvideo->Read(n, 1, buf, vi.BMPSize(), &bytes_read, NULL);
+    dropped_frame = !bytes_read;
     return ICERR_OK;
   }
-  long bytes_read = srcbuffer_size;
+  bytes_read = srcbuffer_size;
   LRESULT err = pvideo->Read(n, 1, srcbuffer, srcbuffer_size, &bytes_read, NULL);
   while (err == AVIERR_BUFFERTOOSMALL || (err == 0 && !srcbuffer)) {
     delete[] srcbuffer;
@@ -338,11 +341,11 @@ AVISource::AVISource(const char filename[], bool fAudio, const char pixel_type[]
         if (hic) {
           bool forcedType = !(pixel_type[0] == 0);
 
-          bool fY8  = lstrcmpi(pixel_type, "Y8" ) == 0 || pixel_type[0] == 0;
+          bool fY8    = lstrcmpi(pixel_type, "Y8"   ) == 0 || pixel_type[0] == 0;
           bool fYV12  = lstrcmpi(pixel_type, "YV12" ) == 0 || pixel_type[0] == 0;
           bool fYV16  = lstrcmpi(pixel_type, "YV16" ) == 0 || pixel_type[0] == 0;
           bool fYV24  = lstrcmpi(pixel_type, "YV24" ) == 0 || pixel_type[0] == 0;
-          bool fYV411 = lstrcmpi(pixel_type, "YV411" ) == 0 || pixel_type[0] == 0;
+          bool fYV411 = lstrcmpi(pixel_type, "YV411") == 0 || pixel_type[0] == 0;
           bool fYUY2  = lstrcmpi(pixel_type, "YUY2" ) == 0 || pixel_type[0] == 0;
           bool fRGB32 = lstrcmpi(pixel_type, "RGB32") == 0 || pixel_type[0] == 0;
           bool fRGB24 = lstrcmpi(pixel_type, "RGB24") == 0 || pixel_type[0] == 0;
@@ -361,6 +364,9 @@ AVISource::AVISource(const char filename[], bool fAudio, const char pixel_type[]
           int xwidth=(vi.width+3)&(~3);
           biDst.biSizeImage = xwidth * vi.height + ((xwidth>>1) * vi.height);
           bool bOpen = true;
+
+// ::FIXME:: Is this the most appropriate order. I would think it should be in "quality" order
+//           i.e. YV24, YV16, YV12, YV411, YUY2, RGB32, RGB24, Y8 - Not sure about YUY2 vrs YV411
 
           // YV12
           if (bOpen && fYV12 && ICERR_OK == ICDecompressQuery(hic, pbiSrc, &biDst)) {
