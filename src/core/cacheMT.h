@@ -119,15 +119,15 @@ protected:
     int status;
 	int e_generated_index;
 
-	CachedVideoFrame() : 
-		next(this),prev(this),
-		vfb(0), 
-		frame_number(-1), 
-		vfb_locked(false),
-		vfb_protected(false),
-		status(0),
-		e_generated_index(0)
-		{}
+    CachedVideoFrame() { 
+		next=prev=this; 
+		vfb=0; 
+		frame_number=-1; 
+		vfb_locked=false;
+		vfb_protected=false;
+		status=0;
+		e_generated_index=0;
+	}
   };
   CachedVideoFrame video_frames;
 
