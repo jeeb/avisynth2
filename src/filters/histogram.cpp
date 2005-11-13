@@ -104,7 +104,7 @@ Histogram::Histogram(PClip _child, int _mode, IScriptEnvironment* env)
       vi.height = max(512, vi.height);
       vi.width = max(512, vi.width);
       if(!vi.IsPlanar())
-        env->ThrowError("Histogram: StereoOverlay must be YV12");
+        env->ThrowError("Histogram: StereoOverlay requires a Planar video format (YV12, YV24, etc).");
     } else {
       vi.pixel_type = VideoInfo::CS_Y8;
       vi.height = 512;
