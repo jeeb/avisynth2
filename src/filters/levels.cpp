@@ -49,7 +49,7 @@
 AVSFunction Levels_filters[] = {
   { "Levels", "cifiii[coring]b", Levels::Create },        // src_low, gamma, src_high, dst_low, dst_high 
   { "RGBAdjust", "c[r]f[g]f[b]f[a]f[rb]f[gb]f[bb]f[ab]f[rg]f[gg]f[bg]f[ag]f[analyze]b", RGBAdjust::Create },
-  { "Tweak", "c[hue]f[sat]f[bright]f[cont]f[coring]b[sse]b", Tweak::Create },  // hue, sat, bright, contrast
+  { "Tweak", "c[hue]f[sat]f[bright]f[cont]f[coring]b[sse]b[startHue]i[endHue]i[maxSat]i[minSat]i", Tweak::Create },  // hue, sat, bright, contrast  ** sse is not used! **
   { "Limiter", "c[min_luma]i[max_luma]i[min_chroma]i[max_chroma]i[show]s", Limiter::Create },
   { 0 }
 };
@@ -355,29 +355,49 @@ AVSValue __cdecl RGBAdjust::Create(AVSValue args, void*, IScriptEnvironment* env
 ******   Tweak    *****
 **********************/
 
-Tweak::Tweak( PClip _child, double _hue, double _sat, double _bright, double _cont, bool _coring, bool _sse,
-              IScriptEnvironment* env ) 
-  : GenericVideoFilter(_child), coring(_coring), sse(_sse)
+Tweak::Tweak( PClip _child, double _hue, double _sat, double _bright, double _cont, bool _coring,
+                            int _startHue, int _endHue, int _maxSat, int _minSat, int _interp, 
+							IScriptEnvironment* env ) 
+  : GenericVideoFilter(_child), coring(_coring), startHue(_startHue), endHue(_endHue), p(_interp)
 {
 	try {	// HIDE DAMN SEH COMPILER BUG!!!
   if (vi.IsRGB())
 		env->ThrowError("Tweak: YUV data only (no RGB)");
-  if (vi.width % 2)
-		env->ThrowError("Tweak: Width must be a multiple of 2; use Crop");
 
-// The new "mapping" C code is faster than the iSSE code on my 3GHz P4HT - Make it optional
-  if (sse && (coring || !vi.IsYUY2()))
-		env->ThrowError("Tweak: SSE option only available for YUY2 with coring=false");
-  if (sse && !(env->GetCPUFlags() & CPUF_INTEGER_SSE))
-		env->ThrowError("Tweak: SSE option needs an iSSE capable processor");
-  
+  if (vi.IsY8()) {
+	  if (!(_hue == 0.0 && _sat == 1.0 && startHue == 0 && endHue == 359 && _maxSat == 150 && _minSat == 0))
+      env->ThrowError("Tweak: bright and cont are the only options available for Y8.");
+  }
+
+  if (startHue > 359 || startHue < 0 || endHue > 359 || endHue < 0)
+		env->ThrowError("Tweak: startHue and endHue must be between 0 and 359.");
+
+  if (_minSat > _maxSat)
+		env->ThrowError("Tweak: make sure that MinSat =< MaxSat");
+
+  if (_maxSat > 150 || _maxSat < 1 || _minSat > 149 || _minSat < 0)
+		env->ThrowError("Tweak: maxSat and minSat must be between 0 and 150.");
+
+  if (p>5 || p<0)
+	  env->ThrowError("Tweak: make sure that 0<=p<=4.");
+
+
+  // If defaults, don't check for ranges, just do all
+  if (startHue == 0 && endHue == 359 && _maxSat == 115 && _minSat == 0) {
+	  allPixels = true;
+  } else {
+	  allPixels = false;
+  }
+
 	Sat = (int) (_sat * 512);
 	Cont = (int) (_cont * 512);
 	Bright = (int) _bright;
 
- 	const double Hue = (_hue * 3.14159265358979323846) / 180.0;
+ 	const double Hue = (_hue * 3.1415926) / 180.0;
 	const double SIN = sin(Hue);
 	const double COS = cos(Hue);
+	double theta;
+
 	Sin = (int) (SIN * 4096 + 0.5);
 	Cos = (int) (COS * 4096 + 0.5);
 
@@ -391,13 +411,90 @@ Tweak::Tweak( PClip _child, double _hue, double _sat, double _bright, double _co
 		map[i] = min(max(y,minY),maxY);
 
 		/* hue and saturation */
-		mapCos[i] = int(((i - 128) * COS * _sat + 128) * 256. + 128.5);
-		mapSin[i] = int( (i - 128) * SIN * _sat        * 256. +   0.5);
+		mapCos[i] = int((i - 128) * COS * 256);
+		mapSin[i] = int((i - 128) * SIN * 256);
 	}
+
+	if (!allPixels) {		
+
+		// Precalc hue for all U/V combos
+		for (int x = 0; x<256; x++) {
+			for (int y = 0; y<256; y++) {
+				theta = atan2(x-128, y-128) * 180.0 / 3.1415926;
+				deg[x][y] = (int) ((theta > 0) ? theta: 360+theta);
+			}
+		}
+
+		// Precalc all squares because U^2 + V^2 = sat^2
+		for (int i = 0; i<182; i++) {
+			sq[i] = i*i;
+		}
+
+		// are we going clockwise or counter clockwise
+		if (startHue > endHue) {
+			clockwise = true;
+		} else {
+			clockwise = false;
+		}
+
+		// 100% equals sat=119 (= maximal saturation of valid RGB (R=255,G=B=0)
+		// 150% (=180) - 100% (=119) overshoot
+		minSat = (int) ((119 * _minSat / 100) + 0.5);
+		maxSat = (int) ((119 * _maxSat / 100) + 0.5);
+	}
+
 	}
 	catch (...) { throw; }
 }
 
+bool __stdcall Tweak::processPixel(int X, int Y)
+{
+	iSat = Sat;
+	if (allPixels) {
+		return true;
+	}
+
+	// hue
+	int T = deg[X+128][Y+128];
+
+	// startHue <= hue <= endHue
+	if (!clockwise) {
+		if (T>endHue || T<startHue) return false;
+	} else {
+		if (T<startHue && T>endHue) return false;
+	}
+
+	// We want a range of -128 to 127, but no negatives	.
+	X*=(X<0)?-1:1;
+	Y*=(Y<0)?-1:1;
+
+	// Interpolation range is +/- 2^p for p>0
+	int W = (int) sq[X]+sq[Y];
+
+	// Outside of [min-2^p, max+2^p] no adjustment
+	// minSat-2^p <= U^2 + V^2 <= maxSat+2^p
+	int max = min(maxSat+(1<<p),180);
+	int min = max(minSat-(1<<p),0);
+	if (((int) sq[max] < W) || ((int) sq[min] > W)) { // don't adjust
+		return false;
+	}
+
+	// In Range full adjust but no need to interpolate
+	if (((int) sq[maxSat] > W) && ((int) sq[minSat] < W) || p==0) {
+		return true;
+	}
+
+	// Interpolate saturation value
+	int holdSat = min((int) sqrt(W), 180);
+ 
+	if (holdSat<minSat) { // within 2^p of lower range
+		iSat = (int) (((512 - Sat) * (minSat - holdSat) >> p) + Sat); 
+	} else { // within 2^p of upper range
+		iSat = (int) (((512 - Sat) * (holdSat - maxSat) >> p) + Sat);
+	}
+	
+	return true;
+}
 
 PVideoFrame __stdcall Tweak::GetFrame(int n, IScriptEnvironment* env)
 {
@@ -410,21 +507,6 @@ PVideoFrame __stdcall Tweak::GetFrame(int n, IScriptEnvironment* env)
 	int height = src->GetHeight();
 	int row_size = src->GetRowSize();
 	
-	if (sse && env->GetCPUFlags() & CPUF_INTEGER_SSE) {
-		__int64 hue64 = (in64 Cos<<48) + (in64 (-Sin)<<32) + (in64 Sin<<16) + in64 Cos;
-		__int64 satcont64 = (in64 Sat<<48) + (in64 Cont<<32) + (in64 Sat<<16) + in64 Cont;
-		__int64 bright64 = (in64 Bright<<32) + in64 Bright;
-
-		if (vi.IsYUY2() && (!coring)) {
-			asm_tweak_ISSE_YUY2(srcp, row_size>>2, height, src_pitch-row_size, hue64, satcont64, bright64);   
-			return src;
-		}
-		else if (vi.IsYV12()) {
-			//TODO: asm_tweak_ISSE_YV12 :: Maybe not ;-)
-			//return src;
-		}
-	}
-
 	const int maxUV = coring ? 240 : 255;
 	const int minUV = coring ? 16 : 0;
 
@@ -438,14 +520,18 @@ PVideoFrame __stdcall Tweak::GetFrame(int n, IScriptEnvironment* env)
 				srcp[x+2] = map[srcp[x+2]];
 
 				/* hue and saturation */
-				const int u = (mapCos[srcp[x+1]] + mapSin[srcp[x+3]]) >> 8;
-				const int v = (mapCos[srcp[x+3]] - mapSin[srcp[x+1]]) >> 8;
-				srcp[x+1] = min(max(u,minUV),maxUV);
-				srcp[x+3] = min(max(v,minUV),maxUV);
+				int u = srcp[x+1] - 128;
+				int v = srcp[x+3] - 128;
+				if (processPixel(v, u)) {
+					u = int ( (mapCos[srcp[x+1]] + mapSin[srcp[x+3]]) * iSat ) >> 17;
+					v = int ( (mapCos[srcp[x+3]] - mapSin[srcp[x+1]]) * iSat ) >> 17;
+					srcp[x+1] = min(max(u+128,minUV),maxUV);
+					srcp[x+3] = min(max(v+128,minUV),maxUV);
+				}
 			}
 			srcp += src_pitch;
 		}
-	} else if (vi.IsYV12()) {
+	} else if (vi.IsPlanar()) {
 		int y;  // VC6 scoping sucks - Yes!
 		for (y=0; y<height; ++y) {
 			for (int x=0; x<row_size; ++x) {
@@ -462,10 +548,14 @@ PVideoFrame __stdcall Tweak::GetFrame(int n, IScriptEnvironment* env)
 		for (y=0; y<height; ++y) {
 			for (int x=0; x<row_size; ++x) {
 				/* hue and saturation */
-				const int u = (mapCos[srcpu[x]] + mapSin[srcpv[x]]) >> 8;
-				const int v = (mapCos[srcpv[x]] - mapSin[srcpu[x]]) >> 8;
-				srcpu[x] = min(max(u,minUV),maxUV);
-				srcpv[x] = min(max(v,minUV),maxUV);
+				int u = srcpu[x] - 128;
+				int v = srcpv[x] - 128;
+				if (processPixel(v, u)) {
+					u = int ( (mapCos[srcpu[x]] + mapSin[srcpv[x]]) * iSat ) >> 17;
+					v = int ( (mapCos[srcpv[x]] - mapSin[srcpu[x]]) * iSat ) >> 17;
+					srcpu[x] = min(max(u+128,minUV),maxUV);
+					srcpv[x] = min(max(v+128,minUV),maxUV);
+				}
 			}
 			srcpu += src_pitch;
 			srcpv += src_pitch;
@@ -484,7 +574,11 @@ AVSValue __cdecl Tweak::Create(AVSValue args, void* user_data, IScriptEnvironmen
 					 args[3].AsFloat(0.0),		// bright
 					 args[4].AsFloat(1.0),		// cont
 					 args[5].AsBool(true),      // coring
-					 args[6].AsBool(false),     // sse
+					 args[7].AsInt(0),          // startHue
+					 args[8].AsInt(359),        // endHue
+					 args[9].AsInt(150),        // maxSat
+					 args[10].AsInt(0),          // minSat
+					 args[11].AsInt(4),			// p
 					 env);
 	}
 	catch (...) { throw; }
@@ -492,62 +586,6 @@ AVSValue __cdecl Tweak::Create(AVSValue args, void* user_data, IScriptEnvironmen
 
 
 
-// Integer SSE optimization by "Dividee".
-void __declspec(naked) asm_tweak_ISSE_YUY2( BYTE *srcp, int w, int h, int modulo, __int64 hue, 
-                                       __int64 satcont, __int64 bright ) 
-{
-	static const __int64 norm = 0x0080001000800010i64;
-
-	__asm {
-		push		ebp
-		push		edi
-		push		esi
-		push		ebx
-
-		pxor		mm0, mm0
-		movq		mm1, norm				// 128 16 128 16
-		movq		mm2, [esp+16+20]		// Cos -Sin Sin Cos (fix12)
-		movq		mm3, [esp+16+28]		// Sat Cont Sat Cont (fix9)
-		movq		mm4, mm1
-		paddw		mm4, [esp+16+36]		// 128 16+Bright 128 16+Bright
-
-		mov			esi, [esp+16+4]			// srcp
-		mov			edx, [esp+16+12]		// height
-y_loop:
-		mov			ecx, [esp+16+8]			// width
-x_loop:
-		movd		mm7, [esi]   			// 0000VYUY
-		punpcklbw	mm7, mm0
-		psubw		mm7, mm1				//  V Y U Y
-		pshufw		mm6, mm7, 0xDD			//  V U V U
-		pmaddwd		mm6, mm2				// V*Cos-U*Sin V*Sin+U*Cos (fix12)
-		psrad		mm6, 12					// ? V' ? U'
-		movq		mm5, mm7
-		punpcklwd	mm7, mm6				// ? ? U' Y
-		punpckhwd	mm5, mm6				// ? ? V' Y
-		punpckldq	mm7, mm5				// V' Y U' Y
-		psllw		mm7, 7					// (fix7)
-		pmulhw		mm7, mm3	            // V'*Sat Y*Cont U'*Sat Y*Cont
-		paddw		mm7, mm4				// V" Y" U" Y"
-		packuswb	mm7, mm0				// 0000V"Y"U"Y"
-		movd		[esi], mm7
-
-		add			esi, 4
-		dec			ecx
-		jnz			x_loop
-
-		add			esi, [esp+16+16]		// skip to next scanline
-		dec			edx
-		jnz			y_loop
-
-		pop			ebx
-		pop			esi
-		pop			edi
-		pop			ebp
-		emms
-		ret
-	};
-}
 
 
 Limiter::Limiter(PClip _child, int _min_luma, int _max_luma, int _min_chroma, int _max_chroma, int _show, IScriptEnvironment* env)

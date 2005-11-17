@@ -71,6 +71,7 @@ class RGBAdjust : public GenericVideoFilter
 public:
   RGBAdjust(PClip _child, double r,  double g,  double b,  double a,
                           double rb, double gb, double bb, double ab,
+                          double rg, double gg, double bg, double ag,
                           bool _analyze, IScriptEnvironment* env);
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
@@ -86,8 +87,9 @@ private:
 class Tweak : public GenericVideoFilter
 {
 public:
-  Tweak( PClip _child, double _hue, double _sat, double _bright, double _cont, bool _coring, bool _sse,
-         IScriptEnvironment* env );
+  Tweak( PClip _child, double _hue, double _sat, double _bright, double _cont, bool _coring,
+                       int _startHue, int _endHue, int _maxSat, int _minSat, int _interp,
+					   IScriptEnvironment* env );
 
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
   AVSValue __cdecl Tweak::FilterInfo(int request);
@@ -96,18 +98,25 @@ public:
 
 private:
 	int Sin, Cos;
+	double sat, iSat;
 	int Sat, Bright, Cont;
-	bool coring, sse;
+	bool coring;
+	int maxSat, minSat;	  // Min/Max sat range to process 150% to 0 %
+	int startHue, endHue; // Hue range for which hue and sat are processed.
+	int p; // interpolation - 2^p
+
+	int sq[182];          // Precalc squares up to 128^2. U^2 + V^2 = sat^2
+	bool clockwise;	      // Direction of startHue->stopHue
+	bool allPixels;	      // Flag to skip special processing if doing all pixels
+	int deg[256][256];	  // Precalc the atan in degrees of all combos of U and V
+
+	bool __stdcall processPixel(int X, int Y); // When true it process the sat of the pixel
 
 	BYTE map[256];
 	int mapCos[256], mapSin[256];
 };
 
 
-/**** ASM Routines ****/
-
-void asm_tweak_ISSE_YUY2( BYTE *srcp, int w, int h, int modulo, __int64 hue, __int64 satcont, 
-                     __int64 bright );
 
 using namespace SoftWire; 
 
