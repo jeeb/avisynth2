@@ -113,6 +113,7 @@ private:
 	bool __stdcall processPixel(int X, int Y); // When true it process the sat of the pixel
 
 	BYTE map[256];
+  unsigned short mapUV[256*256];
 	int mapCos[256], mapSin[256];
 };
 

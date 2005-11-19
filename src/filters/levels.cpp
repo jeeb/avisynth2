@@ -49,12 +49,10 @@
 AVSFunction Levels_filters[] = {
   { "Levels", "cifiii[coring]b", Levels::Create },        // src_low, gamma, src_high, dst_low, dst_high 
   { "RGBAdjust", "c[r]f[g]f[b]f[a]f[rb]f[gb]f[bb]f[ab]f[rg]f[gg]f[bg]f[ag]f[analyze]b", RGBAdjust::Create },
-  { "Tweak", "c[hue]f[sat]f[bright]f[cont]f[coring]b[sse]b[startHue]i[endHue]i[maxSat]i[minSat]i", Tweak::Create },  // hue, sat, bright, contrast  ** sse is not used! **
+  { "Tweak", "c[hue]f[sat]f[bright]f[cont]f[coring]b[sse]b[startHue]i[endHue]i[maxSat]i[minSat]i[interp]i", Tweak::Create },  // hue, sat, bright, contrast  ** sse is not used! **
   { "Limiter", "c[min_luma]i[max_luma]i[min_chroma]i[max_chroma]i[show]s", Limiter::Create },
   { 0 }
 };
-
-
 
 
 
@@ -443,6 +441,25 @@ Tweak::Tweak( PClip _child, double _hue, double _sat, double _bright, double _co
 		maxSat = (int) ((119 * _maxSat / 100) + 0.5);
 	}
 
+	const int maxUV = coring ? 240 : 255;
+	const int minUV = coring ? 16 : 0;
+
+  for (int u = 0; u < 256; u++) {
+    for (int v = 0; v < 256; v++) {
+      int destu = u-128;
+      int destv = v-128;
+		  if (processPixel(destv, destu)) {
+				destu = int ( (mapCos[u] + mapSin[v]) * iSat ) >> 17;
+				destv = int ( (mapCos[v] - mapSin[u]) * iSat ) >> 17;
+				destu = min(max(destu+128,minUV),maxUV);
+				destv = min(max(destv+128,minUV),maxUV);
+        mapUV[(u<<8)|v]  = (unsigned short)(destu | (destv<<8));
+      } else {
+       mapUV[(u<<8)|v]  = (unsigned short)(u | (v<<8));
+      }
+    }
+  }
+
 	}
 	catch (...) { throw; }
 }
@@ -507,8 +524,6 @@ PVideoFrame __stdcall Tweak::GetFrame(int n, IScriptEnvironment* env)
 	int height = src->GetHeight();
 	int row_size = src->GetRowSize();
 	
-	const int maxUV = coring ? 240 : 255;
-	const int minUV = coring ? 16 : 0;
 
 	if (vi.IsYUY2()) {
 		for (int y = 0; y < height; y++)
@@ -520,14 +535,11 @@ PVideoFrame __stdcall Tweak::GetFrame(int n, IScriptEnvironment* env)
 				srcp[x+2] = map[srcp[x+2]];
 
 				/* hue and saturation */
-				int u = srcp[x+1] - 128;
-				int v = srcp[x+3] - 128;
-				if (processPixel(v, u)) {
-					u = int ( (mapCos[srcp[x+1]] + mapSin[srcp[x+3]]) * iSat ) >> 17;
-					v = int ( (mapCos[srcp[x+3]] - mapSin[srcp[x+1]]) * iSat ) >> 17;
-					srcp[x+1] = min(max(u+128,minUV),maxUV);
-					srcp[x+3] = min(max(v+128,minUV),maxUV);
-				}
+				int u = srcp[x+1];
+				int v = srcp[x+3];
+        int mapped = mapUV[(u<<8) | v];
+        srcp[x+1] = (BYTE)(mapped&0xff);
+        srcp[x+3] = (BYTE)(mapped>>8);
 			}
 			srcp += src_pitch;
 		}
@@ -545,17 +557,15 @@ PVideoFrame __stdcall Tweak::GetFrame(int n, IScriptEnvironment* env)
 		BYTE * srcpv = src->GetWritePtr(PLANAR_V);
 		row_size = src->GetRowSize(PLANAR_U);
 		height = src->GetHeight(PLANAR_U);
+
 		for (y=0; y<height; ++y) {
 			for (int x=0; x<row_size; ++x) {
 				/* hue and saturation */
-				int u = srcpu[x] - 128;
-				int v = srcpv[x] - 128;
-				if (processPixel(v, u)) {
-					u = int ( (mapCos[srcpu[x]] + mapSin[srcpv[x]]) * iSat ) >> 17;
-					v = int ( (mapCos[srcpv[x]] - mapSin[srcpu[x]]) * iSat ) >> 17;
-					srcpu[x] = min(max(u+128,minUV),maxUV);
-					srcpv[x] = min(max(v+128,minUV),maxUV);
-				}
+				int u = srcpu[x];
+				int v = srcpv[x];
+        int mapped = mapUV[(u<<8) | v];
+        srcpu[x] = (BYTE)(mapped&0xff);
+        srcpv[x] = (BYTE)(mapped>>8);
 			}
 			srcpu += src_pitch;
 			srcpv += src_pitch;
@@ -578,7 +588,7 @@ AVSValue __cdecl Tweak::Create(AVSValue args, void* user_data, IScriptEnvironmen
 					 args[8].AsInt(359),        // endHue
 					 args[9].AsInt(150),        // maxSat
 					 args[10].AsInt(0),          // minSat
-					 args[11].AsInt(4),			// p
+					 args[11].AsInt(4),			// interp
 					 env);
 	}
 	catch (...) { throw; }
