@@ -350,69 +350,24 @@ AVISource::AVISource(const char filename[], bool fAudio, const char pixel_type[]
           bool fRGB32 = lstrcmpi(pixel_type, "RGB32") == 0 || pixel_type[0] == 0;
           bool fRGB24 = lstrcmpi(pixel_type, "RGB24") == 0 || pixel_type[0] == 0;
 
-          if (!(fYV12 || fYUY2 || fRGB32 || fRGB24 || fYV16 || fYV411 || fYV24))
-            env->ThrowError("AVISource: requested format should be YV12, YV16, YV24, YV411, YUY2, Y8, RGB32 or RGB24");
+          if (!(fY8 || fYV12 || fYV16 || fYV24 || fYV411 || fYUY2 || fRGB32 || fRGB24))
+            env->ThrowError("AVISource: requested format must be one of YV24, YV16, YV12, YV411, YUY2, Y8, RGB32 or RGB24");
 
           // try to decompress to YV12, YV411, YV16, YV24, YUY2, Y8, RGB32, and RGB24 in turn
           memset(&biDst, 0, sizeof(BITMAPINFOHEADER));
           biDst.biSize = sizeof(BITMAPINFOHEADER);
           biDst.biWidth = vi.width;
           biDst.biHeight = vi.height;
-          biDst.biCompression = '21VY';
-          biDst.biBitCount = 12;
           biDst.biPlanes = 1;
-          int xwidth=(vi.width+3)&(~3);
-          biDst.biSizeImage = xwidth * vi.height + ((xwidth>>1) * vi.height);
           bool bOpen = true;
 
-// ::FIXME:: Is this the most appropriate order. I would think it should be in "quality" order
-//           i.e. YV24, YV16, YV12, YV411, YUY2, RGB32, RGB24, Y8 - Not sure about YUY2 vrs YV411
-
-          // YV12
-          if (bOpen && fYV12 && ICERR_OK == ICDecompressQuery(hic, pbiSrc, &biDst)) {
-            vi.pixel_type = VideoInfo::CS_YV12;
-            _RPT0(0,"AVISource: Opening as YV12.\n");
-            bOpen = false;  // Skip further attempts
-             
-          } else if (forcedType) {
-             env->ThrowError("AVISource: the video decompressor couldn't produce YV12 output");
-          }
-
-          // YV411
-          if (bOpen) {
-            vi.pixel_type = VideoInfo::CS_YV411;
-            biDst.biSizeImage = vi.BMPSize();
-            biDst.biCompression = 'B14Y';
-            biDst.biBitCount = 16;
-            if (fYV411 && ICERR_OK == ICDecompressQuery(hic, pbiSrc, &biDst)) {
-              _RPT0(0,"AVISource: Opening as YV411.\n");
-              bOpen = false;  // Skip further attempts
-            } else if (forcedType) {
-               env->ThrowError("AVISource: the video decompressor couldn't produce YV411 output");
-            }
-          }
-
-          // YV16
-          if (bOpen) {
-            vi.pixel_type = VideoInfo::CS_YV16;
-            biDst.biSizeImage = vi.BMPSize();
-            biDst.biCompression = '61VY';
-            biDst.biBitCount = 16;
-            if (fYV16 && ICERR_OK == ICDecompressQuery(hic, pbiSrc, &biDst)) {
-              _RPT0(0,"AVISource: Opening as YV16.\n");
-              bOpen = false;  // Skip further attempts
-            } else if (forcedType) {
-               env->ThrowError("AVISource: the video decompressor couldn't produce YV16 output");
-            }
-          }
-
           // YV24
-          if (bOpen) {
+          if (fYV24 && bOpen) {
             vi.pixel_type = VideoInfo::CS_YV24;
             biDst.biSizeImage = vi.BMPSize();
             biDst.biCompression = '42VY';
             biDst.biBitCount = 24;
-            if (fYV24 && ICERR_OK == ICDecompressQuery(hic, pbiSrc, &biDst)) {
+            if (ICERR_OK == ICDecompressQuery(hic, pbiSrc, &biDst)) {
               _RPT0(0,"AVISource: Opening as YV24.\n");
               bOpen = false;  // Skip further attempts
             } else if (forcedType) {
@@ -420,13 +375,57 @@ AVISource::AVISource(const char filename[], bool fAudio, const char pixel_type[]
             }
           }
 
+          // YV16
+          if (fYV16 && bOpen) {
+            vi.pixel_type = VideoInfo::CS_YV16;
+            biDst.biSizeImage = vi.BMPSize();
+            biDst.biCompression = '61VY';
+            biDst.biBitCount = 16;
+            if (ICERR_OK == ICDecompressQuery(hic, pbiSrc, &biDst)) {
+              _RPT0(0,"AVISource: Opening as YV16.\n");
+              bOpen = false;  // Skip further attempts
+            } else if (forcedType) {
+               env->ThrowError("AVISource: the video decompressor couldn't produce YV16 output");
+            }
+          }
+
+          // YV12
+          if (fYV12 && bOpen) {
+            vi.pixel_type = VideoInfo::CS_YV12;
+            biDst.biSizeImage = vi.BMPSize();
+            biDst.biCompression = '21VY';
+            biDst.biBitCount = 12;
+            if (ICERR_OK == ICDecompressQuery(hic, pbiSrc, &biDst)) {
+              _RPT0(0,"AVISource: Opening as YV12.\n");
+              bOpen = false;  // Skip further attempts
+            } else if (forcedType) {
+               env->ThrowError("AVISource: the video decompressor couldn't produce YV12 output");
+            }
+          }
+
+// ::FIXME:: Is this the most appropriate order.  Not sure about YUY2 vrs YV411
+
+          // YV411
+          if (fYV411 && bOpen) {
+            vi.pixel_type = VideoInfo::CS_YV411;
+            biDst.biSizeImage = vi.BMPSize();
+            biDst.biCompression = 'B14Y';
+            biDst.biBitCount = 16;
+            if (ICERR_OK == ICDecompressQuery(hic, pbiSrc, &biDst)) {
+              _RPT0(0,"AVISource: Opening as YV411.\n");
+              bOpen = false;  // Skip further attempts
+            } else if (forcedType) {
+               env->ThrowError("AVISource: the video decompressor couldn't produce YV411 output");
+            }
+          }
+
           // YUY2
-          if (bOpen) {
+          if (fYUY2 && bOpen) {
             vi.pixel_type = VideoInfo::CS_YUY2;
             biDst.biSizeImage = vi.BMPSize();
             biDst.biCompression = '2YUY';
             biDst.biBitCount = 16;
-            if (fYUY2 && ICERR_OK == ICDecompressQuery(hic, pbiSrc, &biDst)) {
+            if (ICERR_OK == ICDecompressQuery(hic, pbiSrc, &biDst)) {
               _RPT0(0,"AVISource: Opening as YUY2.\n");
               bOpen = false;  // Skip further attempts
             } else if (forcedType) {
@@ -434,27 +433,13 @@ AVISource::AVISource(const char filename[], bool fAudio, const char pixel_type[]
             }
           }
 
-          // Y8
-          if (bOpen) {
-            vi.pixel_type = VideoInfo::CS_Y8;
-            biDst.biSizeImage = vi.BMPSize();
-            biDst.biCompression = '008Y';
-            biDst.biBitCount = 8;
-            if (fY8 && ICERR_OK == ICDecompressQuery(hic, pbiSrc, &biDst)) {
-              _RPT0(0,"AVISource: Opening as Y8.\n");
-              bOpen = false;  // Skip further attempts
-            } else if (forcedType) {
-               env->ThrowError("AVISource: the video decompressor couldn't produce Y8 output");
-            }
-          }
-
-          //RGB32
-          if (bOpen) {
+          // RGB32
+          if (fRGB32 && bOpen) {
             vi.pixel_type = VideoInfo::CS_BGR32;
             biDst.biSizeImage = vi.BMPSize();
             biDst.biCompression = BI_RGB;
             biDst.biBitCount = 32;
-            if (fRGB32 && ICERR_OK == ICDecompressQuery(hic, pbiSrc, &biDst)) {
+            if (ICERR_OK == ICDecompressQuery(hic, pbiSrc, &biDst)) {
               _RPT0(0,"AVISource: Opening as RGB32.\n");
               bOpen = false;  // Skip further attempts
             } else if (forcedType) {
@@ -463,11 +448,11 @@ AVISource::AVISource(const char filename[], bool fAudio, const char pixel_type[]
           }
 
           // RGB24
-          if (bOpen) {
+          if (fRGB24 && bOpen) {
             vi.pixel_type = VideoInfo::CS_BGR24;
             biDst.biBitCount = 24;
             biDst.biSizeImage = vi.BMPSize();
-            if (fRGB24 && ICERR_OK == ICDecompressQuery(hic, pbiSrc, &biDst)) {
+            if (ICERR_OK == ICDecompressQuery(hic, pbiSrc, &biDst)) {
               vi.pixel_type = VideoInfo::CS_BGR24;
               _RPT0(0,"AVISource: Opening as RGB24.\n");
             } else if (forcedType) {
@@ -475,11 +460,25 @@ AVISource::AVISource(const char filename[], bool fAudio, const char pixel_type[]
             }
           }
 
-          if (!bOpen) {
-            DecompressBegin(pbiSrc, &biDst);
-          } else {
-            env->ThrowError("AviSource: Could not open video stream.");
+          // Y8
+          if (fY8 && bOpen) {
+            vi.pixel_type = VideoInfo::CS_Y8;
+            biDst.biSizeImage = vi.BMPSize();
+            biDst.biCompression = '008Y';
+            biDst.biBitCount = 8;
+            if (ICERR_OK == ICDecompressQuery(hic, pbiSrc, &biDst)) {
+              _RPT0(0,"AVISource: Opening as Y8.\n");
+              bOpen = false;  // Skip further attempts
+            } else if (forcedType) {
+               env->ThrowError("AVISource: the video decompressor couldn't produce Y8 output");
+            }
           }
+
+          // No takers!
+          if (bOpen)
+            env->ThrowError("AviSource: Could not open video stream in any supported format.");
+
+          DecompressBegin(pbiSrc, &biDst);
         }
       } else {
         env->ThrowError("AviSource: Could not locate video stream.");
