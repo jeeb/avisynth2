@@ -529,7 +529,7 @@ public:
     char temp[1024] = "$Plugin!";
     strcat(temp, name);
     strcat(temp, "!Param$");
-    env->SetGlobalVar(env->SaveString(temp, 8+strlen(name)+7+1), AVSValue(params));
+    env->SetGlobalVar(env->SaveString(temp, 8+strlen(name)+7+1), AVSValue(f->param_types)); // Fizick
     }
 #endif
 // END ***************************************************************
