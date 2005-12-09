@@ -822,10 +822,6 @@ SOURCE=.\convert\convert_yuy2.h
 # End Source File
 # Begin Source File
 
-SOURCE=.\convert\convert_yuy2.inc
-# End Source File
-# Begin Source File
-
 SOURCE=.\convert\convert_yv12.cpp
 # End Source File
 # Begin Source File

@@ -455,7 +455,7 @@ Tweak::Tweak( PClip _child, double _hue, double _sat, double _bright, double _co
 				destv = min(max(destv+128,minUV),maxUV);
         mapUV[(u<<8)|v]  = (unsigned short)(destu | (destv<<8));
       } else {
-       mapUV[(u<<8)|v]  = (unsigned short)(u | (v<<8));
+       mapUV[(u<<8)|v]  = (unsigned short)(min(max(u,minUV),maxUV) | ((min(max(v,minUV),maxUV))<<8));
       }
     }
   }

@@ -295,7 +295,8 @@ void MatrixGenerator3x3::GenerateAssembly(int width, int frac_bits, bool rgb_out
   }
 
   if (!unroll) {  // Should we create a loop instead of unrolling?
-    x86.mov(    ecx, loops);
+    x86.mov(ecx, loops);
+    x86.align(16);
     x86.label("loopback");
     loops = 1;
   }

@@ -228,6 +228,7 @@ DynamicAssembledCode FilteredResizeH::GenerateResizer(int gen_plane, IScriptEnvi
     
     x86.mov(dword_ptr [&gen_h],vi_height);  // This is our y counter.
 
+    x86.align(16);
     x86.label("yloop");
 
     x86.mov(eax,dword_ptr [&gen_dstp]);
@@ -245,6 +246,9 @@ DynamicAssembledCode FilteredResizeH::GenerateResizer(int gen_plane, IScriptEnvi
       if ((!(i%prefetchevery)) && (i*16+256<vi_src_width) && isse && unroll_fetch) {
          //Prefetch only once per cache line
        x86.prefetchnta(dword_ptr [esi+256]);
+      }
+      if (!unroll_fetch) {  // Loop on if not unrolling
+        x86.align(16);
       }
       x86.label("fetch_loopback");
       x86.movq(mm0, qword_ptr[esi]);        // Move pixels into mmx-registers

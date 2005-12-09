@@ -32,11 +32,62 @@
 // which is not derived from or based on Avisynth, such as 3rd-party filters,
 // import and export plugins, or graphical user interfaces.
 
+#ifndef __Convert_YUY2_H__
+#define __Convert_YUY2_H__
+
 #include "../internal.h"
+#include "convert_yv12.h"
+#include "convert_planar.h"
+#include "../core/softwire_helpers.h"
 
 
-void mmx_ConvertRGB32toYUY2(unsigned int *src,unsigned int *dst,int src_pitch, int dst_pitch,int w, int h, int matrix);
-void mmx_ConvertRGB24toYUY2(unsigned int *src,unsigned int *dst,int src_pitch, int dst_pitch,int w, int h, int matrix);
-void mmx_ConvertRGB32toYUY2_Dup(unsigned int *src,unsigned int *dst,int src_pitch, int dst_pitch,int w, int h, int matrix);
-void mmx_ConvertRGB24toYUY2_Dup(unsigned int *src,unsigned int *dst,int src_pitch, int dst_pitch,int w, int h, int matrix);
+class ConvertToYUY2 : public GenericVideoFilter, public  CodeGenerator 
+/**
+  * Class for conversions to YUY2
+ **/
+{
+public:
+  ConvertToYUY2(PClip _child, bool _interlaced, const char *matrix, IScriptEnvironment* env);
+  ~ConvertToYUY2();
 
+  PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
+
+  static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
+
+private:
+  const bool interlaced;
+
+protected:
+  void GenerateAssembly(bool rgb24, bool dupl, bool sub, int w, IScriptEnvironment* env);
+  void mmx_ConvertRGBtoYUY2(const BYTE *src,BYTE *dst,int src_pitch, int dst_pitch, int h);
+  DynamicAssembledCode assembly;
+
+  const int src_cs;  // Source colorspace
+  int theMatrix;
+  enum {Rec601=0, Rec709=1, PC_601=2, PC_709=3 };	// Note! convert_yuy2.cpp assumes these values
+
+  // Variables for dynamic code.
+  const BYTE* dyn_src;
+  BYTE* dyn_dst;
+
+  // These must be set BEFORE calling the generator, and CANNOT be changed runtime!
+  const __int64* dyn_cybgr;
+  const __int64* dyn_fpix_mul;
+  const int* dyn_fraction;
+  const int* dyn_y1y2_mult;
+  
+};
+
+class ConvertBackToYUY2 : public ConvertToYUY2 
+/**
+  * Class for conversions to YUY2 (With Chroma copy)
+ **/
+{
+public:
+  ConvertBackToYUY2(PClip _child, const char *matrix, IScriptEnvironment* env);
+  PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
+  static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
+
+};
+
+#endif
