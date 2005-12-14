@@ -388,38 +388,49 @@ PVideoFrame Histogram::DrawMode3(int n, IScriptEnvironment* env) {
     // similar for the other hues.
     // luma
 
-    float innerF = 126.0f;
-    float thicknessF = 0.75f;
+    float innerF = 124.9f;  // .9 is for better visuals in subsampled mode
+    float thicknessF = 1.5f;
     float oneOverThicknessF = 1.0f/thicknessF;
     float outerF = innerF + thicknessF*2.0f;
     float centerF = innerF + thicknessF;
     int innerSq = (int)(innerF*innerF);
     int outerSq = (int)(outerF*outerF);
     int activeY = 0;
+    int xRounder = (1<<swidth) / 2;
+    int yRounder = (1<<sheight) / 2;
 
     for (y=-127; y<128; y++) {
       if (y+127 > YRange[activeY+1]) activeY++;
-      for (int x=-127; x<128; x++) {
+      for (int x=-127; x<=0; x++) {
         int distSq = x*x+y*y;
         if (distSq <= outerSq && distSq >= innerSq) {
-          int interp = (int)(256.0 - ( 256.0 * (oneOverThicknessF * fabs(sqrt((float)distSq)- centerF))));
+          int interp = (int)(256.0f - ( 255.9f * (oneOverThicknessF * fabs(sqrt((float)distSq)- centerF))));
+          // 255.9 is to account for float inprecision, which could cause underflow.
 
           int xP = 127 + x;
           int yP = 127 + y;
 
-          if (x>0) {
-            pdstb[xP+yP*p] = (interp*RC[3*activeY])>>8; // right upper half
-            xP >>= swidth;
-            yP >>= sheight;
-            pdstbU[xP+yP*p2] = (RC[3*activeY+1]); // right half  - NOT interpolated
-            pdstbV[xP+yP*p2] = (RC[3*activeY+2]); // right half  - NOT interpolated
-          } else {
-            pdstb[xP+yP*p] = (interp*LC[3*activeY])>>8; // left upper half
-            xP >>= swidth;
-            yP >>= sheight;
-            pdstbU[xP+yP*p2] = (LC[3*activeY+1]); // left half - NOT interpolated
-            pdstbV[xP+yP*p2] = (LC[3*activeY+2]); // left half - NOT interpolated
-          }
+          pdstb[xP+yP*p] = (interp*LC[3*activeY])>>8; // left upper half
+          pdstb[255-xP+yP*p] = (interp*RC[3*activeY])>>8; // right upper half
+//          pdstb[xP+yP*p] = 16+((interp*210)>>8); // left upper half
+//          pdstb[255-xP+yP*p] = 16+((interp*210)>>8); // right upper half
+
+          xP = (xP+xRounder) >> swidth;
+          yP = (yP+yRounder) >> sheight;
+
+          interp = min(256,interp);
+          int invInt = (256-interp);
+
+          pdstbU[xP+yP*p2] = (pdstbU[xP+yP*p2] * invInt + interp * LC[3*activeY+1])>>8; // left half
+          pdstbV[xP+yP*p2] = (pdstbV[xP+yP*p2] * invInt + interp * LC[3*activeY+2])>>8; // left half
+//          pdstbU[xP+yP*p2] = (pdstbU[xP+yP*p2] * invInt + interp * (x+127))>>8; // left half
+//          pdstbV[xP+yP*p2] = (pdstbV[xP+yP*p2] * invInt + interp * (y+127))>>8; // left half
+
+          xP = ((255)>>swidth) -xP;
+          pdstbU[xP+yP*p2] = (pdstbU[xP+yP*p2] * invInt + interp * RC[3*activeY+1])>>8; // right half
+          pdstbV[xP+yP*p2] = (pdstbV[xP+yP*p2] * invInt + interp * RC[3*activeY+2])>>8; // right half        
+//          pdstbU[xP+yP*p2] = (pdstbU[xP+yP*p2] * invInt + interp * (127-x))>>8; // right half
+//          pdstbV[xP+yP*p2] = (pdstbV[xP+yP*p2] * invInt + interp * (y+127))>>8; // right half
         }
       }
     }
