@@ -340,18 +340,15 @@ PVideoFrame Histogram::DrawMode3(int n, IScriptEnvironment* env) {
     // Erase all - chroma
     pdstbU = dst->GetWritePtr(PLANAR_U);
     pdstbU += src->GetRowSize(PLANAR_U);
-    
-    for (y=0; y<dst->GetHeight(PLANAR_U); y++) {
-      memset(&pdstbU[y*dst->GetPitch(PLANAR_U)], 128, (256>>swidth));
-    }
-    
     pdstbV = dst->GetWritePtr(PLANAR_V);
     pdstbV += src->GetRowSize(PLANAR_V);
     
     for (y=0; y<dst->GetHeight(PLANAR_U); y++) {
+      memset(&pdstbU[y*dst->GetPitch(PLANAR_U)], 128, (256>>swidth));
       memset(&pdstbV[y*dst->GetPitch(PLANAR_V)], 128, (256>>swidth));
     }
     
+
     // plot valid grey ccir601 square
     pdstb = pdst;
     pdstb += src->GetRowSize(PLANAR_Y);
@@ -412,8 +409,6 @@ PVideoFrame Histogram::DrawMode3(int n, IScriptEnvironment* env) {
 
           pdstb[xP+yP*p] = (interp*LC[3*activeY])>>8; // left upper half
           pdstb[255-xP+yP*p] = (interp*RC[3*activeY])>>8; // right upper half
-//          pdstb[xP+yP*p] = 16+((interp*210)>>8); // left upper half
-//          pdstb[255-xP+yP*p] = 16+((interp*210)>>8); // right upper half
 
           xP = (xP+xRounder) >> swidth;
           yP = (yP+yRounder) >> sheight;
@@ -423,14 +418,10 @@ PVideoFrame Histogram::DrawMode3(int n, IScriptEnvironment* env) {
 
           pdstbU[xP+yP*p2] = (pdstbU[xP+yP*p2] * invInt + interp * LC[3*activeY+1])>>8; // left half
           pdstbV[xP+yP*p2] = (pdstbV[xP+yP*p2] * invInt + interp * LC[3*activeY+2])>>8; // left half
-//          pdstbU[xP+yP*p2] = (pdstbU[xP+yP*p2] * invInt + interp * (x+127))>>8; // left half
-//          pdstbV[xP+yP*p2] = (pdstbV[xP+yP*p2] * invInt + interp * (y+127))>>8; // left half
 
           xP = ((255)>>swidth) -xP;
           pdstbU[xP+yP*p2] = (pdstbU[xP+yP*p2] * invInt + interp * RC[3*activeY+1])>>8; // right half
           pdstbV[xP+yP*p2] = (pdstbV[xP+yP*p2] * invInt + interp * RC[3*activeY+2])>>8; // right half        
-//          pdstbU[xP+yP*p2] = (pdstbU[xP+yP*p2] * invInt + interp * (127-x))>>8; // right half
-//          pdstbV[xP+yP*p2] = (pdstbV[xP+yP*p2] * invInt + interp * (y+127))>>8; // right half
         }
       }
     }
@@ -465,11 +456,11 @@ PVideoFrame Histogram::DrawMode3(int n, IScriptEnvironment* env) {
       for (int x=0; x<src_widthUV; x++) {
         int uval = pU[x];
         int vval = pV[x];
-        pdstb[uval+vval*p] = pY[(x<<swidth)+(y<<sheight)];
+        pdstb[uval+vval*p] = pY[x<<swidth];
         pdstbU[(uval>>swidth)+(vval>>sheight)*p2] = uval;
         pdstbV[(uval>>swidth)+(vval>>sheight)*p2] = vval;
       }
-      pY += src_pitch;
+      pY += (src_pitch<<sheight);
       pU += src_pitchUV;
       pV += src_pitchUV;
     }
