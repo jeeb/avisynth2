@@ -997,7 +997,7 @@ PVideoFrame FilterInfo::GetFrame(int n, IScriptEnvironment* env)
       "Time: %02d:%02d:%02d:%03d of %02d:%02d:%02d:%03d\n"
       "ColorSpace: %s\n"
       "Width:%4u pixels, Height:%4u pixels.\n"
-      "Frames per second: %7.4f\n"
+      "Frames per second: %7.4f  (%d/%d)\n"
       "FieldBased (Separated) Video: %s\n"
       "Parity: %s\n"
       "Video Pitch: %4u bytes.\n"
@@ -1006,7 +1006,7 @@ PVideoFrame FilterInfo::GetFrame(int n, IScriptEnvironment* env)
       ,(vLenInMsecs/(60*60*1000)), (vLenInMsecs/(60*1000)) % 60, (vLenInMsecs/1000) % 60, vLenInMsecs % 1000
       ,c_space
       ,vi.width,vi.height
-      ,(float)vi.fps_numerator/(float)vi.fps_denominator
+      ,(float)vi.fps_numerator/(float)vi.fps_denominator, vi.fps_numerator, vi.fps_denominator
       ,vi.IsFieldBased() ? t_YES : t_NO
       ,s_parity
       ,frame->GetPitch()
