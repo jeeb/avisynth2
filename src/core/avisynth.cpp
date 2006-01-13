@@ -2047,18 +2047,20 @@ void ScriptEnvironment::ThrowError(const char* fmt, ...) {
 }
 
 void ScriptEnvironment::SetMTMode(int mode,int threads,bool temporary){
+  if(temporary&&mt_mode==-1)
+    return;
   if(mode==6)  {
 	  mode=5;InterlockedIncrement(&Mode5Gate::suspendedthreads);}
   if(threads>0&&mt_mode==-1)
     nthreads=threads;
   if(mt_mode!=0&&mode>=1&&mode<=5) {
 	if(temporary&&temp_mt_mode==-5)
-		temp_mt_mode=mode;
+		temp_mt_mode=mt_mode;
     mt_mode=mode;
   }
   if(mt_mode==-1&&mode==0)
     mt_mode=0;
-  if(mt_mode==-5&&temp_mt_mode!=-5){// restore permanent mtmode
+  if(mode==-5&&temp_mt_mode!=-5){// restore permanent mtmode
 	  mt_mode=temp_mt_mode;
 	  temp_mt_mode=-5;
   }
@@ -2102,5 +2104,7 @@ IClipLocalStorage* ScriptEnvironment::AllocClipLocalStorage()  {
   CurrentCLS=RestoreCLS;
   }
 
-
-  ScriptEnvironmentTLS::~ScriptEnvironmentTLS(){delete vartable;}//declared in MT.h but because vartables destructor is defined in avisynth.cpp the destructor is defined here(because it calls the vartable destructor)
+//declared in MT.h but because vartables destructor is defined in 
+//avisynth.cpp the destructor is defined here(because it calls the
+//vartable destructor)
+  ScriptEnvironmentTLS::~ScriptEnvironmentTLS(){delete vartable;}
