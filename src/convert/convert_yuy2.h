@@ -34,8 +34,15 @@
 
 #include "../internal.h"
 
+#ifdef _AMD64_
+extern "C" {
+#endif
 
-void mmx_ConvertRGB32toYUY2(unsigned int *src,unsigned int *dst,int src_pitch, int dst_pitch,int w, int h);
-void mmx_ConvertRGB24toYUY2(unsigned int *src,unsigned int *dst,int src_pitch, int dst_pitch,int w, int h);
-void mmx_ConvertRGB32toYUY2_Dup(unsigned int *src,unsigned int *dst,int src_pitch, int dst_pitch,int w, int h);
+void mmx_ConvertRGB32toYUY2(unsigned int *src,unsigned int *dst,int src_pitch, int dst_pitch,int w, int h, int matrix);
+void mmx_ConvertRGB24toYUY2(unsigned int *src,unsigned int *dst,int src_pitch, int dst_pitch,int w, int h, int matrix);
+void mmx_ConvertRGB32toYUY2_Dup(unsigned int *src,unsigned int *dst,int src_pitch, int dst_pitch,int w, int h, int matrix);
+void mmx_ConvertRGB24toYUY2_Dup(unsigned int *src,unsigned int *dst,int src_pitch, int dst_pitch,int w, int h, int matrix);
 
+#ifdef _AMD64_
+}
+#endif
