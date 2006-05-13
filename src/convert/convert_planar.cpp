@@ -786,9 +786,9 @@ xloop:
 		punpcklbw mm0,mm1      ;VYUYVYUY
 		add eax,4
 		punpckhbw mm3,mm1      ;VYUYVYUY
-		movq [edi+eax*4-8],mm0 ;store
+		movq [edi+eax*4-16],mm0 ;store
 		cmp eax,ecx
-		movq [edi+eax*4],mm3   ;store
+		movq [edi+eax*4-8],mm3   ;store
 		jl xloop
 		add ebx,pitch1Y
 		add edx,pitch1UV
