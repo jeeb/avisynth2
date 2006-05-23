@@ -294,7 +294,7 @@ struct VideoInfo {
       case CS_Y8:
         return 8;
       default:
-        return 0;
+        return 8;
     }
   }
 
