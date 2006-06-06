@@ -314,6 +314,9 @@ TCPClientThread::TCPClientThread(const char* hostname, int port, const char* com
   }
   _RPT0(0, "TCPClient: Connected to server!  Spawning thread.\n");
 
+  int one = 1;         // for 4.3 BSD style setsockopt()
+  setsockopt(m_socket, IPPROTO_TCP, TCP_NODELAY, (PCHAR )&one, sizeof(one));
+
   AfxBeginThread(StartClient, this , THREAD_PRIORITY_ABOVE_NORMAL, 0, 0, NULL);
 
   thread_running = true;

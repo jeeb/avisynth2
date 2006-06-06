@@ -37,7 +37,7 @@
 #ifndef TCP_Common_h
 #define TCP_Common_h
 
-#define TCPDELIVER_MAJOR 3
+#define TCPDELIVER_MAJOR 4
 #define TCPDELIVER_MINOR 1
 
 #include "stdafx.h"

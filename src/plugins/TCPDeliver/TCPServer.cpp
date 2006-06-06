@@ -55,6 +55,9 @@ HWND hDlg;  // Windowhandle
 
 TCPServer::TCPServer(PClip _child, int port, IScriptEnvironment* env) : GenericVideoFilter(_child) {
 
+  if (vi.IsY8())
+    env->ThrowError("TCPServer: Cannot serve Y8 material");
+
   _RPT0(0, "TCPServer: Opening instance\n");
   s = new TCPServerListener(port, child, env);
   //  if(!hThread) hThread=CreateThread(NULL, 10000, (unsigned long (__stdcall *)(void *))startWindow, 0, 0 , &id );
@@ -287,7 +290,8 @@ void TCPServerListener::AcceptClient(SOCKET AcceptSocket, ClientConnection* s_li
     s_list[slot].reset();
     s_list[slot].s = AcceptSocket;
     s_list[slot].isConnected = true;
-
+    int one = 1;         // for 4.3 BSD style setsockopt()
+    setsockopt(AcceptSocket, IPPROTO_TCP, TCP_NODELAY, (PCHAR )&one, sizeof(one));
   } else {
     _RPT0(0, "TCPServer: All slots full.\n");
     s.allocateBuffer(0);
@@ -481,8 +485,10 @@ void TCPServerListener::SendFrameInfo(ServerReply* s, const char* request) {
   sfi.pitch = src->GetPitch();
 
   int data_size = sfi.height * sfi.pitch;
-  if (child->GetVideoInfo().IsYV12()) {
-    data_size = data_size + data_size / 2;
+
+  if (child->GetVideoInfo().IsPlanar()) {
+    int uv_data = 2 * src->GetPitch(PLANAR_U) * src->GetHeight(PLANAR_U);
+    data_size = data_size + uv_data;
   }
 
   // Prepare data
@@ -490,10 +496,6 @@ void TCPServerListener::SendFrameInfo(ServerReply* s, const char* request) {
   int src_pitch = src->GetPitch();
   int src_height = src->GetHeight();
   int src_rowsize = src->GetRowSize();
-
-  if (child->GetVideoInfo().IsYV12()) {
-    data_size = data_size + data_size / 2;
-  }
 
   BYTE* dstp;
   sfi.data_size = data_size;
