@@ -37,6 +37,7 @@
 #include "stdafx.h"
 
 #include "444convert.h"
+#include <emmintrin.h>
 
 
 
@@ -46,6 +47,48 @@ void ConvertYV12ChromaTo444(unsigned char *dstp, const unsigned char *srcp,
         const int dst_pitch, const int src_pitch,
         const int src_rowsize, const int src_height)
 {
+#ifdef _AMD64_
+	if (((INT_PTR)srcp|(INT_PTR)src_pitch)%16) { // srcp or src_pitch not 16-byte aligned
+		// use 64-byte unaligned reads
+		__m128i *xmmdstp;
+		int xmmdst_pitch=dst_pitch/16, mmsrc_pitch=src_pitch/8;
+		__int64 *mmsrcp;
+		xmmdstp = (__m128i*)dstp;
+		mmsrcp = (__int64*)srcp;
+
+		for (int i=0; (i*2)<src_height; i++) {
+			for (int j=0; (j*8) < src_rowsize; j++) {
+				__m128i srcblocklo = _mm_loadl_epi64((__m128i*)(mmsrcp+2*i*mmsrc_pitch+j));
+				__m128i srcblockhi = _mm_loadl_epi64((__m128i*)(mmsrcp+(2*i+1)*mmsrc_pitch+j));
+				__m128i srcblockunpacklo = _mm_unpacklo_epi8(srcblocklo, srcblocklo);
+				__m128i srcblockunpackhi = _mm_unpacklo_epi8(srcblockhi, srcblockhi);
+				_mm_store_si128(xmmdstp+4*i*xmmdst_pitch+j, srcblockunpacklo);
+				_mm_store_si128(xmmdstp+(4*i+2)*xmmdst_pitch+j, srcblockunpackhi);
+				_mm_store_si128(xmmdstp+(4*i+1)*xmmdst_pitch+j, srcblockunpacklo);
+				_mm_store_si128(xmmdstp+(4*i+3)*xmmdst_pitch+j, srcblockunpackhi);
+			}
+		}
+	} else { // otherwise we can do aligned reads; this method writes 32 bytes at a time,
+		// destination Image444 must have 32-byte aligned pitch
+		__m128i *xmmsrcp, *xmmdstp;
+		int xmmdst_pitch=dst_pitch/16, xmmsrc_pitch=src_pitch/16;
+		xmmsrcp = (__m128i*)srcp;
+		xmmdstp = (__m128i*)dstp;
+	
+		for (int i=0; i<src_height; i++) {
+			for (int j=0; (j*16) < src_rowsize; j++) {
+				__m128i srcblock = _mm_load_si128(xmmsrcp+j+i*xmmsrc_pitch);
+				__m128i dstblocklo = _mm_unpacklo_epi8(srcblock, srcblock);
+				__m128i dstblockhi = _mm_unpackhi_epi8(srcblock, srcblock);
+				_mm_store_si128(xmmdstp+j*2+2*i*xmmdst_pitch, dstblocklo);
+				_mm_store_si128(xmmdstp+1+j*2+2*i*xmmdst_pitch, dstblockhi);
+				_mm_store_si128(xmmdstp+j*2+(2*i+1)*xmmdst_pitch, dstblocklo);
+				_mm_store_si128(xmmdstp+1+j*2+(2*i+1)*xmmdst_pitch, dstblockhi);
+			}
+		}
+	}
+
+#else
   int dst_pitch2 = dst_pitch * 2;
   __asm {
     mov     eax,[dstp]
@@ -84,6 +127,7 @@ loopx:
 
     emms
   }
+#endif
 }
 
 void Convert444FromYV12::ConvertImage(PVideoFrame src, Image444* dst, IScriptEnvironment* env) {
@@ -187,6 +231,48 @@ void ISSE_Convert444ChromaToYV12(unsigned char *dstp, const unsigned char *srcp,
         const int dst_pitch, const int src_pitch,
         const int src_rowsize, const int src_height)
 {
+#ifdef _AMD64_
+	//src_rowsize is actually dst_rowsize, and src_height is actually dst_height.
+	__m128i *xmmsrcp, *xmmdstp;
+	__m128i xmmzero;
+	int xmmdst_pitch=dst_pitch/16, xmmsrc_pitch=src_pitch/16;
+	xmmsrcp = (__m128i*)srcp;
+	xmmdstp = (__m128i*)dstp;
+	xmmzero = _mm_setzero_si128();
+	_declspec(align(16)) __int64 ones[4] = {0x0001000100010001, 0x0001000100010001, 0x0000000100000001, 0x0000000100000001};
+
+	for (int i=0; i < src_height; i++) {
+		for (int j=0; (j*16) < src_rowsize; j++) {
+			__m128i blocklo = _mm_load_si128(xmmsrcp+j*2+i*2*xmmsrc_pitch);
+			__m128i blockhi = _mm_load_si128(xmmsrcp+j*2+(2*i+1)*xmmsrc_pitch);
+			__m128i left = _mm_avg_epu8(blocklo, blockhi);
+			__m128i nextblocklo = _mm_load_si128(xmmsrcp+1+j*2+i*2*xmmsrc_pitch);
+			__m128i nextblockhi = _mm_load_si128(xmmsrcp+1+j*2+(2*i+1)*xmmsrc_pitch);
+			__m128i right = _mm_avg_epu8(nextblocklo, nextblockhi);
+			__m128i leftlowd = _mm_unpacklo_epi8(left, xmmzero);
+			__m128i lefthiwd = _mm_unpackhi_epi8(left, xmmzero);
+			__m128i rightlowd = _mm_unpacklo_epi8(right, xmmzero);
+			__m128i righthiwd = _mm_unpackhi_epi8(right, xmmzero);
+			__m128i leftlodb = _mm_madd_epi16(leftlowd, *(__m128i*)ones);
+			__m128i lefthidb = _mm_madd_epi16(lefthiwd, *(__m128i*)ones);
+			__m128i rightlodb = _mm_madd_epi16(rightlowd, *(__m128i*)ones);
+			__m128i righthidb = _mm_madd_epi16(righthiwd, *(__m128i*)ones);
+			__m128i leftloround = _mm_add_epi32(leftlodb, *((__m128i*)ones+1));
+			__m128i lefthiround = _mm_add_epi32(lefthidb, *((__m128i*)ones+1));
+			__m128i rightloround = _mm_add_epi32(rightlodb, *((__m128i*)ones+1));
+			__m128i righthiround = _mm_add_epi32(righthidb, *((__m128i*)ones+1));
+			__m128i leftlopack = _mm_srli_epi32(leftloround, 1);
+			__m128i lefthipack = _mm_srli_epi32(lefthiround, 1);
+			__m128i rightlopack = _mm_srli_epi32(rightloround, 1);
+			__m128i righthipack = _mm_srli_epi32(righthiround, 1);
+			__m128i leftpackwd = _mm_packs_epi32(leftlopack, lefthipack);
+			__m128i rightpackwd = _mm_packs_epi32(rightlopack, righthipack);
+			__m128i final = _mm_packus_epi16(leftpackwd, rightpackwd);
+			_mm_store_si128(xmmdstp+j+i*xmmdst_pitch, final);
+		}
+	}
+
+#else
   static const __int64 onesW = 0x0001000100010001;
   static const __int64 onesD = 0x0000000100000001;
   int src_pitch2 = src_pitch * 2;
@@ -261,6 +347,7 @@ loopx:
 
     emms
   }
+#endif
 }
 
 PVideoFrame Convert444ToYV12::ConvertImage(Image444* src, PVideoFrame dst, IScriptEnvironment* env) {
@@ -283,6 +370,9 @@ PVideoFrame Convert444ToYV12::ConvertImage(Image444* src, PVideoFrame dst, IScri
   int h = dst->GetHeight(PLANAR_U);
 
   if (GetCPUFlags() & CPUF_INTEGER_SSE) {
+
+  if (((INT_PTR)srcU|(INT_PTR)srcV|(INT_PTR)dstU|(INT_PTR)dstV|srcUVpitch|dstUVpitch)%16)
+	  env->ThrowError("Overlay(Convert444toYV12): src, dst, srcpitch or dstpitch not mod 16.");
 
   ISSE_Convert444ChromaToYV12(dstU, srcU, dstUVpitch, srcUVpitch, w, h);
   ISSE_Convert444ChromaToYV12(dstV, srcV, dstUVpitch, srcUVpitch, w, h);

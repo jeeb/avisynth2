@@ -50,8 +50,12 @@ PClip ConvertAudio::Create(PClip clip, int sample_type, int prefered_type)
   else 
     return new ConvertAudio(clip,prefered_type);
 }
-
-
+/* AMD64: needs updated avisynth.h
+void __stdcall ConvertAudio::SetCacheHints(int cachehints, int frame_range)
+{
+	child->SetCacheHints(cachehints, frame_range);
+}
+*/
 
 /*******************************************
  *******   Convert Audio -> Arbitrary ******

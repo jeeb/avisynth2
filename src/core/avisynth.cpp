@@ -84,7 +84,7 @@ extern AVSFunction Edit_filters[], Focus_filters[], Script_functions[],
 					Color_filters[], Combine_filters[], Convolution_filters[],
 					Field_filters[], Fps_filters[], Histogram_filters[],
 					Merge_filters[], Misc_filters[], Turn_filters[],
-					Resample_filters[];
+					Resample_filters[], Convert_filters[], Overlay_filters[];
 
 AVSFunction* builtin_functions[] = {
 					Edit_filters, Focus_filters, Script_functions,
@@ -93,7 +93,7 @@ AVSFunction* builtin_functions[] = {
 					Color_filters, Combine_filters, Convolution_filters,
 					Field_filters, Fps_filters, Histogram_filters,
 					Merge_filters, Misc_filters, Turn_filters,
-					Resample_filters};
+					Resample_filters, Convert_filters, Overlay_filters};
 
 
 const HKEY RegRootKey = HKEY_LOCAL_MACHINE;
@@ -675,6 +675,7 @@ public:
   int __stdcall SetMemoryMax(int mem);
   int __stdcall SetWorkingDir(const char * newdir);
   __stdcall ~ScriptEnvironment();
+  bool __stdcall PlanarChromaAlignment(IScriptEnvironment::PlanarChromaAlignmentMode key);
 
 private:
 
@@ -703,11 +704,16 @@ private:
   bool LoadPluginsMatching(const char* pattern);
   void PrescanPlugins();
   void ExportFilters();
+  bool PlanarChromaAlignmentState;
 
 };
 
 
-ScriptEnvironment::ScriptEnvironment() : at_exit(This()), function_table(This()), global_var_table(0, 0) {
+ScriptEnvironment::ScriptEnvironment() 
+	: at_exit(This()),
+	function_table(This()),
+	global_var_table(0, 0),
+	PlanarChromaAlignmentState(true) {
   MEMORYSTATUS memstatus;
   GlobalMemoryStatus(&memstatus);
   // Minimum 16MB, otherwise available physical memory/4, no maximum
@@ -889,11 +895,28 @@ void ScriptEnvironment::ExportFilters()
 
 
 PVideoFrame ScriptEnvironment::NewPlanarVideoFrame(int width, int height, int align, bool U_first) {
-  int pitch = (width+align-1) / align * align;  // Y plane, width = 1 byte per pixel
-//  int UVpitch = ((width>>1)+align-1) / align * align;  // UV plane, width = 1/2 byte per pixel - can't align UV planes seperately.
-  int UVpitch = pitch>>1;  // UV plane, width = 1/2 byte per pixel
+ int UVpitch, pitch;
+
+  if (align<0) {
+// Forced alignment - pack Y as specified, pack UV half that
+    align = -align;
+	pitch = (width+align-1) / align * align;  // Y plane, width = 1 byte per pixel
+	UVpitch = (pitch+1)>>1;  // UV plane, width = 1/2 byte per pixel - can't align UV planes seperately.
+  } 
+  else if (PlanarChromaAlignmentState) {
+// Align UV planes, Y will follow
+	UVpitch = (((width+1)>>1)+align-1) / align * align;  // UV plane, width = 1/2 byte per pixel
+	pitch = UVpitch<<1;  // Y plane, width = 1 byte per pixel
+  }
+  else {
+// Do legacy alignment
+	pitch = (width+align-1) / align * align;  // Y plane, width = 1 byte per pixel
+	UVpitch = (pitch+1)>>1;  // UV plane, width = 1/2 byte per pixel - can't align UV planes seperately.
+  }
+
   int size = pitch * height + UVpitch * height;
-  VideoFrameBuffer* vfb = GetFrameBuffer(size+(FRAME_ALIGN*4));
+  int _align = (align < FRAME_ALIGN) ? FRAME_ALIGN : align;
+  VideoFrameBuffer* vfb = GetFrameBuffer(size+(_align*4));
   if (!vfb)
     ThrowError("NewPlanarVideoFrame: Returned 0 size image!");
 #ifdef _DEBUG
@@ -907,9 +930,9 @@ PVideoFrame ScriptEnvironment::NewPlanarVideoFrame(int width, int height, int al
   }
 #endif
 //  int offset = (-int(vfb->GetWritePtr())) & (align-1);  // align first line offset
-  INT_PTR offset = (INT_PTR)(vfb->GetWritePtr()) & (FRAME_ALIGN-1);  // align first line offset
+  int offset = int(vfb->GetWritePtr()) & (FRAME_ALIGN-1);  // align first line offset
   offset = (FRAME_ALIGN - offset)%FRAME_ALIGN;
-  INT_PTR Uoffset, Voffset;
+  int Uoffset, Voffset;
   if (U_first) {
     Uoffset = offset + pitch * height;
     Voffset = offset + pitch * height + UVpitch * (height>>1);
@@ -1475,6 +1498,27 @@ void ScriptEnvironment::ThrowError(const char* fmt, ...) {
   wvsprintf(buf, fmt, val);
   va_end(val);
   throw AvisynthError(ScriptEnvironment::SaveString(buf));
+}
+
+bool ScriptEnvironment::PlanarChromaAlignment(IScriptEnvironment::PlanarChromaAlignmentMode key){
+	bool oldPlanarChromaAlignmentState = PlanarChromaAlignmentState;
+
+	switch(key)
+	{
+	case IScriptEnvironment::PlanarChromaAlignmentOff:
+		{
+			PlanarChromaAlignmentState = false;
+			break;
+		}
+	case IScriptEnvironment::PlanarChromaAlignmentOn:
+		{
+			PlanarChromaAlignmentState = true;
+			break;
+		}
+	default:
+		break;
+	}
+	return oldPlanarChromaAlignmentState;
 }
 
 

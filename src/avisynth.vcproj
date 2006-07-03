@@ -22,7 +22,7 @@
 				Optimization="0"
 				EnableIntrinsicFunctions="FALSE"
 				AdditionalIncludeDirectories=".\"
-				PreprocessorDefinitions="WIN32;_DEBUG;_WINDOWS;AVISYNTH_C_EXPORTS"
+				PreprocessorDefinitions="AVISYNTH_C_EXPORTS"
 				MinimalRebuild="FALSE"
 				BasicRuntimeChecks="0"
 				RuntimeLibrary="5"
@@ -71,7 +71,7 @@
 			IntermediateDirectory="Release"
 			ConfigurationType="2"
 			CharacterSet="2"
-			WholeProgramOptimization="TRUE">
+			WholeProgramOptimization="FALSE">
 			<Tool
 				Name="VCCLCompilerTool"
 				GlobalOptimizations="FALSE"
@@ -80,7 +80,7 @@
 				OmitFramePointers="FALSE"
 				OptimizeForProcessor="3"
 				AdditionalIncludeDirectories=".\"
-				PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS"
+				PreprocessorDefinitions="AVISYNTH_C_EXPORTS"
 				RuntimeLibrary="2"
 				BufferSecurityCheck="FALSE"
 				EnableEnhancedInstructionSet="2"
@@ -133,7 +133,7 @@
 				Optimization="0"
 				EnableIntrinsicFunctions="FALSE"
 				AdditionalIncludeDirectories=".\"
-				PreprocessorDefinitions="WIN32;_DEBUG;_WINDOWS;AVISYNTH_C_EXPORTS"
+				PreprocessorDefinitions="AVISYNTH_C_EXPORTS"
 				MinimalRebuild="FALSE"
 				BasicRuntimeChecks="0"
 				RuntimeLibrary="5"
@@ -182,19 +182,19 @@
 			IntermediateDirectory="$(ConfigurationName)"
 			ConfigurationType="2"
 			CharacterSet="2"
-			WholeProgramOptimization="TRUE">
+			WholeProgramOptimization="FALSE">
 			<Tool
 				Name="VCCLCompilerTool"
 				GlobalOptimizations="FALSE"
 				EnableIntrinsicFunctions="TRUE"
 				FavorSizeOrSpeed="0"
 				OmitFramePointers="FALSE"
-				OptimizeForProcessor="3"
+				OptimizeForProcessor="0"
 				AdditionalIncludeDirectories=".\"
-				PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS"
+				PreprocessorDefinitions="AVISYNTH_C_EXPORTS"
 				RuntimeLibrary="2"
 				BufferSecurityCheck="FALSE"
-				EnableEnhancedInstructionSet="2"
+				EnableEnhancedInstructionSet="0"
 				UsePrecompiledHeader="0"
 				WarningLevel="3"
 				Detect64BitPortabilityProblems="TRUE"
@@ -206,7 +206,7 @@
 				AdditionalDependencies="msacm32.lib vfw32.lib version.lib winmm.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib bufferoverflowu.lib $(NOINHERIT)"
 				OutputFile="$(OutDir)/avisynth.dll"
 				LinkIncremental="1"
-				ModuleDefinitionFile=".\core\avisynth.def"
+				ModuleDefinitionFile="./core/avisynth.def"
 				GenerateDebugInformation="FALSE"
 				SubSystem="2"
 				OptimizeReferences="2"
@@ -348,6 +348,12 @@
 						Name="VCCLCompilerTool"
 						PreprocessorDefinitions="AVISYNTH_C_EXPORTS"/>
 				</FileConfiguration>
+				<FileConfiguration
+					Name="Release64|Win32">
+					<Tool
+						Name="VCCLCompilerTool"
+						PreprocessorDefinitions="AVISYNTH_C_EXPORTS"/>
+				</FileConfiguration>
 			</File>
 			<File
 				RelativePath=".\core\avisynth_c.h">
@@ -380,6 +386,21 @@
 				</FileConfiguration>
 			</File>
 			<File
+				RelativePath=".\core\memcpy_amd.cpp">
+				<FileConfiguration
+					Name="Debug64|Win32"
+					ExcludedFromBuild="TRUE">
+					<Tool
+						Name="VCCLCompilerTool"/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Release64|Win32"
+					ExcludedFromBuild="TRUE">
+					<Tool
+						Name="VCCLCompilerTool"/>
+				</FileConfiguration>
+			</File>
+			<File
 				RelativePath=".\core\plugins.cpp">
 			</File>
 			<Filter
@@ -408,6 +429,105 @@
 				</File>
 				<File
 					RelativePath=".\core\parser\tokenizer.h">
+				</File>
+			</Filter>
+			<Filter
+				Name="convert"
+				Filter="">
+				<File
+					RelativePath=".\convert\convert.cpp">
+				</File>
+				<File
+					RelativePath=".\convert\convert_a.asm">
+					<FileConfiguration
+						Name="Debug|Win32">
+						<Tool
+							Name="VCCustomBuildTool"
+							CommandLine="ml.exe -c -coff -Cx -Fo&quot;$(IntDir)\$(InputName).obj&quot; &quot;.\convert\$(InputName).asm
+"
+							Outputs="&quot;$(IntDir)\$(InputName).obj&quot;"/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Release|Win32">
+						<Tool
+							Name="VCCustomBuildTool"
+							CommandLine="ml.exe -c -coff -Cx -Fo&quot;$(IntDir)\$(InputName).obj&quot; &quot;.\convert\$(InputName).asm
+"
+							Outputs="&quot;$(IntDir)\$(InputName).obj&quot;"/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Debug64|Win32"
+						ExcludedFromBuild="TRUE">
+						<Tool
+							Name="VCCustomBuildTool"/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Release64|Win32"
+						ExcludedFromBuild="TRUE">
+						<Tool
+							Name="VCCustomBuildTool"/>
+					</FileConfiguration>
+				</File>
+				<File
+					RelativePath=".\convert\convert_yuy2.cpp">
+					<FileConfiguration
+						Name="Debug64|Win32"
+						ExcludedFromBuild="TRUE">
+						<Tool
+							Name="VCCLCompilerTool"/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Release64|Win32"
+						ExcludedFromBuild="TRUE">
+						<Tool
+							Name="VCCLCompilerTool"/>
+					</FileConfiguration>
+				</File>
+				<File
+					RelativePath=".\convert\convert_yv12.cpp">
+					<FileConfiguration
+						Name="Debug64|Win32"
+						ExcludedFromBuild="TRUE">
+						<Tool
+							Name="VCCLCompilerTool"/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Release64|Win32"
+						ExcludedFromBuild="TRUE">
+						<Tool
+							Name="VCCLCompilerTool"/>
+					</FileConfiguration>
+				</File>
+				<File
+					RelativePath=".\convert\huffyuv.asm">
+					<FileConfiguration
+						Name="Debug|Win32"
+						ExcludedFromBuild="TRUE">
+						<Tool
+							Name="VCCustomBuildTool"/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Release|Win32"
+						ExcludedFromBuild="TRUE">
+						<Tool
+							Name="VCCustomBuildTool"/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Debug64|Win32">
+						<Tool
+							Name="VCCustomBuildTool"
+							CommandLine="yasm -DWIN64 -m AMD64 -f win32 -o $(IntDir)/$(InputName).obj $(InputFileName)
+"
+							Outputs="$(IntDir)/$(InputName).obj"/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Release64|Win32">
+						<Tool
+							Name="VCCustomBuildTool"
+							CommandLine="yasm -DWIN64 -m AMD64 -f win32 -o &quot;$(IntDir)/$(InputName).obj&quot; &quot;$(InputPath)&quot;
+"
+							Outputs="$(IntDir)/$(InputName).obj"/>
+					</FileConfiguration>
 				</File>
 			</Filter>
 		</Filter>
@@ -446,12 +566,32 @@
 				</File>
 				<File
 					RelativePath=".\filters\merge.cpp">
+					<FileConfiguration
+						Name="Release|Win32">
+						<Tool
+							Name="VCCLCompilerTool"
+							AssemblerOutput="0"/>
+					</FileConfiguration>
 				</File>
 				<File
 					RelativePath=".\filters\misc.cpp">
 				</File>
 				<File
 					RelativePath=".\filters\resample.cpp">
+					<FileConfiguration
+						Name="Release|Win32">
+						<Tool
+							Name="VCCLCompilerTool"
+							AssemblerOutput="0"
+							AssemblerListingLocation=""/>
+					</FileConfiguration>
+					<FileConfiguration
+						Name="Release64|Win32">
+						<Tool
+							Name="VCCLCompilerTool"
+							AssemblerOutput="4"
+							AssemblerListingLocation="$(IntDir)/"/>
+					</FileConfiguration>
 				</File>
 				<File
 					RelativePath=".\filters\resample_functions.cpp">
@@ -471,6 +611,98 @@
 				<File
 					RelativePath=".\filters\turnfunc.cpp">
 				</File>
+				<Filter
+					Name="Overlay"
+					Filter="">
+					<File
+						RelativePath=".\filters\overlay\444convert.cpp">
+						<FileConfiguration
+							Name="Release|Win32">
+							<Tool
+								Name="VCCLCompilerTool"
+								AssemblerOutput="4"/>
+						</FileConfiguration>
+					</File>
+					<File
+						RelativePath=".\filters\overlay\blend_asm.asm">
+						<FileConfiguration
+							Name="Debug|Win32"
+							ExcludedFromBuild="TRUE">
+							<Tool
+								Name="VCCustomBuildTool"/>
+						</FileConfiguration>
+						<FileConfiguration
+							Name="Release|Win32"
+							ExcludedFromBuild="TRUE">
+							<Tool
+								Name="VCCustomBuildTool"/>
+						</FileConfiguration>
+						<FileConfiguration
+							Name="Debug64|Win32">
+							<Tool
+								Name="VCCustomBuildTool"
+								CommandLine="yasm -DWIN64 -m AMD64 -f win32 -o &quot;$(IntDir)/$(InputName).obj&quot; &quot;$(InputPath)&quot;
+"
+								Outputs="&quot;$(IntDir/$(InputName).obj&quot;"/>
+						</FileConfiguration>
+						<FileConfiguration
+							Name="Release64|Win32">
+							<Tool
+								Name="VCCustomBuildTool"
+								CommandLine="yasm -DWIN64 -m AMD64 -f win32 -o &quot;$(IntDir)/$(InputName).obj&quot; &quot;$(InputPath)&quot;
+"
+								Outputs="&quot;$(IntDir)/$(InputName).obj&quot;"/>
+						</FileConfiguration>
+					</File>
+					<File
+						RelativePath=".\filters\overlay\blend_asm.cpp">
+						<FileConfiguration
+							Name="Debug64|Win32"
+							ExcludedFromBuild="TRUE">
+							<Tool
+								Name="VCCLCompilerTool"/>
+						</FileConfiguration>
+						<FileConfiguration
+							Name="Release64|Win32"
+							ExcludedFromBuild="TRUE">
+							<Tool
+								Name="VCCLCompilerTool"/>
+						</FileConfiguration>
+					</File>
+					<File
+						RelativePath=".\filters\overlay\OF_add.cpp">
+					</File>
+					<File
+						RelativePath=".\filters\overlay\OF_blend.cpp">
+					</File>
+					<File
+						RelativePath=".\filters\overlay\OF_darken.cpp">
+					</File>
+					<File
+						RelativePath=".\filters\overlay\OF_difference.cpp">
+					</File>
+					<File
+						RelativePath=".\filters\overlay\OF_exclusion.cpp">
+					</File>
+					<File
+						RelativePath=".\filters\overlay\OF_lighten.cpp">
+					</File>
+					<File
+						RelativePath=".\filters\overlay\OF_lumachroma.cpp">
+					</File>
+					<File
+						RelativePath=".\filters\overlay\OF_multiply.cpp">
+					</File>
+					<File
+						RelativePath=".\filters\overlay\OF_softhardlight.cpp">
+					</File>
+					<File
+						RelativePath=".\filters\overlay\OF_subtract.cpp">
+					</File>
+					<File
+						RelativePath=".\filters\overlay\overlay.cpp">
+					</File>
+				</Filter>
 			</Filter>
 			<Filter
 				Name="Audio"

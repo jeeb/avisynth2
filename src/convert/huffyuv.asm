@@ -1,16 +1,3 @@
-;
-; Huffyuv v2.1.1, by Ben Rudiak-Gould.
-; http://www.math.berkeley.edu/~benrg/huffyuv.html
-;
-; This file is copyright 2000 Ben Rudiak-Gould, and distributed under
-; the terms of the GNU General Public License, v2 or later.  See
-; http://www.gnu.org/copyleft/gpl.html.
-;
-
-;
-; This file makes heavy use of macros to define a bunch of almost-identical
-; functions -- see huffyuv_a.h.
-;
 
 BITS 64
 

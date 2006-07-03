@@ -39,9 +39,9 @@
 #  define EXTERN_C
 #endif
 
-#define ACSC_USE_STDCALL 1
+#define AVSC_USE_STDCALL 1
 
-#ifndef ACSC_USE_STDCALL
+#ifndef AVSC_USE_STDCALL
 #  define AVSC_CC __cdecl
 #else
 #  define AVSC_CC __stdcall

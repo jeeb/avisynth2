@@ -51,7 +51,9 @@
  * (c) 2002 by sh0dan.
  ********/
 
-
+#ifdef __cplusplus
+extern "C" {
+#endif
 void mmx_weigh_planar(BYTE *p1, const BYTE *p2, int p1_pitch, int p2_pitch,int rowsize, int height, int weight, int invweight);
  
 void MMerge_MMX(unsigned char *dstp, const unsigned char *srcp,
@@ -61,5 +63,8 @@ void MMerge_MMX(unsigned char *dstp, const unsigned char *srcp,
 void mmx_darken_planar(BYTE *p1, BYTE *p1U, BYTE *p1V, const BYTE *p2, const BYTE *p2U, const BYTE *p2V, int p1_pitch, int p2_pitch,int rowsize, int height);
 
 void mmx_lighten_planar(BYTE *p1, BYTE *p1U, BYTE *p1V, const BYTE *p2, const BYTE *p2U, const BYTE *p2V, int p1_pitch, int p2_pitch,int rowsize, int height);
+#ifdef __cplusplus
+}
+#endif
 
 #endif // __blend_asm_h

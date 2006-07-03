@@ -534,7 +534,9 @@ private:
     ((__int32*)this)[0] = ((__int32*)src)[0];
     ((__int32*)this)[1] = ((__int32*)src)[1];
 	*/
-	memcpy(this, src, sizeof(AVSValue));
+	this->clip = src->clip;
+	this->type = src->type;
+	this->array_size = src->array_size;
   }
 };
 
@@ -687,6 +689,13 @@ public:
 	virtual int __stdcall SetMemoryMax(int mem) = 0;
 
   virtual int __stdcall SetWorkingDir(const char * newdir) = 0;
+
+  enum PlanarChromaAlignmentMode {
+	  PlanarChromaAlignmentOff,
+	  PlanarChromaAlignmentOn,
+	  PlanarChromaAlignmentTest };
+
+  virtual bool __stdcall PlanarChromaAlignment(PlanarChromaAlignmentMode key) = 0;
 
 };
 

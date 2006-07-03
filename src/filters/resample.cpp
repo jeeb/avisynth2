@@ -195,7 +195,13 @@ PVideoFrame __stdcall FilteredResizeH::GetFrame(int n, IScriptEnvironment* env)
         int x = dst_width / 4;
 		int i;
 		int ecx;
-		__m128i XMM0, XMM1, XMM2, XMM3, XMM4, XMM5, XMM6, XMM7;
+		__m128i XMM0, XMM5, XMM6, XMM7;
+		union XMMvar {
+			__m128i m;
+			int i[4];
+			__int64 q[2];
+		};
+		XMMvar XMM1, XMM4, XMM2, XMM3;
 		int* tempcur_luma;
 
 /*        __asm {  // 
@@ -228,35 +234,37 @@ PVideoFrame __stdcall FilteredResizeH::GetFrame(int n, IScriptEnvironment* env)
 
 		for(i=0;(i*8)<org_width;i++) {
 			_mm_prefetch((char*)srcp+256+i*4, _MM_HINT_NTA);
-			XMM1=_mm_loadl_epi64((__m128i*)(srcp+i*8));
-			XMM1=_mm_unpacklo_epi8(XMM1, XMM0);
-			_mm_store_si128((__m128i*)(tempY+i*16), XMM1);
+			XMM1.m=_mm_loadl_epi64((__m128i*)(srcp+i*8));
+			XMM1.m=_mm_unpacklo_epi8(XMM1.m, XMM0);
+			_mm_store_si128((__m128i*)(tempY+i*16), XMM1.m);
 		}
 
 		tempcur_luma=cur_luma;
 		temp_dst=(int*)dstp;
 		while (x--) {
-		XMM1 = XMM0;
+		XMM1.m = XMM0;
 		/* welcome to pointer arithmetic hell! */
 		for(i=0;i<fir_filter_size_luma;i++) {
-			XMM2.m128i_u32[0]=*(*(int**)tempcur_luma+i);
-			XMM2.m128i_u32[2]=*(*((int**)((char*)tempcur_luma+filter_offset))+i);
-			XMM2.m128i_u32[1]=*(*((int**)tempcur_luma+1)+i);
-			XMM2.m128i_u32[3]=*(*((int**)((char*)tempcur_luma+filter_offset)+1)+i);
-			XMM4.m128i_u64[0]=*((__int64*)((int**)tempcur_luma+2)+i);
-			XMM4.m128i_u64[1]=*((__int64*)((int**)((char*)tempcur_luma+filter_offset)+2)+i);
-			XMM2=_mm_madd_epi16(XMM2, XMM4);
-			XMM1=_mm_add_epi32(XMM1, XMM2);
+			XMM2.i[0]=*(*(int**)tempcur_luma+i);
+			XMM2.i[1]=*(*((int**)tempcur_luma+1)+i);
+			XMM2.i[2]=*(*((int**)((char*)tempcur_luma+filter_offset))+i);
+			XMM2.i[3]=*(*((int**)((char*)tempcur_luma+filter_offset)+1)+i);
+			
+			XMM4.m=_mm_loadl_epi64((__m128i*)((int**)tempcur_luma+2+i*(sizeof(__int64)/sizeof(int**))));
+			XMM3.m=_mm_loadl_epi64((__m128i*)((int**)((char*)tempcur_luma+filter_offset)+2+i*(sizeof(__int64)/sizeof(int**))));
+			XMM4.m=_mm_unpacklo_epi64(XMM4.m, XMM3.m);
+			XMM5=_mm_madd_epi16(XMM2.m, XMM4.m);
+			XMM1.m=_mm_add_epi32(XMM1.m, XMM5);
 		}
 		tempcur_luma=(int*)((char*)tempcur_luma+2*filter_offset);
-		XMM1 = _mm_add_epi32(XMM1, XMM6);
-		XMM1 = _mm_srli_epi32(XMM1, 14);
-		XMM1 = _mm_shufflehi_epi16(XMM1, 232);
-		XMM1 = _mm_shufflelo_epi16(XMM1, 232);
-		XMM1 = _mm_packus_epi16(XMM1, XMM1);
-		XMM1 = _mm_shufflelo_epi16(XMM1, 232);
+		XMM1.m = _mm_add_epi32(XMM1.m, XMM6);
+		XMM1.m = _mm_srli_epi32(XMM1.m, 14);
+		XMM1.m = _mm_shufflehi_epi16(XMM1.m, 232);
+		XMM1.m = _mm_shufflelo_epi16(XMM1.m, 232);
+		XMM1.m = _mm_packus_epi16(XMM1.m, XMM1.m);
+		XMM1.m = _mm_shufflelo_epi16(XMM1.m, 232);
 
-		*temp_dst++=XMM1.m128i_u32[0];
+		*temp_dst++=XMM1.i[0];
 		} // end while (x--)
 /*		__asm {
       // use this as source from now on
@@ -1377,25 +1385,23 @@ PClip CreateResize(PClip clip, int target_width, int target_height, const AVSVal
 {
   const VideoInfo& vi = clip->GetVideoInfo();
   const double subrange_left = args[0].AsFloat(0), subrange_top = args[1].AsFloat(0);
-  const double subrange_width = args[2].AsFloat(vi.width), subrange_height = args[3].AsFloat(vi.height);
-  PClip result = clip;
-  bool H = ((subrange_width != vi.width) || (target_width != vi.width));
-  bool V = ((subrange_height != vi.height) || (target_height != vi.height));
+  double subrange_width = args[2].AsFloat(vi.width), subrange_height = args[3].AsFloat(vi.height);
+  // Crop style syntax
+  if (subrange_width <= 0.0) subrange_width = vi.width - subrange_left + subrange_width;
+  if (subrange_height <= 0.0) subrange_height = vi.height - subrange_top + subrange_height;
+
+  PClip result;
   // ensure that the intermediate area is maximal
   const double area_FirstH = subrange_height * target_width;
   const double area_FirstV = subrange_width * target_height;
   if (area_FirstH < area_FirstV)
   {
-    if (V)
       result = CreateResizeV(clip, subrange_top, subrange_height, target_height, f, env);
-    if (H)
       result = CreateResizeH(result, subrange_left, subrange_width, target_width, f, env);
   }
   else
   {
-    if (H)
       result = CreateResizeH(clip, subrange_left, subrange_width, target_width, f, env);
-    if (V)
       result = CreateResizeV(result, subrange_top, subrange_height, target_height, f, env);
   }
   return result;

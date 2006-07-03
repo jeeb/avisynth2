@@ -68,7 +68,7 @@ public:
   }
 
   Image444(int _inw, int _inh) : _w(_inw), _h(_inh) {
-    pitch = (_w+15)&(~15);
+    pitch = (_w+31)&(~31);
     Y_plane = (BYTE*)_aligned_malloc(pitch*_h, 64); 
     U_plane = (BYTE*)_aligned_malloc(pitch*_h, 64); 
     V_plane = (BYTE*)_aligned_malloc(pitch*_h, 64); 
