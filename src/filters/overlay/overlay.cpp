@@ -74,6 +74,8 @@ enum {
 Overlay::Overlay(PClip _child, AVSValue args, IScriptEnvironment *env) :
 GenericVideoFilter(_child) {
 
+  full_range = args[ARG_FULL_RANGE].AsBool(false);  // Maintain CCIR601 range when converting to/from RGB.
+
   // Make copy of the VideoInfo
   inputVi = (VideoInfo*)malloc(sizeof(VideoInfo));
   memcpy(inputVi, &vi, sizeof(VideoInfo));
@@ -93,8 +95,6 @@ GenericVideoFilter(_child) {
 
   greymask = args[ARG_GREYMASK].AsBool(true);  // Grey mask, default true
   ignore_conditional = args[ARG_IGNORE_CONDITIONAL].AsBool(false);  // Don't ignore conditionals by default
-  full_range = args[ARG_FULL_RANGE].AsBool(false);  // Maintain CCIR601 range when converting to/from RGB.
-
   if (args[ARG_MASK].Defined()) {  // Mask defined
     mask = args[ARG_MASK].AsClip();
     maskVi = mask->GetVideoInfo();
@@ -145,10 +145,18 @@ Overlay::~Overlay() {
       maskImg->free_chroma();
     }
     maskImg->free_luma();
+	delete maskImg;
+	delete maskConv;
   }
   overlayImg->free();
+	delete overlayImg;
   img->free();
+	delete img;
   free(inputVi);
+	delete func;
+	delete outputConv;
+	delete inputConv;
+	delete overlayConv;
 }
 
 
@@ -181,7 +189,7 @@ PVideoFrame __stdcall Overlay::GetFrame(int n, IScriptEnvironment *env) {
   
   if (mask) {
     PVideoFrame Mframe = mask->GetFrame(n, env);
-    if (greymask)
+	if (greymask)
       maskConv->ConvertImageLumaOnly(Mframe, maskImg, env);
     else 
       maskConv->ConvertImage(Mframe, maskImg, env);
@@ -320,7 +328,7 @@ ConvertFrom444* Overlay::SelectOutputCS(const char* name, IScriptEnvironment* en
 ///////////////////////////////////
 // Note: Instead of throwing an
 // error, this function returns 0
-// if it cannot fint the colorspace,
+// if it cannot find the colorspace,
 // for more accurate error reporting
 ///////////////////////////////////
 
@@ -335,9 +343,9 @@ ConvertTo444* Overlay::SelectInputCS(VideoInfo* VidI, IScriptEnvironment* env) {
     return c;
   } else if (VidI->IsRGB()) {
     ConvertTo444* c;
-    if (full_range)
+	if (full_range)
       c = new Convert444NonCCIRFromRGB();
-    else
+	else
       c = new Convert444FromRGB();
     c->SetVideoInfo(VidI);
     return c;

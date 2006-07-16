@@ -48,13 +48,14 @@ void ConvertYV12ChromaTo444(unsigned char *dstp, const unsigned char *srcp,
         const int src_rowsize, const int src_height)
 {
 #ifdef _AMD64_
-	if (((INT_PTR)srcp|(INT_PTR)src_pitch)%16) { // srcp or src_pitch not 16-byte aligned
-		// use 64-byte unaligned reads
-		__m128i *xmmdstp;
-		int xmmdst_pitch=dst_pitch/16, mmsrc_pitch=src_pitch/8;
-		__int64 *mmsrcp;
+		__m128i *xmmsrcp, *xmmdstp;
+		int xmmdst_pitch=dst_pitch/16, xmmsrc_pitch=src_pitch/16, mmsrc_pitch=src_pitch/8;
+		xmmsrcp = (__m128i*)srcp;
 		xmmdstp = (__m128i*)dstp;
+		__int64 *mmsrcp;
 		mmsrcp = (__int64*)srcp;
+	if (((INT_PTR)srcp|(INT_PTR)src_pitch)&15) { // srcp or src_pitch not 16-byte aligned
+		// use 64-bit unaligned reads
 
 		for (int i=0; (i*2)<src_height; i++) {
 			for (int j=0; (j*8) < src_rowsize; j++) {
@@ -69,11 +70,7 @@ void ConvertYV12ChromaTo444(unsigned char *dstp, const unsigned char *srcp,
 			}
 		}
 	} else { // otherwise we can do aligned reads; this method writes 32 bytes at a time,
-		// destination Image444 must have 32-byte aligned pitch
-		__m128i *xmmsrcp, *xmmdstp;
-		int xmmdst_pitch=dst_pitch/16, xmmsrc_pitch=src_pitch/16;
-		xmmsrcp = (__m128i*)srcp;
-		xmmdstp = (__m128i*)dstp;
+		// destination Image444 should have 32-byte aligned pitch
 	
 		for (int i=0; i<src_height; i++) {
 			for (int j=0; (j*16) < src_rowsize; j++) {
@@ -91,6 +88,7 @@ void ConvertYV12ChromaTo444(unsigned char *dstp, const unsigned char *srcp,
 #else
   int dst_pitch2 = dst_pitch * 2;
   __asm {
+    push	ebx
     mov     eax,[dstp]
     mov     ebx,[srcp]
     mov     ecx, eax
@@ -126,6 +124,7 @@ loopx:
     jnz     loopx
 
     emms
+	pop		ebx
   }
 #endif
 }
@@ -277,6 +276,7 @@ void ISSE_Convert444ChromaToYV12(unsigned char *dstp, const unsigned char *srcp,
   static const __int64 onesD = 0x0000000100000001;
   int src_pitch2 = src_pitch * 2;
   __asm {
+	push	ebx
     mov     eax,[dstp]
     mov     ebx,[srcp]
     mov     ecx, ebx
@@ -346,6 +346,7 @@ loopx:
     jnz     loopx
 
     emms
+	pop		ebx
   }
 #endif
 }
@@ -592,7 +593,6 @@ void Convert444FromRGB::ConvertImage(PVideoFrame src, Image444* dst, IScriptEnvi
 
       RGBx += bpp;
     }
-
     srcP-=srcPitch;
 
     dstY+=dstPitch;
