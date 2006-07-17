@@ -84,7 +84,7 @@ PVideoFrame __stdcall AdjustFocusV::GetFrame(int n, IScriptEnvironment* env)
 
 	if (vi.IsYV12()) {
     int plane,cplane;
-		for(cplane=0;cplane<3;cplane++) {
+	for(cplane=0;cplane<3;cplane++) {
       if (cplane==0)  plane = PLANAR_Y;
       if (cplane==1)  plane = PLANAR_U;
       if (cplane==2)  plane = PLANAR_V;
@@ -95,9 +95,7 @@ PVideoFrame __stdcall AdjustFocusV::GetFrame(int n, IScriptEnvironment* env)
 			memcpy(line, buf, row_size);
 			uc* p = buf + pitch;
 			if (env->GetCPUFlags() & CPUF_INTEGER_SSE) {
-#ifndef _AMD64_
 				AFV_MMX(line,p,height,pitch,row_size,amount);
-#endif
 			} else {
 				AFV_C(line,p,height,pitch,row_size,amount);
 			}
@@ -113,9 +111,7 @@ PVideoFrame __stdcall AdjustFocusV::GetFrame(int n, IScriptEnvironment* env)
 		memcpy(line, buf, row_size);
 		uc* p = buf + pitch;
 		if (env->GetCPUFlags() & CPUF_INTEGER_SSE) {
-#ifndef _AMD64_
 			AFV_MMX(line,p,height,pitch,row_size,amount);
-#endif
 		} else {
 			AFV_C(line,p,height,pitch,row_size,amount);
 		}
@@ -137,8 +133,43 @@ void AFV_C(uc* l, uc* p, const int height, const int pitch, const int row_size, 
 	}
 }
 
-#ifndef _AMD64_
 void AFV_MMX(const uc* l, const uc* p, const int height, const int pitch, const int row_size, const int amount) {
+#ifdef _AMD64_
+	int i, y;
+	__m128i XMM0, XMM1, XMM2, XMM3, XMM4, XMM5, XMM6, XMM7;
+	static __m128i cw, ow;
+	const static __m128i r6 = _mm_set1_epi32(0x00200020);
+	const static __m128i r7 = _mm_set1_epi32(0x00400040);
+	cw = _mm_set1_epi16((amount+0x100)>>9);
+	ow = _mm_set1_epi16((0x8000-amount+0x100)>>9);
+	XMM0 = _mm_setzero_si128();
+
+	for (y=0;y<height;y++) {
+		for (i=0; i<row_size; i+=8) {
+			XMM2 = _mm_loadl_epi64((__m128i*)(p+i+y*pitch));
+			XMM1 = _mm_loadl_epi64((__m128i*)(l+i));
+			_mm_storel_epi64((__m128i*)(l+i), XMM2);
+			XMM3 = _mm_loadl_epi64((__m128i*)(p+i+(y+1)*pitch));
+			XMM4 = XMM2;
+			XMM5 = XMM1;
+			XMM4 = _mm_unpacklo_epi8(XMM4, XMM0);
+			XMM5 = _mm_unpacklo_epi8(XMM5, XMM0);
+			XMM6 = XMM3;
+			XMM4 = _mm_mullo_epi16(XMM4, cw);
+			XMM6 = _mm_unpacklo_epi8(XMM6, XMM0);
+			XMM7 = XMM4;
+			XMM5 = _mm_adds_epi16(XMM5, XMM6);
+			XMM7 = _mm_adds_epu16(XMM7, r6);
+			XMM5 = _mm_mullo_epi16(XMM5, ow);
+			XMM7 = _mm_srai_epi16(XMM7, 6);
+			XMM5 = _mm_adds_epu16(XMM5, r7);
+			XMM5 = _mm_srai_epi16(XMM5, 7);
+			XMM7 = _mm_adds_epi16(XMM7, XMM5);
+			XMM7 = _mm_packus_epi16(XMM7, XMM0);
+			_mm_storel_epi64((__m128i*)(p+i+y*pitch), XMM7);
+		}
+	}
+#else
 	__declspec(align(8)) static __int64 cw;
 	__asm { 
 		// signed word center weight ((amount+0x100)>>9) x4
@@ -149,6 +180,7 @@ void AFV_MMX(const uc* l, const uc* p, const int height, const int pitch, const 
 		pshufw	mm2,mm1,0
 		movq	cw,mm2
 	}
+
 	__declspec(align(8)) static __int64 ow;
 	__asm {
 		// signed word outer weight ((32768-amount+0x100)>>9) x4
@@ -160,12 +192,12 @@ void AFV_MMX(const uc* l, const uc* p, const int height, const int pitch, const 
 		pshufw	mm2,mm1,0
 		movq	ow,mm2
 	}
+
 	// round masks
 	__declspec(align(8)) const static __int64 r6 = 0x0020002000200020;
 	__declspec(align(8)) const static __int64 r7 = 0x0040004000400040;
 
 	for (int y=0;y<height;y++) {
-
 	__asm {
 		mov			eax,l
 		mov			ebx,p
@@ -226,8 +258,8 @@ row_loop:
 		p += pitch;
 	}
 	__asm emms
-}
 #endif
+}
 
 AdjustFocusH::AdjustFocusH(double _amount, PClip _child)
 : GenericVideoFilter(FillBorder::Create(_child)), amount(int(32768*pow(2.0, _amount)+0.5)) {}
@@ -248,9 +280,7 @@ PVideoFrame __stdcall AdjustFocusH::GetFrame(int n, IScriptEnvironment* env)
 			const int pitch = frame->GetPitch(plane);
 			int height = frame->GetHeight(plane);
 			if (env->GetCPUFlags() & CPUF_INTEGER_SSE) {
-#ifndef _AMD64_
 				AFH_YV12_MMX(q,height,pitch,row_size,amount);
-#endif
 			} else {
 				AFH_YV12_C(q,height,pitch,row_size,amount);
 			} 
@@ -590,9 +620,80 @@ __asm	paddusw		mmB,r6		\
 __asm	psraw		mmB,6		\
 __asm	paddsw		mmA,mmB
 
-#ifndef _AMD64_
 void AFH_YV12_MMX(uc* p, int height, const int pitch, const int row_size, const int amount) 
 {
+#ifdef _AMD64_
+	int i, y;
+	__m128i XMM0, XMM1, XMM2, XMM3, XMM7;
+	static __m128i cw, ow;
+	const static __m128i r6 = _mm_set1_epi32(0x00200020);
+	const static __m128i r7 = _mm_set1_epi32(0x00400040);
+	cw = _mm_set1_epi16((amount+0x100)>>9);
+	ow = _mm_set1_epi16((0x8000-amount+0x100)>>9);
+	XMM0 = _mm_setzero_si128();
+
+	for (y=0; y<height; y++) {
+		// start of line
+		XMM1 = _mm_loadl_epi64((__m128i*)(p+y*pitch));
+		XMM3 = _mm_loadl_epi64((__m128i*)(p+y*pitch+1));
+
+		XMM1 = _mm_unpacklo_epi8(XMM1, XMM0);
+		XMM2 = _mm_mullo_epi16(XMM1, cw);
+		XMM3 = _mm_unpacklo_epi8(XMM3, XMM0);
+		XMM1 = _mm_adds_epi16(XMM1, XMM3);
+		XMM1 = _mm_mullo_epi16(XMM1, ow);
+		XMM1 = _mm_adds_epu16(XMM1, r7);
+		XMM2 = _mm_adds_epu16(XMM2, r6);
+		XMM1 = _mm_srai_epi16(XMM1, 7);
+		XMM2 = _mm_srai_epi16(XMM2, 6);
+		XMM1 = _mm_adds_epi16(XMM1, XMM2);
+
+
+		XMM7 = _mm_packus_epi16(XMM1, XMM0);
+		_mm_storel_epi64((__m128i*)(p+y*pitch), XMM7);
+
+		// middle
+		for(i=8; i<(row_size-8); i+=8) {
+			XMM1 = _mm_loadl_epi64((__m128i*)(p+y*pitch+i-1));
+			XMM2 = _mm_loadl_epi64((__m128i*)(p+y*pitch+i));
+			XMM3 = _mm_loadl_epi64((__m128i*)(p+y*pitch+i+1));
+
+			XMM1 = _mm_unpacklo_epi8(XMM1, XMM0);
+			XMM2 = _mm_unpacklo_epi8(XMM2, XMM0);
+			XMM2 = _mm_mullo_epi16(XMM2, cw);
+			XMM3 = _mm_unpacklo_epi8(XMM3, XMM0);
+			XMM1 = _mm_adds_epi16(XMM1, XMM3);
+			XMM1 = _mm_mullo_epi16(XMM1, ow);
+			XMM1 = _mm_adds_epu16(XMM1, r7);
+			XMM2 = _mm_adds_epu16(XMM2, r6);
+			XMM1 = _mm_srai_epi16(XMM1, 7);
+			XMM2 = _mm_srai_epi16(XMM2, 6);
+			XMM1 = _mm_adds_epi16(XMM1, XMM2);
+
+			XMM7 = _mm_packus_epi16(XMM1, XMM0);
+			_mm_storel_epi64((__m128i*)(p+y*pitch+i), XMM7);
+		}
+
+		//end of line
+		XMM1 = _mm_loadl_epi64((__m128i*)(p+y*pitch+i-1));
+		XMM2 = _mm_loadl_epi64((__m128i*)(p+y*pitch+i));
+
+		XMM1 = _mm_unpacklo_epi8(XMM1, XMM0);
+		XMM2 = _mm_unpacklo_epi8(XMM2, XMM0);
+		XMM3 = XMM2;
+		XMM2 = _mm_mullo_epi16(XMM2, cw);
+		XMM1 = _mm_adds_epi16(XMM1, XMM3);
+		XMM1 = _mm_mullo_epi16(XMM1, ow);
+		XMM1 = _mm_adds_epu16(XMM1, r7);
+		XMM2 = _mm_adds_epu16(XMM2, r6);
+		XMM1 = _mm_srai_epi16(XMM1, 7);
+		XMM2 = _mm_srai_epi16(XMM2, 6);
+		XMM1 = _mm_adds_epi16(XMM1, XMM2);
+
+		XMM7 = _mm_packus_epi16(XMM1, XMM0);
+		_mm_storel_epi64((__m128i*)(p+y*pitch+i), XMM7);
+	}
+#else
 	__declspec(align(8)) static __int64 cw;
 	__asm { 
 		// signed word center weight ((amount+0x100)>>9) x4
@@ -683,8 +784,8 @@ out_row_loop:
 		p += pitch;
 	}
 	__asm emms
-}
 #endif
+}
 
 
 
