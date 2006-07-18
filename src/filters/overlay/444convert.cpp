@@ -233,12 +233,13 @@ void ISSE_Convert444ChromaToYV12(unsigned char *dstp, const unsigned char *srcp,
 #ifdef _AMD64_
 	//src_rowsize is actually dst_rowsize, and src_height is actually dst_height.
 	__m128i *xmmsrcp, *xmmdstp;
-	__m128i xmmzero;
+	static const __m128i xmmzero = _mm_setzero_si128();
 	int xmmdst_pitch=dst_pitch/16, xmmsrc_pitch=src_pitch/16;
 	xmmsrcp = (__m128i*)srcp;
 	xmmdstp = (__m128i*)dstp;
-	xmmzero = _mm_setzero_si128();
-	_declspec(align(16)) __int64 ones[4] = {0x0001000100010001, 0x0001000100010001, 0x0000000100000001, 0x0000000100000001};
+	static const __m128i wdones = {1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0};
+	static const __m128i dbones = {1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0};
+	static const __m128i mask = {-1,0,-1,0,-1,0,-1,0,-1,0,-1,0,-1,0,-1,0};
 
 	for (int i=0; i < src_height; i++) {
 		for (int j=0; (j*16) < src_rowsize; j++) {
@@ -248,25 +249,13 @@ void ISSE_Convert444ChromaToYV12(unsigned char *dstp, const unsigned char *srcp,
 			__m128i nextblocklo = _mm_load_si128(xmmsrcp+1+j*2+i*2*xmmsrc_pitch);
 			__m128i nextblockhi = _mm_load_si128(xmmsrcp+1+j*2+(2*i+1)*xmmsrc_pitch);
 			__m128i right = _mm_avg_epu8(nextblocklo, nextblockhi);
-			__m128i leftlowd = _mm_unpacklo_epi8(left, xmmzero);
-			__m128i lefthiwd = _mm_unpackhi_epi8(left, xmmzero);
-			__m128i rightlowd = _mm_unpacklo_epi8(right, xmmzero);
-			__m128i righthiwd = _mm_unpackhi_epi8(right, xmmzero);
-			__m128i leftlodb = _mm_madd_epi16(leftlowd, *(__m128i*)ones);
-			__m128i lefthidb = _mm_madd_epi16(lefthiwd, *(__m128i*)ones);
-			__m128i rightlodb = _mm_madd_epi16(rightlowd, *(__m128i*)ones);
-			__m128i righthidb = _mm_madd_epi16(righthiwd, *(__m128i*)ones);
-			__m128i leftloround = _mm_add_epi32(leftlodb, *((__m128i*)ones+1));
-			__m128i lefthiround = _mm_add_epi32(lefthidb, *((__m128i*)ones+1));
-			__m128i rightloround = _mm_add_epi32(rightlodb, *((__m128i*)ones+1));
-			__m128i righthiround = _mm_add_epi32(righthidb, *((__m128i*)ones+1));
-			__m128i leftlopack = _mm_srli_epi32(leftloround, 1);
-			__m128i lefthipack = _mm_srli_epi32(lefthiround, 1);
-			__m128i rightlopack = _mm_srli_epi32(rightloround, 1);
-			__m128i righthipack = _mm_srli_epi32(righthiround, 1);
-			__m128i leftpackwd = _mm_packs_epi32(leftlopack, lefthipack);
-			__m128i rightpackwd = _mm_packs_epi32(rightlopack, righthipack);
-			__m128i final = _mm_packus_epi16(leftpackwd, rightpackwd);
+			__m128i loleft = _mm_and_si128(left, mask);
+			__m128i loright = _mm_and_si128(right, mask);
+			__m128i hileft = _mm_srli_epi16(left, 8);
+			__m128i hiright = _mm_srli_epi16(right, 8);
+			__m128i avgleft = _mm_avg_epu16(loleft, hileft);
+			__m128i avgright = _mm_avg_epu16(loright, hiright);
+			__m128i final = _mm_packus_epi16(avgleft, avgright);
 			_mm_store_si128(xmmdstp+j+i*xmmdst_pitch, final);
 		}
 	}
