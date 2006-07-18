@@ -1,0 +1,39 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 9.00
+# Visual C++ Express 2005
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DirectShowSource", "plugins\DirectShowSource\DirectShowSource.vcproj", "{01744E68-E82A-4A96-AB15-75CE2B0EA816}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "TCPDeliver", "plugins\TCPDeliver\TCPDeliver.vcproj", "{3645B088-538B-4E5E-A45F-F731102AFF38}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "avisynth", "avisynth.vcproj", "{663487D5-F79A-4DAA-BC67-319FE0827A48}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Win32 = Debug|Win32
+		Release|Win32 = Release|Win32
+		RelSym|Win32 = RelSym|Win32
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{01744E68-E82A-4A96-AB15-75CE2B0EA816}.Debug|Win32.ActiveCfg = Debug|Win32
+		{01744E68-E82A-4A96-AB15-75CE2B0EA816}.Debug|Win32.Build.0 = Debug|Win32
+		{01744E68-E82A-4A96-AB15-75CE2B0EA816}.Release|Win32.ActiveCfg = Release|Win32
+		{01744E68-E82A-4A96-AB15-75CE2B0EA816}.Release|Win32.Build.0 = Release|Win32
+		{01744E68-E82A-4A96-AB15-75CE2B0EA816}.RelSym|Win32.ActiveCfg = Release|Win32
+		{01744E68-E82A-4A96-AB15-75CE2B0EA816}.RelSym|Win32.Build.0 = Release|Win32
+		{3645B088-538B-4E5E-A45F-F731102AFF38}.Debug|Win32.ActiveCfg = Debug|Win32
+		{3645B088-538B-4E5E-A45F-F731102AFF38}.Debug|Win32.Build.0 = Debug|Win32
+		{3645B088-538B-4E5E-A45F-F731102AFF38}.Release|Win32.ActiveCfg = Release|Win32
+		{3645B088-538B-4E5E-A45F-F731102AFF38}.Release|Win32.Build.0 = Release|Win32
+		{3645B088-538B-4E5E-A45F-F731102AFF38}.RelSym|Win32.ActiveCfg = Release|Win32
+		{3645B088-538B-4E5E-A45F-F731102AFF38}.RelSym|Win32.Build.0 = Release|Win32
+		{663487D5-F79A-4DAA-BC67-319FE0827A48}.Debug|Win32.ActiveCfg = Debug|Win32
+		{663487D5-F79A-4DAA-BC67-319FE0827A48}.Debug|Win32.Build.0 = Debug|Win32
+		{663487D5-F79A-4DAA-BC67-319FE0827A48}.Release|Win32.ActiveCfg = Release|Win32
+		{663487D5-F79A-4DAA-BC67-319FE0827A48}.Release|Win32.Build.0 = Release|Win32
+		{663487D5-F79A-4DAA-BC67-319FE0827A48}.RelSym|Win32.ActiveCfg = RelSym|Win32
+		{663487D5-F79A-4DAA-BC67-319FE0827A48}.RelSym|Win32.Build.0 = RelSym|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

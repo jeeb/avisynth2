@@ -418,7 +418,7 @@ Tweak::Tweak( PClip _child, double _hue, double _sat, double _bright, double _co
 		// Precalc hue for all U/V combos
 		for (int x = 0; x<256; x++) {
 			for (int y = 0; y<256; y++) {
-				theta = atan2(x-128, y-128) * 180.0 / 3.1415926;
+				theta = atan2((double)x-128, (double)y-128) * 180.0 / 3.1415926;
 				deg[x][y] = (int) ((theta > 0) ? theta: 360+theta);
 			}
 		}
@@ -502,7 +502,7 @@ bool __stdcall Tweak::processPixel(int X, int Y)
 	}
 
 	// Interpolate saturation value
-	int holdSat = min((int) sqrt(W), 180);
+	int holdSat = min((int) sqrt((float)W), 180);
  
 	if (holdSat<minSat) { // within 2^p of lower range
 		iSat = (int) (((512 - Sat) * (minSat - holdSat) >> p) + Sat); 
