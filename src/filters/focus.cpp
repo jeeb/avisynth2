@@ -46,8 +46,8 @@
 ********************************************************************/
 
 AVSFunction Focus_filters[] = {
-  { "Blur", "cf[]f", Create_Blur },                     // amount [0 - 1]
-  { "Sharpen", "cf[]f", Create_Sharpen },               // amount [0 - 1]
+  { "Blur", "cf[]f", Create_Blur },                     // amount [-1.0 - 1.5849625] -- log2(3)
+  { "Sharpen", "cf[]f", Create_Sharpen },               // amount [-1.5849625 - 1.0]
 #ifndef _AMD64_ //TemporalSoften uses MMX
   { "TemporalSoften", "ciii[scenechange]i[mode]i", TemporalSoften::Create }, // radius, luma_threshold, chroma_threshold
 #endif
@@ -65,22 +65,29 @@ AVSFunction Focus_filters[] = {
  ***  MMX code by Marc FD            ***
  ***  Adaptation and bugfixes sh0dan ***
  ***  Code actually requires ISSE!   ***
+ ***  Not anymore - pure MMX    IanB ***
+ ***  Implement boundary proc.  IanB ***
  ***************************************/
 
 AdjustFocusV::AdjustFocusV(double _amount, PClip _child)
-: GenericVideoFilter(FillBorder::Create(_child)), amount(int(32768*pow(2.0, _amount)+0.5)) , line(NULL) {}
+: GenericVideoFilter(_child), amount(int(32768*pow(2.0, _amount)+0.5)) , line(NULL) {}
 
 AdjustFocusV::~AdjustFocusV(void) 
 { 
   if (line) delete[] line; 
 }
 
+// --------------------------------
+// Blur/Sharpen Vertical GetFrame()
+// --------------------------------
+
 PVideoFrame __stdcall AdjustFocusV::GetFrame(int n, IScriptEnvironment* env) 
 {
 	PVideoFrame frame = child->GetFrame(n, env);
 	env->MakeWritable(&frame);
 	if (!line)
-		line = new uc[frame->GetRowSize()+16];
+		line = new uc[frame->GetRowSize()+32];
+	uc* linea = (uc*)(((INT_PTR)line+15) & -16); // Align 16
 
 	if (vi.IsYV12()) {
     int plane,cplane;
@@ -91,39 +98,42 @@ PVideoFrame __stdcall AdjustFocusV::GetFrame(int n, IScriptEnvironment* env)
 			uc* buf = frame->GetWritePtr(plane);
 			int pitch = frame->GetPitch(plane);
 			int row_size = frame->GetRowSize(plane|PLANAR_ALIGNED);
-			int height = frame->GetHeight(plane)-2;
-			memcpy(line, buf, row_size);
-			uc* p = buf + pitch;
-			if (env->GetCPUFlags() & CPUF_INTEGER_SSE) {
-				AFV_MMX(line,p,height,pitch,row_size,amount);
+			int height   = frame->GetHeight(plane);
+			memcpy(linea, buf, row_size); // First row - map centre as upper
+			// All normal cases will have pitch aligned 16, we
+			// need 8. If someone works hard enough to override
+			// this we can't process the short fall. Use C Code.
+			if ((pitch >= ((row_size+7) & -8)) && (env->GetCPUFlags() & CPUF_MMX)) {
+				AFV_MMX(linea, buf, height, pitch, row_size, amount);
 			} else {
-				AFV_C(line,p,height,pitch,row_size,amount);
+				AFV_C(linea, buf, height, pitch, row_size, amount);
 			}
 		}
 
 	} else {
-		if (!line)
-			line = new uc[frame->GetRowSize()*2];
 		uc* buf = frame->GetWritePtr();
 		int pitch = frame->GetPitch();
 		int row_size = vi.RowSize();
-		int height = vi.height-2;
-		memcpy(line, buf, row_size);
-		uc* p = buf + pitch;
-		if (env->GetCPUFlags() & CPUF_INTEGER_SSE) {
-			AFV_MMX(line,p,height,pitch,row_size,amount);
+		int height   = vi.height;
+		memcpy(linea, buf, row_size); // First row - map centre as upper
+		if ((pitch >= ((row_size+7) & -8)) && (env->GetCPUFlags() & CPUF_MMX)) {
+			AFV_MMX(linea, buf, height, pitch, row_size, amount);
 		} else {
-			AFV_C(line,p,height,pitch,row_size,amount);
+			AFV_C(linea, buf, height, pitch, row_size, amount);
 		}
 	}
 
   return frame;
 }
 
+// ------------------------------
+// Blur/Sharpen Vertical C++ Code
+// ------------------------------
+
 void AFV_C(uc* l, uc* p, const int height, const int pitch, const int row_size, const int amount) {
 	const int center_weight = amount*2;
 	const int outer_weight = 32768-amount;
-	for (int y = height-2; y>0; --y) {
+	for (int y = height-1; y>0; --y) {
 		for (int x = 0; x < row_size; ++x) {
 			uc a = ScaledPixelClip(p[x] * center_weight + (l[x] + p[x+pitch]) * outer_weight);
 			l[x] = p[x];
@@ -131,138 +141,195 @@ void AFV_C(uc* l, uc* p, const int height, const int pitch, const int row_size, 
 		}
 		p += pitch;
 	}
+	for (int x = 0; x < row_size; ++x) { // Last row - map centre as lower
+		p[x] = ScaledPixelClip(p[x] * center_weight + (l[x] + p[x]) * outer_weight);
+	}
 }
 
 void AFV_MMX(const uc* l, const uc* p, const int height, const int pitch, const int row_size, const int amount) {
 #ifdef _AMD64_
 	int i, y;
-	__m128i XMM0, XMM1, XMM2, XMM3, XMM4, XMM5, XMM6, XMM7;
-	static __m128i cw, ow;
-	const static __m128i r6 = _mm_set1_epi32(0x00200020);
-	const static __m128i r7 = _mm_set1_epi32(0x00400040);
+	__m128i XMM0, XMM1, XMM2, XMM3, XMM4;
+	__m128i cw, ow;
+	const static __m128i r6 = {32,0,32,0,32,0,32,0,32,0,32,0,32,0,32,0};
+	const static __m128i r7 = {64,0,64,0,64,0,64,0,64,0,64,0,64,0,64,0};
 	cw = _mm_set1_epi16((amount+0x100)>>9);
 	ow = _mm_set1_epi16((0x8000-amount+0x100)>>9);
 	XMM0 = _mm_setzero_si128();
 
-	for (y=0;y<height;y++) {
+	for (y=0;y<height-1;y++) {
 		for (i=0; i<row_size; i+=8) {
 			XMM2 = _mm_loadl_epi64((__m128i*)(p+i+y*pitch));
 			XMM1 = _mm_loadl_epi64((__m128i*)(l+i));
 			_mm_storel_epi64((__m128i*)(l+i), XMM2);
 			XMM3 = _mm_loadl_epi64((__m128i*)(p+i+(y+1)*pitch));
-			XMM4 = XMM2;
-			XMM5 = XMM1;
-			XMM4 = _mm_unpacklo_epi8(XMM4, XMM0);
-			XMM5 = _mm_unpacklo_epi8(XMM5, XMM0);
-			XMM6 = XMM3;
-			XMM4 = _mm_mullo_epi16(XMM4, cw);
-			XMM6 = _mm_unpacklo_epi8(XMM6, XMM0);
-			XMM7 = XMM4;
-			XMM5 = _mm_adds_epi16(XMM5, XMM6);
-			XMM7 = _mm_adds_epu16(XMM7, r6);
-			XMM5 = _mm_mullo_epi16(XMM5, ow);
-			XMM7 = _mm_srai_epi16(XMM7, 6);
-			XMM5 = _mm_adds_epu16(XMM5, r7);
-			XMM5 = _mm_srai_epi16(XMM5, 7);
-			XMM7 = _mm_adds_epi16(XMM7, XMM5);
-			XMM7 = _mm_packus_epi16(XMM7, XMM0);
-			_mm_storel_epi64((__m128i*)(p+i+y*pitch), XMM7);
+			XMM2 = _mm_unpacklo_epi8(XMM2, XMM0);
+			XMM1 = _mm_unpacklo_epi8(XMM1, XMM0);
+			XMM2 = _mm_mullo_epi16(XMM2, cw);
+			XMM3 = _mm_unpacklo_epi8(XMM3, XMM0);
+			XMM1 = _mm_adds_epi16(XMM1, XMM3);
+			XMM2 = _mm_adds_epu16(XMM2, r6);
+			XMM1 = _mm_mullo_epi16(XMM1, ow);
+			XMM2 = _mm_srai_epi16(XMM2, 6);
+			XMM1 = _mm_adds_epu16(XMM1, r7);
+			XMM1 = _mm_srai_epi16(XMM1, 7);
+			XMM4 = _mm_adds_epi16(XMM1, XMM2);
+			XMM4 = _mm_packus_epi16(XMM4, XMM0);
+			_mm_storel_epi64((__m128i*)(p+i+y*pitch), XMM4);
 		}
 	}
+	// Bottom line, use current line for next
+	for (i=0; i<row_size; i+=8) {
+		XMM2 = _mm_loadl_epi64((__m128i*)(p+i+(height-1)*pitch));
+		XMM1 = _mm_loadl_epi64((__m128i*)(l+i));
+		XMM2 = _mm_unpacklo_epi8(XMM2, XMM0);
+		XMM1 = _mm_unpacklo_epi8(XMM1, XMM0);
+		XMM3 = _mm_mullo_epi16(XMM2, cw);
+		XMM1 = _mm_adds_epi16(XMM1, XMM2);
+		XMM3 = _mm_adds_epu16(XMM3, r6);
+		XMM1 = _mm_mullo_epi16(XMM1, ow);
+		XMM3 = _mm_srai_epi16(XMM3, 6);
+		XMM1 = _mm_adds_epu16(XMM1, r7);
+		XMM1 = _mm_srai_epi16(XMM1, 7);
+		XMM4 = _mm_adds_epi16(XMM1, XMM3);
+		XMM4 = _mm_packus_epi16(XMM4, XMM0);
+		_mm_storel_epi64((__m128i*)(p+i+(height-1)*pitch), XMM4);
+	}
+
 #else
-	__declspec(align(8)) static __int64 cw;
+		// round masks
+	__declspec(align(8)) const static __int64 r6 = 0x0020002000200020;
+	__declspec(align(8)) const static __int64 r7 = 0x0040004000400040;
+
 	__asm { 
+		sub		esp,8				; temp space on stack
 		// signed word center weight ((amount+0x100)>>9) x4
 		mov		eax,amount
 		add		eax,100h
 		sar		eax,9
-		movd	mm1,eax
-		pshufw	mm2,mm1,0
-		movq	cw,mm2
-	}
-
-	__declspec(align(8)) static __int64 ow;
-	__asm {
+		mov		[esp],ax
+		mov		[esp+2],ax
+		mov		[esp+4],ax
+		mov		[esp+6],ax
+		movq	mm7,[esp]
 		// signed word outer weight ((32768-amount+0x100)>>9) x4
 		mov		eax,8000h
 		sub		eax,amount
 		add		eax,100h
 		sar		eax,9
-		movd	mm1,eax
-		pshufw	mm2,mm1,0
-		movq	ow,mm2
+		mov		[esp],ax
+		mov		[esp+2],ax
+		mov		[esp+4],ax
+		mov		[esp+6],ax
+		movq	mm6,[esp]
+
+		add		esp,8
+		pxor	mm0,mm0
 	}
+	
+	int nloops = __min(pitch, (row_size+7) & -8) >> 3;
 
-	// round masks
-	__declspec(align(8)) const static __int64 r6 = 0x0020002000200020;
-	__declspec(align(8)) const static __int64 r7 = 0x0040004000400040;
+	for (int y = height-1; y>0; --y) {
 
-	for (int y=0;y<height;y++) {
 	__asm {
-		mov			eax,l
-		mov			ebx,p
+		mov			edx,p			; frame buffer
 		mov			ecx,pitch
-		mov			edi,row_size
-		shr			edi,3
-		pxor		mm0,mm0
+		mov			eax,edx
+		add			eax,ecx
+		mov			p,eax			; p += pitch;
+		mov			eax,l			; line buffer
+		mov			edi,nloops
 
+		align		16
 row_loop:
-
-		movq		mm2,[ebx]
-		movq		mm1,[eax]
-		movq		[eax],mm2
-
-		movq		mm3,[ebx+ecx]
-
-		movq		  mm4,mm2
-		 movq		  mm5,mm1
-		punpcklbw	mm4,mm0
-		 punpcklbw	mm5,mm0
-		movq		  mm6,mm3
-		 pmullw		mm4,cw
-		punpcklbw	mm6,mm0
-		 movq		  mm7,mm4
-		paddsw		mm5,mm6
- 		 paddusw		mm7,r6
-		pmullw		mm5,ow
-		 psraw		  mm7,6
-		paddusw		mm5,r7
-		 movq		  mm4,mm2
-		psraw		  mm5,7
-		 punpckhbw	mm4,mm0
-		paddsw		mm7,mm5
-
-		pmullw		mm4,cw
-		 movq		  mm5,mm1
-		movq		  mm6,mm3
-		 punpckhbw	mm5,mm0
-		punpckhbw	mm6,mm0
-		paddsw		mm5,mm6
-		pmullw		mm5,ow
-		movq		  mm6,mm4
-		 paddusw		mm5,r7
-		paddusw		mm6,r6
-		 psraw		  mm5,7
-		psraw		  mm6,6
-		paddsw		mm6,mm5
-
-		packuswb	mm7,mm6
-		movq		[ebx],mm7
-
-		add			eax,8
-		add			ebx,8
-		dec			edi
-		cmp			edi,0
-		jnle		row_loop
+		movq		mm4,[eax]		; 8 Upper pixels (buffered)
+		 movq		mm5,[edx+ecx]	; 8 Lower pixels
+		movq		mm1,mm4			; Duplicate uppers
+		 movq		mm3,mm5			; Duplicate lowers
+		punpcklbw	mm4,mm0			; unpack 4 low bytes uppers
+		 punpcklbw	mm5,mm0			; unpack 4 low bytes lowers
+		movq		mm2,[edx]		; 8 Centre pixels
+		 paddsw		mm5,mm4			; Uppers + Lowers				-- low
+		movq		mm4,mm2			; Duplicate centres
+		 pmullw		mm5,mm6			; *= outer weight				-- low
+		movq		[eax],mm2		; Save centres as next uppers
+		 paddusw	mm5,r7			; += 0.5						-- low
+		punpcklbw	mm4,mm0			; unpack 4 low bytes centres
+		 psraw		mm5,7			; /= 32768						-- low
+		punpckhbw	mm1,mm0			; unpack 4 high bytes uppers
+		 pmullw		mm4,mm7			; *= centre weight				-- low
+		punpckhbw	mm3,mm0			; unpack 4 high bytes lowers
+ 		 paddusw	mm4,r6			; += 0.5						-- low
+		paddsw		mm1,mm3			; Uppers + Lowers				-- high
+		 psraw		mm4,6			; /= 16384						-- low
+		punpckhbw	mm2,mm0			; unpack 4 high bytes centres
+		 pmullw		mm1,mm6			; *= outer weight				-- high
+		paddsw		mm4,mm5			; Weighted centres + outers		-- low
+		 pmullw		mm2,mm7			; *= centre weight				-- high
+		paddusw		mm1,r7			; += 0.5						-- high
+		 paddusw	mm2,r6			; += 0.5						-- high
+		psraw		mm1,7			; /= 32768						-- high
+		 psraw		mm2,6			; /= 16384						-- high
+		add			eax,8			; upper += 8
+		 paddsw		mm2,mm1			; Weighted centres + outers		-- high
+		add			edx,8			; centre += 8
+		 packuswb	mm4,mm2			; pack 4 lows with 4 highs
+		dec			edi				; count--
+		 movq		[edx-8],mm4		; Update 8 pixels
+		jnle		row_loop		; 
 		}
-		p += pitch;
+
+	} // for (int y = height
+
+	__asm { // Last row - map centre as lower
+		mov			edx,p			; frame buffer
+		mov			eax,l			; line buffer
+		mov			edi,nloops
+
+		align		16
+lrow_loop:
+		movq		mm5,[eax]		; 8 Upper pixels (buffered)
+		 movq		mm4,[edx]		; 8 Centre pixels as lowers
+		movq		mm1,mm5			; Duplicate uppers
+		 movq		mm3,mm4			; Duplicate lowers (centres)
+		punpcklbw	mm5,mm0			; unpack 4 low bytes uppers
+		 punpcklbw	mm4,mm0			; unpack 4 low bytes lowers (centres)
+		punpckhbw	mm3,mm0			; unpack 4 high bytes lowers (centres)
+		 paddsw		mm5,mm4			; Uppers + lowers (centres)		-- low
+		pmullw		mm4,mm7			; *= centre weight				-- low
+		 pmullw		mm5,mm6			; *= outer weight				-- low
+		paddusw		mm4,r6			; += 0.5						-- low
+		 paddusw	mm5,r7			; += 0.5						-- low
+		psraw		mm4,6			; /= 16384						-- low
+		 psraw		mm5,7			; /= 32768						-- low
+		punpckhbw	mm1,mm0			; unpack 4 high bytes uppers
+		 paddsw		mm4,mm5			; Weighted centres + outers		-- low
+		paddsw		mm1,mm3			; Uppers + lowers (centres)		-- high
+		 pmullw		mm3,mm7			; *= centre weight				-- high
+		pmullw		mm1,mm6			; *= outer weight				-- high
+		 paddusw	mm3,r6			; += 0.5						-- high
+		paddusw		mm1,r7			; += 0.5						-- high
+		 psraw		mm3,6			; /= 16384						-- high
+		psraw		mm1,7			; /= 32768						-- high
+		 add		eax,8			; upper += 8
+		paddsw		mm3,mm1			; Weighted centres + outers		-- high
+		 add		edx,8			; centre += 8
+		packuswb	mm4,mm3			; pack 4 lows with 4 highs
+		 dec		edi				; count--
+		movq		[edx-8],mm4		; Update 8 pixels
+		 jnle		lrow_loop		; 
 	}
 	__asm emms
+
 #endif
 }
 
 AdjustFocusH::AdjustFocusH(double _amount, PClip _child)
 : GenericVideoFilter(FillBorder::Create(_child)), amount(int(32768*pow(2.0, _amount)+0.5)) {}
+
+// ----------------------------------
+// Blur/Sharpen Horizontal GetFrame()
+// ----------------------------------
 
 PVideoFrame __stdcall AdjustFocusH::GetFrame(int n, IScriptEnvironment* env) 
 {
@@ -279,7 +346,7 @@ PVideoFrame __stdcall AdjustFocusH::GetFrame(int n, IScriptEnvironment* env)
 			uc* q = frame->GetWritePtr(plane);
 			const int pitch = frame->GetPitch(plane);
 			int height = frame->GetHeight(plane);
-			if (env->GetCPUFlags() & CPUF_INTEGER_SSE) {
+			if ((pitch >= ((row_size+7) & -8)) && (env->GetCPUFlags() & CPUF_MMX)) {
 				AFH_YV12_MMX(q,height,pitch,row_size,amount);
 			} else {
 				AFH_YV12_C(q,height,pitch,row_size,amount);
@@ -290,7 +357,7 @@ PVideoFrame __stdcall AdjustFocusH::GetFrame(int n, IScriptEnvironment* env)
 		uc* q = frame->GetWritePtr();
 		const int pitch = frame->GetPitch();
 		if (vi.IsYUY2()) {
-			if (env->GetCPUFlags() & CPUF_INTEGER_SSE) {
+			if (env->GetCPUFlags() & CPUF_MMX) {
 #ifndef _AMD64_	
 				AFH_YUY2_MMX(q,vi.height,pitch,vi.width,amount);
 #endif
@@ -299,7 +366,7 @@ PVideoFrame __stdcall AdjustFocusH::GetFrame(int n, IScriptEnvironment* env)
 			}
 		} 
 		else if (vi.IsRGB32()) {
-			if (env->GetCPUFlags() & CPUF_INTEGER_SSE) {
+			if (env->GetCPUFlags() & CPUF_MMX) {
 #ifndef _AMD64_	
 				AFH_RGB32_MMX(q,vi.height,pitch,vi.width,amount);
 #endif
@@ -315,6 +382,10 @@ PVideoFrame __stdcall AdjustFocusH::GetFrame(int n, IScriptEnvironment* env)
 	return frame;
 }
 
+// --------------------------------------
+// Blur/Sharpen Horizontal RGB32 C++ Code
+// --------------------------------------
+
 void AFH_RGB32_C(uc* p, int height, const int pitch, const int width, const int amount) {
   const int center_weight = amount*2;
   const int outer_weight = 32768-amount;
@@ -324,7 +395,7 @@ void AFH_RGB32_C(uc* p, int height, const int pitch, const int width, const int 
       uc gg = p[1];
       uc rr = p[2];
 	  uc aa = p[3];
-      for (int x = 1; x < width-1; ++x) 
+      for (int x = 0; x < width-1; ++x) 
 	  {
         uc b = ScaledPixelClip(p[x*4+0] * center_weight + (bb + p[x*4+4]) * outer_weight);
 	    bb = p[x*4+0]; p[x*4+0] = b;
@@ -335,91 +406,135 @@ void AFH_RGB32_C(uc* p, int height, const int pitch, const int width, const int 
         uc a = ScaledPixelClip(p[x*4+3] * center_weight + (aa + p[x*4+7]) * outer_weight);
 	    aa = p[x*4+3]; p[x*4+3] = a;
       }
+		p[x*4+0] = ScaledPixelClip(p[x*4+0] * center_weight + (bb + p[x*4+0]) * outer_weight);
+		p[x*4+1] = ScaledPixelClip(p[x*4+1] * center_weight + (gg + p[x*4+1]) * outer_weight);
+		p[x*4+2] = ScaledPixelClip(p[x*4+2] * center_weight + (rr + p[x*4+2]) * outer_weight);
+		p[x*4+3] = ScaledPixelClip(p[x*4+3] * center_weight + (aa + p[x*4+3]) * outer_weight);
 	  p += pitch;
     }
 }
 
+// --------------------------------------
+// Blur/Sharpen Horizontal RGB32 MMX Code
+// --------------------------------------
+
 #ifndef _AMD64_
 void AFH_RGB32_MMX(const uc* p, const int height, const int pitch, const int width, const int amount) {
+	// round masks
+	__declspec(align(8)) const static __int64 r6 = 0x0020002000200020;
+	__declspec(align(8)) const static __int64 r7 = 0x0040004000400040;
+	// weights
 	__declspec(align(8)) static __int64 cw;
+	__declspec(align(8)) static __int64 ow;
 	__asm { 
 		// signed word center weight ((amount+0x100)>>9) x4
 		mov		eax,amount
 		add		eax,100h
 		sar		eax,9
-		movd	mm1,eax
-		pshufw	mm2,mm1,0
-		movq	cw,mm2
-	}
-	__declspec(align(8)) static __int64 ow;
-	__asm {
+		lea		edx,cw
+		mov		[edx],ax
+		mov		[edx+2],ax
+		mov		[edx+4],ax
+		mov		[edx+6],ax
 		// signed word outer weight ((32768-amount+0x100)>>9) x4
 		mov		eax,8000h
 		sub		eax,amount
 		add		eax,100h
 		sar		eax,9
-		movd	mm1,eax
-		pshufw	mm2,mm1,0
-		movq	ow,mm2
+		lea		edx,ow
+		mov		[edx],ax
+		mov		[edx+2],ax
+		mov		[edx+4],ax
+		mov		[edx+6],ax
 	}
-	// round masks
-	__declspec(align(8)) const static __int64 r6 = 0x0020002000200020;
-	__declspec(align(8)) const static __int64 r7 = 0x0040004000400040;
-
 	for (int y=0;y<height;y++) {
-
 	__asm {
+		mov			ecx,p
+		mov			edi,width
 
-		mov		ecx,p
-		mov		edi,width
-		shr		edi,1
+		movq		mm1,[ecx]		; trash + left pixel
+		 pxor		mm0,mm0			; zeros
+		movq		mm2,mm1			; centre + right pixel
+		 psllq		mm1,32			; left + zero
 
-		pxor		mm0,mm0
-		movq		mm1,[ecx]
-
+		align		16
 row_loop:
-		movq		mm2,[ecx]
-
-		movq		mm7,mm1
-		punpckhbw	mm7,mm0
-		movq		mm4,mm2
-		punpcklbw	mm4,mm0
-		pmullw		mm4,cw
-		movq		mm5,mm2
-		punpckhbw	mm5,mm0
-		paddsw		mm7,mm5
-		pmullw		mm7,ow
-		paddusw		mm7,r7
-		psraw		mm7,7
-		paddusw		mm4,r6
-		psraw		mm4,6
-		paddsw		mm7,mm4
-
-		movq		mm1,mm2
-		movq		mm2,[ecx+8]
-
-		movq		mm6,mm1
-		punpcklbw	mm6,mm0
-		movq		mm4,mm1
-		punpckhbw	mm4,mm0
-		pmullw		mm4,cw
-		movq		mm5,mm2
-		punpcklbw	mm5,mm0
-		paddsw		mm6,mm5
-		pmullw		mm6,ow
-		paddusw		mm6,r7
-		psraw		mm6,7
-		paddusw		mm4,r6
-		psraw		mm4,6
-		paddsw		mm6,mm4
-
-		packuswb	mm7,mm6
-		movq		[ecx],mm7
-
-		add			ecx,8
 		dec			edi
-		cmp			edi,0
-		jnle		row_loop
+		jle			odd_end
+
+		movq		mm4,mm2			; duplicate centre pixel
+		 punpckhbw	mm1,mm0			; unpack left pixel
+		movq		mm7,mm2			; duplicate right pixel
+		 punpcklbw	mm4,mm0			; unpack centre pixel
+		punpckhbw	mm7,mm0			; unpack right pixel
+		 pmullw		mm4,cw			; *= centre weight
+		paddsw		mm7,mm1			; right + left
+		 paddusw	mm4,r6			; += 0.5
+		pmullw		mm7,ow			; *= outer weight
+		 psraw		mm4,6			; /= 16384
+		paddusw		mm7,r7			; += 0.5
+		 movq		mm1,mm2			; left + centre pixel
+		psraw		mm7,7			; /= 32768
+		 dec		edi
+		paddsw		mm7,mm4			; Weighted centres + outers
+		 jle		even_end
+
+		movq		mm2,[ecx+8]		; right + trash pixel
+		 movq		mm6,mm1			; duplicate left pixel
+		movq		mm5,mm2			; duplicate right pixel
+		 punpcklbw	mm6,mm0			; unpack left pixel
+		punpcklbw	mm5,mm0			; unpack right pixel
+		 movq		mm4,mm1			; duplicate centre pixel
+		paddsw		mm6,mm5			; left + right
+		 punpckhbw	mm4,mm0			; unpack centre pixel
+		pmullw		mm6,ow			; *= outer weight
+		 pmullw		mm4,cw			; *= centre weight
+		paddusw		mm6,r7			; += 0.5
+		 paddusw	mm4,r6			; += 0.5
+		psraw		mm6,7			; /= 32768
+		 psraw		mm4,6			; /= 16384
+	;stall
+		 paddsw		mm6,mm4			; Weighted centres + outers
+		add		ecx,8
+		 packuswb	mm7,mm6			; pack low with high
+	;stall
+		 movq		[ecx-8],mm7		; Update 2 centre pixels
+		jmp		row_loop
+
+		align		16
+odd_end:
+		 punpckhbw	mm1,mm0			; unpack left pixel
+		punpcklbw	mm2,mm0			; unpack centre pixel
+	;stall
+		paddsw		mm1,mm2			; left + centre
+		 pmullw		mm2,cw			; *= centre weight
+		pmullw		mm1,ow			; *= outer weight
+		 paddusw	mm2,r6			; += 0.5
+		paddusw		mm1,r7			; += 0.5
+		 psraw		mm2,6			; /= 16384
+		psraw		mm1,7			; /= 32768
+		paddsw		mm1,mm2			; Weighted centres + outers
+		packuswb	mm1,mm1			; pack low with high
+		movd		[ecx],mm1		; Update 1 centre pixels
+		 jmp		next_loop
+
+		align		16
+even_end:
+		 punpckhbw	mm2,mm0			; unpack centre pixel
+		punpcklbw	mm1,mm0			; unpack left pixel
+	;stall
+		paddsw		mm1,mm2			; left + centre
+		 pmullw		mm2,cw			; *= centre weight
+		pmullw		mm1,ow			; *= outer weight
+		 paddusw	mm2,r6			; += 0.5
+		paddusw		mm1,r7			; += 0.5
+		 psraw		mm2,6			; /= 16384
+		psraw		mm1,7			; /= 32768
+		paddsw		mm1,mm2			; Weighted centres + outers
+		packuswb	mm7,mm1			; pack low with high
+		movq		[ecx],mm7		; Update 2 centre pixels
+
+next_loop:
 		}
 		p += pitch;
 	}
@@ -427,145 +542,257 @@ row_loop:
 }
 #endif
 
+// -------------------------------------
+// Blur/Sharpen Horizontal YUY2 C++ Code
+// -------------------------------------
+
 void AFH_YUY2_C(uc* p, int height, const int pitch, const int width, const int amount) {
-  const int center_weight = amount*2;
-  const int outer_weight = 32768-amount;
-		for (int y = height; y>0; --y) 
-	    {
-	      uc uv = p[1];
-		  uc yy = p[2];
-	      uc vu = p[3];
-		  p[2] = ScaledPixelClip(p[2] * center_weight + (p[0] + p[4]) * outer_weight);
-	      for (int x = 2; x < width-2; ++x) 
-		  {
-	        uc w = ScaledPixelClip(p[x*2+1] * center_weight + (uv + p[x*2+5]) * outer_weight);
-		    uv = vu; vu = p[x*2+1]; p[x*2+1] = w;
-	        uc y = ScaledPixelClip(p[x*2+0] * center_weight + (yy + p[x*2+2]) * outer_weight);
-		    yy = p[x*2+0]; p[x*2+0] = y;
-	      }
-	      p[width*2-4] = ScaledPixelClip(p[width*2-4] * center_weight + (yy + p[width*2-2]) * outer_weight);
-		  p += pitch;
+	const int center_weight = amount*2;
+	const int outer_weight = 32768-amount;
+	for (int y = height; y>0; --y) 
+	{
+		uc yy = p[0];
+		uc uv = p[1];
+		uc vu = p[3];
+		for (int x = 0; x < width-2; ++x) 
+		{
+			uc y = ScaledPixelClip(p[x*2+0] * center_weight + (yy + p[x*2+2]) * outer_weight);
+			yy   = p[x*2+0];
+			p[x*2+0] = y;
+			uc w = ScaledPixelClip(p[x*2+1] * center_weight + (uv + p[x*2+5]) * outer_weight);
+			uv   = vu;
+			vu   = p[x*2+1];
+			p[x*2+1] = w;
 		}
+		uc y     = ScaledPixelClip(p[x*2+0] * center_weight + (yy + p[x*2+2]) * outer_weight);
+		yy       = p[x*2+0];
+		p[x*2+0] = y;
+		p[x*2+1] = ScaledPixelClip(p[x*2+1] * center_weight + (uv + p[x*2+1]) * outer_weight);
+		p[x*2+2] = ScaledPixelClip(p[x*2+2] * center_weight + (yy + p[x*2+2]) * outer_weight);
+		p[x*2+3] = ScaledPixelClip(p[x*2+3] * center_weight + (vu + p[x*2+3]) * outer_weight);
+   
+		p += pitch;
+	}
 }
+
+
+// -------------------------------------
+// Blur/Sharpen Horizontal YUY2 MMX Code
+// -------------------------------------
 
 #ifndef _AMD64_
 void AFH_YUY2_MMX(const uc* p, const int height, const int pitch, const int width, const int amount) {
-	__declspec(align(8)) static __int64 cw;
-	__asm { 
-		// signed word center weight ((amount+0x100)>>9) x4
-		mov		eax,amount
-		add		eax,100h
-		sar		eax,9
-		movd	mm1,eax
-		pshufw	mm2,mm1,0
-		movq	cw,mm2
-	}
-	__declspec(align(8)) static __int64 ow;
-	__asm {
-		// signed word outer weight ((32768-amount+0x100)>>9) x4
-		mov		eax,8000h
-		sub		eax,amount
-		add		eax,100h
-		sar		eax,9
-		movd	mm1,eax
-		pshufw	mm2,mm1,0
-		movq	ow,mm2
-	}
 	// round masks
 	__declspec(align(8)) const static __int64 r6 = 0x0020002000200020;
 	__declspec(align(8)) const static __int64 r7 = 0x0040004000400040;
 	// YY and UV masks
 	__declspec(align(8)) const static __int64 ym = 0x00FF00FF00FF00FF;
 	__declspec(align(8)) const static __int64 cm = 0xFF00FF00FF00FF00;
-	// (cm used as clip mask too)
-	__declspec(align(8)) const static __int64 zero = 0x0000000000000000;
 
+	__declspec(align(8)) const static __int64 rightmask = 0x00FF000000000000;
+	// weights
+	__declspec(align(8)) static __int64 cw;
+	__declspec(align(8)) static __int64 ow;
+
+	__asm { 
+		// signed word center weight ((amount+0x100)>>9) x4
+		mov		eax,amount
+		add		eax,100h
+		sar		eax,9
+		lea		edx,cw
+		mov		[edx],ax
+		mov		[edx+2],ax
+		mov		[edx+4],ax
+		mov		[edx+6],ax
+		// signed word outer weight ((32768-amount+0x100)>>9) x4
+		mov		eax,8000h
+		sub		eax,amount
+		add		eax,100h
+		sar		eax,9
+		lea		edx,ow
+		mov		[edx],ax
+		mov		[edx+2],ax
+		mov		[edx+4],ax
+		mov		[edx+6],ax
+	}
 
 	for (int y=0;y<height;y++) {
-
 	__asm {
-		mov		ecx,p
-		mov		edi,width
-		shr		edi,2
+		mov			ecx,p
+		 movq		mm1,ym			; 0x00FF00FF00FF00FF
+		movq		mm2,[ecx]		; [2v 3y 2u 2y 0v 1y 0u 0y]	-- Centre
+		 movq		mm3,cm			; 0xFF00FF00FF00FF00
+		pand		mm1,mm2			; [00 3y 00 2y 00 1y 00 0y]
+		 pand		mm3,mm2			; [2v 00 2u 00 0v 00 0u 00]
+		psllq		mm1,48			; [00 0y 00 00 00 00 00 00]
+		 psllq		mm3,32			; [0v 00 0u 00 00 00 00 00]
+		mov			edi,width
+		 por		mm1,mm3			; [0v 0y 0u 00 00 00 00 00]	-- Left
+		sub			edi,2
 
-		movq		mm1,[ecx]
-
+		align		16
 row_loop:
-		movq		mm2,[ecx]
-		movq		mm3,[ecx+8]
+		jle			odd_end
+		sub			edi,2
+		jle			even_end
 
-		movq		mm4,mm1
-		pand		mm4,ym
-		movq		mm5,mm2
-		pand		mm5,ym
-		movq		mm6,mm3
-		pand		mm6,ym
-		psrlq		mm4,48
-		psllq		mm6,48
-		movq		mm7,mm5
-		psllq		mm7,16
-		por			mm4,mm7
-		movq		mm7,mm5
-		psrlq		mm7,16
-		por			mm6,mm7
+		movq		mm0,mm1			;   [-2v -1y -2u -2y -4v -3y -4u -4y]
+		 movq		mm3,[ecx+8]		; [6v 7y 6u 6y 4v 5y 4u 4y]	-- Right
+		movq		mm5,ym			; 0x00FF00FF00FF00FF
+		 movq		mm6,mm3			;   [6v 7y 6u 6y 4v 5y 4u 4y]
+		pand		mm0,mm5			;   [00-1y 00-2y 00-3y 00-4y]
+		 pand		mm6,mm5			;   [007y 006y 005y 004y]
+		psrlq		mm0,48			;   [0000  0000  0000  00-1y]
+		 pand		mm5,mm2			; [003y 002y 001y 000y]		-- Centre
+		psllq		mm6,48			;   [004y 0000 0000 0000]
+		 movq		mm7,mm5			;   [003y 002y 001y 000y]
+		movq		mm4,mm5			;   [003y 002y 001y 000y]
+		 psllq		mm7,16			;   [002y 001y 000y 0000]
+		psrlq		mm5,16			;   [0000 003y 002y 001y]
+		 por		mm0,mm7			; [002y 001y 000y 00-1y]	-- Left
+		por			mm6,mm5			; [004y 003y 002y 001y]		-- Right
+		 pmullw		mm4,cw			; *= center weight
+		paddsw		mm0,mm6			; left += right 
+		 paddusw	mm4,r6			; += 0.5
+		pmullw		mm0,ow			; *= outer weight
+		 psraw		mm4,6			; /= 16384
+		paddusw		mm0,r7			; += 0.5
+		 movq		mm6,cm			; 0xFF00FF00FF00FF00
+		psraw		mm0,7			; /= 32768
+		 pand		mm1,mm6			;   [-2v00 -2u00 -4v00 -4u00]
+		paddsw		mm0,mm4			; Weighted centres + outers
+		 movq		mm5,mm2			;   [2v 3y 2u 2y 0v 1y 0u 0y]
+		psrlq		mm1,40			;   [0000 0000 00-2v 00-2u]
+		 pand		mm5,mm6			;   [2v00 2u00 0v00 0u00]
+		pand		mm6,mm3			;   [6v00 6u00 4v00 4u00]
+		 psrlq		mm5,8			; [002v 002u 000v 000u]		-- Centre
+		psllq		mm6,24			;   [004v 004u 0000 0000]
+		 movq		mm7,mm5			;   [002v 002u 000v 000u]
+		movq		mm4,mm5			;   [002v 002u 000v 000u]
+		 psllq		mm7,32			;   [000v 000u 0000 0000]
+		psrlq		mm4,32			;   [0000 0000 002v 002u]
+		 por		mm7,mm1			; [000v 000u 00-2v 00-2u]	-- Left
+		por			mm6,mm4			; [004v 004u 002v 002u]		-- Right
+		 packuswb	mm0,mm0			; [3y 2y 1y 0y 3y 2y 1y 0y] -- Unsign Saturated
+		paddsw		mm7,mm6			; left += right
+		 pmullw		mm5,cw			; *= center weight
+		pmullw		mm7,ow			; *= outer weight
+		 paddusw	mm5,r6			; += 0.5
+		paddusw		mm7,r7			; += 0.5
+		 psraw		mm5,6			; /= 16384
+		psraw		mm7,7			; /= 32768
+		 add		ecx,8			; 
+		paddsw		mm7,mm5			; Weighted centres + outers
+		 movq		mm1,mm2			; 
+		packuswb	mm7,mm7			; [2v 2u 0v 0u 2v 2u 0v 0u] -- Unsign Saturated
+		 movq		mm2,mm3			; 
+		punpcklbw	mm0,mm7			; [2v 3y 2u 2y 0v 1y 0v 0y]
+		 sub		edi,2
+		movq		[ecx-8],mm0		; Update 4 centre pixels
+		jmp			row_loop		; 
 
-		paddsw		mm4,mm6
-		pmullw		mm4,ow
-		pmullw		mm5,cw
-		paddusw		mm4,r7
-		psraw		mm4,7
-		paddusw		mm5,r6
-		psraw		mm5,6
-		paddsw		mm4,mm5
-		movq		mm0,mm4
+		align		16
+odd_end:
+		movq		mm5,ym			; 0x00FF00FF00FF00FF
+		 movq		mm0,mm1			;   [-2v -1y -2u -2y -4v -3y -4u -4y]
+	;stall
+		 pand		mm0,mm5			;   [00-1y 00-2y 00-3y 00-4y]
+		pand		mm5,mm2			; [00xx 00xx 001y 000y]		-- Centre
+		 psrlq		mm0,48			;   [0000  0000  0000  00-1y]
+		movq		mm7,mm5			;   [00xx 00xx 001y 000y]
+		 movq		mm6,mm5			;   [00xx 00xx 001y 000y]
+		psllq		mm7,16			;   [00xx 001y 000y 0000]
+		 psrlq		mm6,16			;   [0000 00xx 00xx 001y]
+		por			mm0,mm7			; [00xx 001y 000y 00-1y]	-- Left
+		 punpcklwd	mm6,mm6			; [00xx 00xx 001y 001y]		-- Right
+		pmullw		mm5,cw			; *= center weight YY
+		 paddsw		mm0,mm6			; left += right  YY
+		paddusw		mm5,r6			; += 0.5 YY
+		 pmullw		mm0,ow			; *= outer weight YY
+		movq		mm3,cm			; 0xFF00FF00FF00FF00
+		 psraw		mm5,6			; /= 16384
+		pand		mm1,mm3			;   [-2v00 -2u00 -4v00 -4u00]
+		 paddusw	mm0,r7			; += 0.5 YY
+		pand		mm3,mm2			;   [xx00 xx00 0v00 0u00]
+		 psrlq		mm1,40			; [0000 0000 00-2v 00-2u]	-- Left
+		psrlq		mm3,8			; [0000 0000 000v 000u]		-- Centre
+		 psraw		mm0,7			; /= 32768 YY
+		paddsw		mm1,mm3			; left += centre UV
+		 pmullw		mm3,cw			; *= center weight UV
+		pmullw		mm1,ow			; *= outer weight UV
+		 paddusw	mm3,r6			; += 0.5 UV
+		paddusw		mm1,r7			; += 0.5 UV
+		 psraw		mm3,6			; /= 16384 UV
+		psraw		mm1,7			; /= 32768 UV
+		 paddsw		mm0,mm5			; Weighted centres + outers YY
+		paddsw		mm1,mm3			; Weighted centres + outers UV
+		 packuswb	mm0,mm0			; [xx xx 1y 0y xx xx 1y 0y] -- Unsign Saturated
+		packuswb	mm1,mm1			; [xx xx 0v 0u xx xx 0v 0u] -- Unsign Saturated
+		punpcklbw	mm0,mm1			; [xx xx xx xx 0v 1y 0v 0y]
+		movd		[ecx],mm0		; Update 2 centre pixels
+		jmp		next_loop
 
-		movq		mm4,mm1
-		pand		mm4,cm
-		psrlq		mm4,8
-		movq		mm5,mm2
-		pand		mm5,cm
-		psrlq		mm5,8
-		movq		mm6,mm3
-		pand		mm6,cm
-		psrlq		mm6,8
-		psrlq		mm4,32
-		psllq		mm6,32
-		movq		mm7,mm5
-		psllq		mm7,32
-		por			mm4,mm7
-		movq		mm7,mm5
-		psrlq		mm7,32
-		por			mm6,mm7
+		align		16
+even_end:
 
-		paddsw		mm4,mm6
-		pmullw		mm4,ow
-		pmullw		mm5,cw
-		paddusw		mm4,r7
-		psraw		mm4,7
-		paddusw		mm5,r6
-		psraw		mm5,6
-		paddsw		mm4,mm5
+		 movq		mm5,ym			; 0x00FF00FF00FF00FF
+		movq		mm0,mm1			;   [-2v -1y -2u -2y -4v -3y -4u -4y]
+		 movq		mm6,rightmask	; 0x00FF000000000000
+		pand		mm0,mm5			;   [00-1y 00-2y 00-3y 00-4y]
+		 pand		mm6,mm2			;   [003y 0000 0000 0000]
+		pand		mm5,mm2			; [003y 002y 001y 000y]		-- Centre
+		 psrlq		mm0,48			;   [0000  0000  0000  00-1y]
+		movq		mm7,mm5			;   [003y 002y 001y 000y]
+		 movq		mm4,mm5			;   [003y 002y 001y 000y]
+		psllq		mm7,16			;   [002y 001y 000y 0000]
+		 psrlq		mm4,16			;   [0000 003y 002y 001y]
+		por			mm0,mm7			; [002y 001y 000y 00-1y]	-- Left
+		 por		mm6,mm4			; [003y 003y 002y 001y]		-- Right
+		movq		mm3,cm			; 0xFF00FF00FF00FF00
+		 paddsw		mm0,mm6			; left += right 
+		pmullw		mm5,cw			; *= center weight
+		 pmullw		mm0,ow			; *= outer weight
+		paddusw		mm5,r6			; += 0.5
+		 paddusw	mm0,r7			; += 0.5
+		psraw		mm5,6			; /= 16384
+		 pand		mm1,mm3			;   [-2v00 -2u00 -4v00 -4u00]
+		pand		mm3,mm2			;   [2v00 2u00 0v00 0u00]
+		 psrlq		mm1,40			;   [0000 0000 00-2v 00-2u]
+		movq		mm4,mm3			;   [2v00 2u00 0v00 0u00]
+		 movq		mm7,mm3			;   [2v00 2u00 0v00 0u00]
+		psrlq		mm4,40			;   [0000 0000 002v 002u]
+		 psllq		mm7,24			;   [000v 000u 0000 0000]
+		movq		mm6,mm4			;   [0000 0000 002v 002u]
+		 por		mm1,mm7			; [000v 000u 00-2v 00-2u]	-- Left
+		psllq		mm6,32			;   [002v 002u 0000 0000]
+		 psrlq		mm3,8			; [002v 002u 000v 000u]		-- Centre
+		por			mm6,mm4			; [002v 002u 002v 002u]		-- Right
+		 pmullw		mm3,cw			; *= center weight
+		paddsw		mm1,mm6			; left += right
+		 paddusw	mm3,r6			; += 0.5
+		pmullw		mm1,ow			; *= outer weight
+		 psraw		mm3,6			; /= 16384
+		paddusw		mm1,r7			; += 0.5
+		 psraw		mm0,7			; /= 32768
+		psraw		mm1,7			; /= 32768
+		 paddsw		mm0,mm5			; Weighted centres + outers
+		paddsw		mm1,mm3			; Weighted centres + outers
+		 packuswb	mm0,mm0			; [3y 2y 1y 0y 3y 2y 1y 0y] -- Unsign Saturated
+		packuswb	mm1,mm1			; [2v 2u 0v 0u 2v 2u 0v 0u] -- Unsign Saturated
+		punpcklbw	mm0,mm1			; [2v 3y 2u 2y 0v 1y 0v 0y]
+		movq		[ecx],mm0		; Update 4 centre pixels
 
-		packuswb	mm0,mm0
-		punpcklbw	mm0,zero
-		packuswb	mm4,mm4
-		punpcklbw	mm4,zero
-
-		movq		mm1,mm2
-		psllq		mm4,8
-		por			mm0,mm4
-		movq		[ecx],mm0
-
-		add			ecx,8
-		dec			edi
-		cmp			edi,0
-		jnle		row_loop
+next_loop:
 		}
 	p += pitch;
 	}
 	__asm emms
 }
 #endif
+
+// --------------------------------------
+// Blur/Sharpen Horizontal RGB24 C++ Code
+// --------------------------------------
 
 void AFH_RGB24_C(uc* p, int height, const int pitch, const int width, const int amount) {
   const int center_weight = amount*2;
@@ -576,7 +803,7 @@ void AFH_RGB24_C(uc* p, int height, const int pitch, const int width, const int 
       uc bb = p[0];
       uc gg = p[1];
       uc rr = p[2];
-      for (int x = 1; x < width-1; ++x) 
+      for (int x = 0; x < width-1; ++x) 
       {
         uc b = ScaledPixelClip(p[x*3+0] * center_weight + (bb + p[x*3+3]) * outer_weight);
         bb = p[x*3+0]; p[x*3+0] = b;
@@ -585,9 +812,16 @@ void AFH_RGB24_C(uc* p, int height, const int pitch, const int width, const int 
         uc r = ScaledPixelClip(p[x*3+2] * center_weight + (rr + p[x*3+5]) * outer_weight);
         rr = p[x*3+2]; p[x*3+2] = r;
       }
+      p[x*3+0] = ScaledPixelClip(p[x*3+0] * center_weight + (bb + p[x*3+0]) * outer_weight);
+      p[x*3+1] = ScaledPixelClip(p[x*3+1] * center_weight + (gg + p[x*3+1]) * outer_weight);
+      p[x*3+2] = ScaledPixelClip(p[x*3+2] * center_weight + (rr + p[x*3+2]) * outer_weight);
       p += pitch;
     }
 }
+
+// -------------------------------------
+// Blur/Sharpen Horizontal YV12 C++ Code
+// -------------------------------------
 
 void AFH_YV12_C(uc* p, int height, const int pitch, const int row_size, const int amount) 
 {
@@ -600,34 +834,60 @@ void AFH_YV12_C(uc* p, int height, const int pitch, const int row_size, const in
 			pp = ScaledPixelClip(p[x] * center_weight + (l + p[x+1]) * outer_weight);
 			l=p[x]; p[x]=pp;
 		}
+		p[x] = ScaledPixelClip(p[x] * center_weight + (l + p[x]) * outer_weight);
 		p += pitch;
 	}
 }
 
-#define scale(mmAA,mmBB,mmCC,mmA,mmB,mmC,zeros,punpckXbw)	\
-__asm	movq		mmA,mmAA	\
-__asm	punpckXbw	mmA,zeros	\
-__asm	movq		mmB,mmBB	\
-__asm	punpckXbw	mmB,zeros	\
-__asm	pmullw		mmB,cw		\
-__asm	movq		mmC,mmCC	\
-__asm	punpckXbw	mmC,zeros	\
-__asm	paddsw		mmA,mmC		\
-__asm	pmullw		mmA,ow		\
-__asm	paddusw		mmA,r7		\
-__asm	psraw		mmA,7		\
-__asm	paddusw		mmB,r6		\
-__asm	psraw		mmB,6		\
-__asm	paddsw		mmA,mmB
+// -------------------------------------
+// Blur/Sharpen Horizontal YV12 MMX Code
+// -------------------------------------
 
+#define scale(mmAA,mmBB,mmCC,mmA,mmB,mmC,zeros)	\
+__asm	movq		mmC,mmCC	/* Right 8 pixels      */\
+__asm	 movq		mmA,mmAA	/* Left     "          */\
+__asm	movq		mmB,mmBB	/* Centre   "          */\
+__asm	 punpcklbw	mmC,zeros	/* Low 4 right         */\
+__asm	punpcklbw	mmA,zeros	/* Low 4 left          */\
+__asm	 punpcklbw	mmB,zeros	/* Low 4 centre        */\
+__asm	paddsw		mmA,mmC		/* Low 4 left + right  */\
+__asm	 pmullw		mmB,cw		/* *= centre weight    */\
+__asm	pmullw		mmA,ow		/* *= outer weight     */\
+__asm	 paddusw	mmB,r6		/* += 0.5              */\
+__asm	paddusw		mmA,r7		/* += 0.5              */\
+__asm	 psraw		mmB,6		/* /= 16384            */\
+__asm	psraw		mmA,7		/* /= 32768            */\
+__asm	 punpckhbw	mmCC,zeros	/* High 4 Right        */\
+__asm	punpckhbw	mmAA,zeros	/* High 4 Left         */\
+__asm	 punpckhbw	mmBB,zeros	/* High 4 Centre       */\
+__asm	paddsw		mmAA,mmCC	/* High 4 left + right */\
+__asm	 pmullw		mmBB,cw		/* *= centre weight    */\
+__asm	pmullw		mmAA,ow		/* *= outer weight     */\
+__asm	 paddusw	mmBB,r6		/* += 0.5              */\
+__asm	paddusw		mmAA,r7		/* += 0.5              */\
+__asm	 psraw		mmBB,6		/* /= 16384            */\
+__asm	psraw		mmAA,7		/* /= 32768            */\
+__asm	 paddsw		mmA,mmB		/* weighed low 4       */\
+__asm	paddsw		mmAA,mmBB	/* weighed high 4      */\
+__asm	 add		ecx,8		/* p += 8              */\
+__asm	packuswb	mmA,mmAA	/* Packed new 8 pixels */
+
+// 
+// Planer MMX blur/sharpen - process 8 pixels at a time
+//   FillBorder::Create(_child)) ensures the right edge is repeated to mod 8 width
+//   frame->GetRowSize(plane|PLANAR_ALIGNED) ensured rowsize is also mod 8
+// For pitch less than 8 C code is used (unlikely, I couldn't force a case)
+// 
 void AFH_YV12_MMX(uc* p, int height, const int pitch, const int row_size, const int amount) 
 {
 #ifdef _AMD64_
 	int i, y;
-	__m128i XMM0, XMM1, XMM2, XMM3, XMM7;
-	static __m128i cw, ow;
-	const static __m128i r6 = _mm_set1_epi32(0x00200020);
-	const static __m128i r7 = _mm_set1_epi32(0x00400040);
+	__m128i XMM0, XMM1, XMM2, XMM3, XMM4, XMM7;
+	__m128i cw, ow;
+	// stupid __m128i union is declared as an array of bytes (char)
+	// and it's backwards (to my way of thinking)
+	const static __m128i r6 = {32,0,32,0,32,0,32,0,32,0,32,0,32,0,32,0};
+	const static __m128i r7 = {64,0,64,0,64,0,64,0,64,0,64,0,64,0,64,0};
 	cw = _mm_set1_epi16((amount+0x100)>>9);
 	ow = _mm_set1_epi16((0x8000-amount+0x100)>>9);
 	XMM0 = _mm_setzero_si128();
@@ -639,48 +899,52 @@ void AFH_YV12_MMX(uc* p, int height, const int pitch, const int row_size, const 
 
 		XMM1 = _mm_unpacklo_epi8(XMM1, XMM0);
 		XMM2 = _mm_mullo_epi16(XMM1, cw);
+
+		XMM1 = _mm_slli_si128(XMM1, 2);
 		XMM3 = _mm_unpacklo_epi8(XMM3, XMM0);
+		XMM1 = _mm_shufflelo_epi16(XMM1, 0xE5); // 11100101b
+
 		XMM1 = _mm_adds_epi16(XMM1, XMM3);
 		XMM1 = _mm_mullo_epi16(XMM1, ow);
-		XMM1 = _mm_adds_epu16(XMM1, r7);
 		XMM2 = _mm_adds_epu16(XMM2, r6);
-		XMM1 = _mm_srai_epi16(XMM1, 7);
+		XMM1 = _mm_adds_epu16(XMM1, r7);
 		XMM2 = _mm_srai_epi16(XMM2, 6);
-		XMM1 = _mm_adds_epi16(XMM1, XMM2);
+		XMM1 = _mm_srai_epi16(XMM1, 7);
+		XMM2 = _mm_adds_epi16(XMM1, XMM2);
 
-
-		XMM7 = _mm_packus_epi16(XMM1, XMM0);
-		_mm_storel_epi64((__m128i*)(p+y*pitch), XMM7);
+		XMM7 = _mm_packus_epi16(XMM2, XMM0);
 
 		// middle
 		for(i=8; i<(row_size-8); i+=8) {
-			XMM1 = _mm_loadl_epi64((__m128i*)(p+y*pitch+i-1));
-			XMM2 = _mm_loadl_epi64((__m128i*)(p+y*pitch+i));
+			XMM4 = _mm_loadl_epi64((__m128i*)(p+y*pitch+i-1));
+			XMM1 = _mm_loadl_epi64((__m128i*)(p+y*pitch+i));
+			_mm_storel_epi64((__m128i*)(p+y*pitch+i-8), XMM7);
+			XMM1 = _mm_unpacklo_epi8(XMM1, XMM0);
+			XMM4 = _mm_unpacklo_epi8(XMM4, XMM0);
 			XMM3 = _mm_loadl_epi64((__m128i*)(p+y*pitch+i+1));
 
-			XMM1 = _mm_unpacklo_epi8(XMM1, XMM0);
-			XMM2 = _mm_unpacklo_epi8(XMM2, XMM0);
-			XMM2 = _mm_mullo_epi16(XMM2, cw);
+			XMM1 = _mm_mullo_epi16(XMM1, cw);
 			XMM3 = _mm_unpacklo_epi8(XMM3, XMM0);
-			XMM1 = _mm_adds_epi16(XMM1, XMM3);
-			XMM1 = _mm_mullo_epi16(XMM1, ow);
-			XMM1 = _mm_adds_epu16(XMM1, r7);
-			XMM2 = _mm_adds_epu16(XMM2, r6);
-			XMM1 = _mm_srai_epi16(XMM1, 7);
-			XMM2 = _mm_srai_epi16(XMM2, 6);
-			XMM1 = _mm_adds_epi16(XMM1, XMM2);
+			XMM4 = _mm_adds_epi16(XMM4, XMM3);
+			XMM4 = _mm_mullo_epi16(XMM4, ow);
+			XMM4 = _mm_adds_epu16(XMM4, r7);
+			XMM1 = _mm_adds_epu16(XMM1, r6);
+			XMM4 = _mm_srai_epi16(XMM4, 7);
+			XMM1 = _mm_srai_epi16(XMM1, 6);
+			XMM4 = _mm_adds_epi16(XMM4, XMM1);
 
-			XMM7 = _mm_packus_epi16(XMM1, XMM0);
-			_mm_storel_epi64((__m128i*)(p+y*pitch+i), XMM7);
+			XMM7 = _mm_packus_epi16(XMM4, XMM0);
 		}
 
 		//end of line
 		XMM1 = _mm_loadl_epi64((__m128i*)(p+y*pitch+i-1));
+		_mm_storel_epi64((__m128i*)(p+y*pitch+i-8), XMM7);
 		XMM2 = _mm_loadl_epi64((__m128i*)(p+y*pitch+i));
 
 		XMM1 = _mm_unpacklo_epi8(XMM1, XMM0);
 		XMM2 = _mm_unpacklo_epi8(XMM2, XMM0);
-		XMM3 = XMM2;
+		XMM3 = _mm_srli_si128(XMM2, 2);
+		XMM3 = _mm_shufflehi_epi16(XMM3, 0xA4); // 10100100b
 		XMM2 = _mm_mullo_epi16(XMM2, cw);
 		XMM1 = _mm_adds_epi16(XMM1, XMM3);
 		XMM1 = _mm_mullo_epi16(XMM1, ow);
@@ -694,94 +958,93 @@ void AFH_YV12_MMX(uc* p, int height, const int pitch, const int row_size, const 
 		_mm_storel_epi64((__m128i*)(p+y*pitch+i), XMM7);
 	}
 #else
+	// weights
 	__declspec(align(8)) static __int64 cw;
+	__declspec(align(8)) static __int64 ow;
+	// round masks
+	__declspec(align(8)) const static __int64 r6 = 0x0020002000200020;
+	__declspec(align(8)) const static __int64 r7 = 0x0040004000400040;
+	// edge masks
+	__declspec(align(8)) const static __int64 leftmask  = 0x00000000000000FF;
+	__declspec(align(8)) const static __int64 rightmask = 0xFF00000000000000;
+
 	__asm { 
 		// signed word center weight ((amount+0x100)>>9) x4
 		mov		eax,amount
 		add		eax,100h
 		sar		eax,9
-		movd	mm1,eax
-		pshufw	mm2,mm1,0
-		movq	cw,mm2
-	}
-	__declspec(align(8)) static __int64 ow;
-	__asm {
+		lea		edx,cw
+		mov		[edx],ax
+		mov		[edx+2],ax
+		mov		[edx+4],ax
+		mov		[edx+6],ax
 		// signed word outer weight ((32768-amount+0x100)>>9) x4
 		mov		eax,8000h
 		sub		eax,amount
 		add		eax,100h
 		sar		eax,9
-		movd	mm1,eax
-		pshufw	mm2,mm1,0
-		movq	ow,mm2
+		lea		edx,ow
+		mov		[edx],ax
+		mov		[edx+2],ax
+		mov		[edx+4],ax
+		mov		[edx+6],ax
 	}
-
-	// round masks
-	__declspec(align(8)) const static __int64 r6 = 0x0020002000200020;
-	__declspec(align(8)) const static __int64 r7 = 0x0040004000400040;
 
 	for (int y=0;y<height;y++) {
 
 	__asm {
+		mov			ecx,p
+		mov			edi,pitch
+		add			edi,ecx
+		mov			p,edi			; p += pitch;
+		mov			edi,row_size
+		shr			edi,3
 
-		mov		ecx,p
-		mov		edi,row_size
-		shr		edi,3
-    dec   edi
 		pxor		mm0,mm0
 ; first row
-		movq		mm1,[ecx]
-		movq		mm2,[ecx]
-		movq		mm3,[ecx+1]
-
-    scale(mm1,mm2,mm3,mm4,mm5,mm6,mm0,punpcklbw)
-		
-		movq		mm7,mm4
-
-		scale(mm1,mm2,mm3,mm4,mm5,mm6,mm0,punpckhbw)
-
-		packuswb	mm7,mm4
-		movq		[ecx],mm7
-
-    add			ecx,8
+		 movq		mm2,[ecx]		; Centre 8 pixels
+		movq		mm1,leftmask	; 0x00000000000000ff
+		 movq		mm3,mm2			; Duplicate for left
+		pand		mm1,mm2			; Left edge pixel
+		 psllq		mm3,8			; Left 7 other pixels
 		dec			edi
-    jz      out_row_loop
+		 por		mm1,mm3			; Left pixels, left most repeated
+		jz			out_row_loop_ex	; 8 or less pixels per line
 
-    align 16
+		movq		mm3,[ecx+1]		; Right 8 pixels
+
+		scale(mm1,mm2,mm3,mm4,mm5,mm6,mm0)
+
+		dec			edi
+		jz			out_row_loop	; 9 to 16 pixels per line
+
+		align 16
 row_loop:
+		movq		mm1,[ecx-1]		; Pickup left 8th before it's updated
+		 movq		[ecx-8],mm4		; update current 8 pixels
+		movq		mm2,[ecx]		; Centre 8 pixels
+		 movq		mm3,[ecx+1]		; Right 8 pixels
 
-		movq		mm1,[ecx-1]
-		movq		mm2,[ecx]
-		movq		mm3,[ecx+1]
+		scale(mm1,mm2,mm3,mm4,mm5,mm6,mm0)
 
-		scale(mm1,mm2,mm3,mm4,mm5,mm6,mm0,punpcklbw)
-		
-		movq		mm7,mm4
-
-		scale(mm1,mm2,mm3,mm4,mm5,mm6,mm0,punpckhbw)
-
-		packuswb	mm7,mm4
-		movq		[ecx],mm7
-
-		add			ecx,8
 		dec			edi
-		jnz			row_loop
+		jnz			row_loop		; more ?
+
 out_row_loop:
-		movq		mm1,[ecx-1]
-		movq		mm2,[ecx]
-		movq		mm3,[ecx]
+		movq		mm1,[ecx-1]		; Pickup left 8th before it's updated
+		 movq		[ecx-8],mm4		; update current 8 pixels
+		movq		mm2,[ecx]		; Centre 8 pixels
+out_row_loop_ex:
+		 movq		mm3,rightmask	; 0xFF00000000000000
+		movq		mm4,mm2			; Duplicate for right
+		 pand		mm3,mm2			; Right edge pixel
+		psrlq		mm4,8			; Right 7 other pixels
+		por			mm3,mm4			; Right pixles, right most repeated
 
-		scale(mm1,mm2,mm3,mm4,mm5,mm6,mm0,punpcklbw)
-		
-		movq		mm7,mm4
+		scale(mm1,mm2,mm3,mm4,mm5,mm6,mm0)
 
-		scale(mm1,mm2,mm3,mm4,mm5,mm6,mm0,punpckhbw)
-
-		packuswb	mm7,mm4
-		movq		[ecx],mm7
-
+		movq		[ecx-8],mm4		; update current 8 pixels
 		}
-		p += pitch;
 	}
 	__asm emms
 #endif
@@ -795,18 +1058,56 @@ out_row_loop:
 
 AVSValue __cdecl Create_Sharpen(AVSValue args, void*, IScriptEnvironment* env) 
 {
+	try {	// HIDE DAMN SEH COMPILER BUG!!!
   const double amountH = args[1].AsFloat(), amountV = args[2].AsFloat(amountH);
-  if (amountH < -1.5849625 || amountH > 1.0 || amountV < -1.5849625 || amountV > 1.0)
+  if (amountH < -1.5849625 || amountH > 1.0 || amountV < -1.5849625 || amountV > 1.0) // log2(3)
     env->ThrowError("Sharpen: arguments must be in the range -1.58 to 1.0");
-  return new AdjustFocusH(amountH, new AdjustFocusV(amountV, args[0].AsClip()));
+
+  if (fabs(amountH) < 0.00002201361136) { // log2(1+1/65536)
+    if (fabs(amountV) < 0.00002201361136) {
+      return args[0].AsClip();
+    }
+    else {
+      return new AdjustFocusV(amountV, args[0].AsClip());
+    }
+  }
+  else {
+    if (fabs(amountV) < 0.00002201361136) {
+      return new AdjustFocusH(amountH, args[0].AsClip());
+    }
+    else {
+      return new AdjustFocusH(amountH, new AdjustFocusV(amountV, args[0].AsClip()));
+    }
+  }
+	}
+	catch (...) { throw; }
 }
 
 AVSValue __cdecl Create_Blur(AVSValue args, void*, IScriptEnvironment* env) 
 {
+	try {	// HIDE DAMN SEH COMPILER BUG!!!
   const double amountH = args[1].AsFloat(), amountV = args[2].AsFloat(amountH);
-  if (amountH < -1.0 || amountH > 1.5849625 || amountV < -1.0 || amountV > 1.5849625)
+  if (amountH < -1.0 || amountH > 1.5849625 || amountV < -1.0 || amountV > 1.5849625) // log2(3)
     env->ThrowError("Blur: arguments must be in the range -1.0 to 1.58");
-  return new AdjustFocusH(-amountH, new AdjustFocusV(-amountV, args[0].AsClip()));
+
+  if (fabs(amountH) < 0.00002201361136) { // log2(1+1/65536)
+    if (fabs(amountV) < 0.00002201361136) {
+      return args[0].AsClip();
+    }
+    else {
+      return new AdjustFocusV(-amountV, args[0].AsClip());
+    }
+  }
+  else {
+    if (fabs(amountV) < 0.00002201361136) {
+      return new AdjustFocusH(-amountH, args[0].AsClip());
+    }
+    else {
+      return new AdjustFocusH(-amountH, new AdjustFocusV(-amountV, args[0].AsClip()));
+    }
+  }
+	}
+	catch (...) { throw; }
 }
 
 
