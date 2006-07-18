@@ -89,7 +89,7 @@ private:
   bool data_waiting;
 };
 
-UINT StartClient(LPVOID p);
+DWORD WINAPI StartClient(LPVOID p);
 
 class TCPClient  : public IClip {
 public:
@@ -109,5 +109,6 @@ private:
   HANDLE ClientThread;
   bool frame_requested;
 };
+
 
 #endif

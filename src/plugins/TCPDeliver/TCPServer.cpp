@@ -83,7 +83,7 @@ AVSValue __cdecl Create_TCPServer(AVSValue args, void* user_data, IScriptEnviron
 
 /********** Server Thread **********/
 
-UINT StartServer(LPVOID p) {
+DWORD WINAPI StartServer(LPVOID p) {
   TCPServerListener* t = (TCPServerListener*)p;
   t->Listen();
   return 0;
@@ -141,7 +141,8 @@ TCPServerListener::TCPServerListener(int port, PClip _child, IScriptEnvironment*
 
   shutdown = false;
 
-  AfxBeginThread(StartServer, this , THREAD_PRIORITY_NORMAL, 0, 0, NULL);
+//  AfxBeginThread(StartServer, this , THREAD_PRIORITY_NORMAL, 0, 0, NULL);
+  CreateThread(NULL,NULL,StartServer,this, NULL,NULL);
 
   thread_running = true;
 
@@ -390,7 +391,7 @@ void TCPServerListener::SendPendingData(ClientConnection* cc) {
 
   int r = send(cc->s, (const char*)(&cc->pendingData[cc->pendingBytesSent]), send_bytes, 0);
   if (r == SOCKET_ERROR || r < 0) {
-    _RPT0(0, "TCPServer: Could not send packet (SOCKET_ERROR). Connection closed\n", );
+    _RPT0(0, "TCPServer: Could not send packet (SOCKET_ERROR). Connection closed\n" );
     closesocket(cc->s);
     cc->isConnected = false;
     cc->totalPendingBytes = 0;
@@ -561,8 +562,9 @@ void TCPServerListener::SendAudioInfo(ServerReply* s, const char* request) {
   s->allocateBuffer(sizeof(ServerAudioInfo) + a.bytes);
   s->setType(SERVER_SENDING_AUDIO);
 
-  if (a.bytes != child->GetVideoInfo().BytesFromAudioSamples(a.count))
+  if (a.bytes != child->GetVideoInfo().BytesFromAudioSamples(a.count)) {
     _RPT0(1, "TCPServer: Did not recieve proper bytecount.\n");
+  }
 
   ServerAudioInfo sfi;
   sfi.compression = ServerAudioInfo::COMPRESSION_NONE;

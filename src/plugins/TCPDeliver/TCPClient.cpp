@@ -272,7 +272,7 @@ AVSValue __cdecl Create_TCPClient(AVSValue args, void* user_data, IScriptEnviron
 
 /*****************  CLIENT CODE   *******************/
 
-UINT StartClient(LPVOID p) {
+DWORD WINAPI StartClient(LPVOID p) {
   TCPClientThread* t = (TCPClientThread*)p;
   t->StartRequestLoop();
   return 0;
@@ -317,7 +317,9 @@ TCPClientThread::TCPClientThread(const char* hostname, int port, const char* com
   int one = 1;         // for 4.3 BSD style setsockopt()
   setsockopt(m_socket, IPPROTO_TCP, TCP_NODELAY, (PCHAR )&one, sizeof(one));
 
-  AfxBeginThread(StartClient, this , THREAD_PRIORITY_ABOVE_NORMAL, 0, 0, NULL);
+//  AfxBeginThread(StartClient, this , THREAD_PRIORITY_ABOVE_NORMAL, 0, 0, NULL);
+  HANDLE h = CreateThread(NULL,NULL,StartClient,this, NULL,NULL);
+  SetThreadPriority(h,THREAD_PRIORITY_ABOVE_NORMAL);
 
   thread_running = true;
 
