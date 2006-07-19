@@ -87,7 +87,7 @@ public:
   AVISource(const char filename[], bool fAudio, const char pixel_type[],
             const char fourCC[], int mode, IScriptEnvironment* env);  // mode: 0=detect, 1=avifile, 2=opendml, 3=avifile (audio only)
   ~AVISource();
-  int CleanUp();
+  void CleanUp();
   const VideoInfo& __stdcall GetVideoInfo();
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
   void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) ;
@@ -552,7 +552,7 @@ AVISource::~AVISource() {
   AVISource::CleanUp();
 }
 
-int AVISource::CleanUp() {
+void AVISource::CleanUp() {
   if (hic) {
     !ex ? ICDecompressEnd(hic) : ICDecompressExEnd(hic);
     ICClose(hic);
@@ -567,7 +567,6 @@ int AVISource::CleanUp() {
     free(pbiSrc);
   if (srcbuffer)  // Tritical May 2005
     delete[] srcbuffer;
-  return 0;
 }
 
 const VideoInfo& AVISource::GetVideoInfo() { return vi; }
