@@ -95,28 +95,57 @@ public:
   AVSValue __cdecl Tweak::FilterInfo(int request);
 
   static AVSValue __cdecl Create(AVSValue args, void* user_data, IScriptEnvironment* env);
+  static AVSValue __cdecl CreateMaskHS(AVSValue args, void* user_data, IScriptEnvironment* env);
 
 private:
 	int Sin, Cos;
-	double sat, iSat;
+	double sat;
 	int Sat, Bright, Cont;
 	bool coring;
 	int maxSat, minSat;	  // Min/Max sat range to process 150% to 0 %
 	int startHue, endHue; // Hue range for which hue and sat are processed.
 	int p; // interpolation - 2^p
 
-	int sq[182];          // Precalc squares up to 128^2. U^2 + V^2 = sat^2
 	bool clockwise;	      // Direction of startHue->stopHue
 	bool allPixels;	      // Flag to skip special processing if doing all pixels
+	int sq[182];          // Precalc squares up to 128^2. U^2 + V^2 = sat^2
 	int deg[256][256];	  // Precalc the atan in degrees of all combos of U and V
 
-	bool __stdcall processPixel(int X, int Y); // When true it process the sat of the pixel
-
 	BYTE map[256];
-  unsigned short mapUV[256*256];
+	unsigned short mapUV[256*256];
 	int mapCos[256], mapSin[256];
 };
 
+
+
+class MaskHS : public GenericVideoFilter
+{
+public:
+  MaskHS( PClip _child, int _startHue, int _endHue, int _maxSat, int _minSat, bool _coring, IScriptEnvironment* env );
+
+  PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
+  AVSValue __cdecl MaskHS::FilterInfo(int request);
+
+  static AVSValue __cdecl Create(AVSValue args, void* user_data, IScriptEnvironment* env);
+
+private:
+	bool coring;
+	int maxSat, minSat;	  // Min/Max sat range to process 150% to 0 %
+	int startHue, endHue; // Hue range for which hue and sat are processed.
+
+	bool clockwise;	      // Direction of startHue->stopHue
+	bool allPixels;	      // Flag to skip special processing if doing all pixels
+	int sq[182];          // Precalc squares up to 128^2. U^2 + V^2 = sat^2
+	int deg[256][256];	  // Precalc the atan in degrees of all combos of U and V
+
+	int mapY[256*256];
+};
+
+
+
+/* Helper function for Tweak and MaskHS filters */
+bool ProcessPixel(int X, int Y, int Sat, bool allPixels, bool clockwise, int startHue, int endHue,
+								   int maxSat, int minSat, int p, int deg[256][256], int sq[182], int *iSat);
 
 
 using namespace SoftWire; 

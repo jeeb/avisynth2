@@ -50,6 +50,7 @@ AVSFunction Levels_filters[] = {
   { "Levels", "cifiii[coring]b", Levels::Create },        // src_low, gamma, src_high, dst_low, dst_high 
   { "RGBAdjust", "c[r]f[g]f[b]f[a]f[rb]f[gb]f[bb]f[ab]f[rg]f[gg]f[bg]f[ag]f[analyze]b", RGBAdjust::Create },
   { "Tweak", "c[hue]f[sat]f[bright]f[cont]f[coring]b[sse]b[startHue]i[endHue]i[maxSat]i[minSat]i[interp]i", Tweak::Create },  // hue, sat, bright, contrast  ** sse is not used! **
+  { "MaskHS", "c[startHue]i[endHue]i[maxSat]i[minSat]i[coring]b", MaskHS::Create },
   { "Limiter", "c[min_luma]i[max_luma]i[min_chroma]i[max_chroma]i[show]s", Limiter::Create },
   { 0 }
 };
@@ -348,6 +349,61 @@ AVSValue __cdecl RGBAdjust::Create(AVSValue args, void*, IScriptEnvironment* env
 
 
 
+/* helper function for Tweak and MaskHS filters */
+bool ProcessPixel(int X, int Y, int Sat, bool allPixels, bool clockwise, int startHue, int endHue,
+								   int maxSat, int minSat, int p, int deg[256][256], int sq[182], int *iSat)
+{
+	if (allPixels) {
+		return true;
+	}
+
+	// hue
+	int T = deg[X+128][Y+128];
+
+	if (T==360) { // grey pixel
+		return false;
+	}
+
+	// startHue <= hue <= endHue
+	if (!clockwise) {
+		if (T>endHue || T<startHue) return false;
+	} else {
+		if (T<startHue && T>endHue) return false;
+	}
+
+	// We want a range of -128 to 127, but no negatives	.
+	X*=(X<0)?-1:1;
+	Y*=(Y<0)?-1:1;
+
+	// Interpolation range is +/- 2^p for p>0
+	int W = (int) sq[X]+sq[Y];
+
+	// Outside of [min-2^p, max+2^p] no adjustment
+	// minSat-2^p <= U^2 + V^2 <= maxSat+2^p
+	int max = min(maxSat+(1<<p),180);
+	int min = max(minSat-(1<<p),0);
+	if (((int) sq[max] < W) || ((int) sq[min] > W)) { // don't adjust
+		return false;
+	}
+
+	// In Range full adjust but no need to interpolate
+	// p==0 (no interpolation) needed for MaskHS
+	if (((int) sq[maxSat] > W) && ((int) sq[minSat] < W) || p==0) {
+		return true;
+	}
+
+	// Interpolate saturation value
+	int holdSat = min((int) sqrt((float)W), 180);
+ 
+	if (holdSat<minSat) { // within 2^p of lower range
+		*iSat = (int) (((512 - Sat) * (minSat - holdSat) >> p) + Sat); 
+	} else { // within 2^p of upper range
+		*iSat = (int) (((512 - Sat) * (holdSat - maxSat) >> p) + Sat);
+	}
+	
+	return true;
+}
+
 
 /**********************
 ******   Tweak    *****
@@ -376,7 +432,7 @@ Tweak::Tweak( PClip _child, double _hue, double _sat, double _bright, double _co
   if (_maxSat > 150 || _maxSat < 1 || _minSat > 149 || _minSat < 0)
 		env->ThrowError("Tweak: maxSat and minSat must be between 0 and 150.");
 
-  if (p>5 || p<0)
+  if (p>4 || p<0)
 	  env->ThrowError("Tweak: make sure that 0<=p<=4.");
 
 
@@ -401,6 +457,9 @@ Tweak::Tweak( PClip _child, double _hue, double _sat, double _bright, double _co
 
 	int maxY = coring ? 235 : 255;
 	int minY = coring ? 16 : 0;
+
+	const int maxUV = coring ? 240 : 255;
+	const int minUV = coring ? 16 : 0;
 
 	for (int i = 0; i < 256; i++)
 	{
@@ -441,77 +500,28 @@ Tweak::Tweak( PClip _child, double _hue, double _sat, double _bright, double _co
 		maxSat = (int) ((119 * _maxSat / 100) + 0.5);
 	}
 
-	const int maxUV = coring ? 240 : 255;
-	const int minUV = coring ? 16 : 0;
-
-  for (int u = 0; u < 256; u++) {
-    for (int v = 0; v < 256; v++) {
-      int destu = u-128;
-      int destv = v-128;
-		  if (processPixel(destv, destu)) {
-				destu = int ( (mapCos[u] + mapSin[v]) * iSat ) >> 17;
-				destv = int ( (mapCos[v] - mapSin[u]) * iSat ) >> 17;
-				destu = min(max(destu+128,minUV),maxUV);
-				destv = min(max(destv+128,minUV),maxUV);
-        mapUV[(u<<8)|v]  = (unsigned short)(destu | (destv<<8));
-      } else {
-       mapUV[(u<<8)|v]  = (unsigned short)(min(max(u,minUV),maxUV) | ((min(max(v,minUV),maxUV))<<8));
-      }
-    }
-  }
+    for (int u = 0; u < 256; u++) {
+      for (int v = 0; v < 256; v++) {
+        int destu = u-128;
+        int destv = v-128;
+		int iSat = Sat;
+		if (ProcessPixel(destv, destu, Sat, allPixels, clockwise, startHue, endHue, maxSat, minSat, p, deg, sq, &iSat)) {
+          destu = int ( (mapCos[u] + mapSin[v]) * iSat ) >> 17;
+          destv = int ( (mapCos[v] - mapSin[u]) * iSat ) >> 17;
+          destu = min(max(destu+128,minUV),maxUV);
+          destv = min(max(destv+128,minUV),maxUV);
+          mapUV[(u<<8)|v]  = (unsigned short)(destu | (destv<<8));
+		} else {
+          mapUV[(u<<8)|v]  = (unsigned short)(min(max(u,minUV),maxUV) | ((min(max(v,minUV),maxUV))<<8));
+		}
+	  }
+	}
 
 	}
 	catch (...) { throw; }
 }
 
-bool __stdcall Tweak::processPixel(int X, int Y)
-{
-	iSat = Sat;
-	if (allPixels) {
-		return true;
-	}
 
-	// hue
-	int T = deg[X+128][Y+128];
-
-	// startHue <= hue <= endHue
-	if (!clockwise) {
-		if (T>endHue || T<startHue) return false;
-	} else {
-		if (T<startHue && T>endHue) return false;
-	}
-
-	// We want a range of -128 to 127, but no negatives	.
-	X*=(X<0)?-1:1;
-	Y*=(Y<0)?-1:1;
-
-	// Interpolation range is +/- 2^p for p>0
-	int W = (int) sq[X]+sq[Y];
-
-	// Outside of [min-2^p, max+2^p] no adjustment
-	// minSat-2^p <= U^2 + V^2 <= maxSat+2^p
-	int max = min(maxSat+(1<<p),180);
-	int min = max(minSat-(1<<p),0);
-	if (((int) sq[max] < W) || ((int) sq[min] > W)) { // don't adjust
-		return false;
-	}
-
-	// In Range full adjust but no need to interpolate
-	if (((int) sq[maxSat] > W) && ((int) sq[minSat] < W) || p==0) {
-		return true;
-	}
-
-	// Interpolate saturation value
-	int holdSat = min((int) sqrt((float)W), 180);
- 
-	if (holdSat<minSat) { // within 2^p of lower range
-		iSat = (int) (((512 - Sat) * (minSat - holdSat) >> p) + Sat); 
-	} else { // within 2^p of upper range
-		iSat = (int) (((512 - Sat) * (holdSat - maxSat) >> p) + Sat);
-	}
-	
-	return true;
-}
 
 PVideoFrame __stdcall Tweak::GetFrame(int n, IScriptEnvironment* env)
 {
@@ -524,12 +534,9 @@ PVideoFrame __stdcall Tweak::GetFrame(int n, IScriptEnvironment* env)
 	int height = src->GetHeight();
 	int row_size = src->GetRowSize();
 	
-
 	if (vi.IsYUY2()) {
-		for (int y = 0; y < height; y++)
-		{
-			for (int x = 0; x < row_size; x+=4)
-			{
+		for (int y = 0; y < height; y++) {
+			for (int x = 0; x < row_size; x+=4)	{
 				/* brightness and contrast */
 				srcp[x] = map[srcp[x]];
 				srcp[x+2] = map[srcp[x+2]];
@@ -537,13 +544,20 @@ PVideoFrame __stdcall Tweak::GetFrame(int n, IScriptEnvironment* env)
 				/* hue and saturation */
 				int u = srcp[x+1];
 				int v = srcp[x+3];
-        int mapped = mapUV[(u<<8) | v];
-        srcp[x+1] = (BYTE)(mapped&0xff);
-        srcp[x+3] = (BYTE)(mapped>>8);
+				int mapped = mapUV[(u<<8) | v];
+			    srcp[x+1] = (BYTE)(mapped&0xff);
+				srcp[x+3] = (BYTE)(mapped>>8);
 			}
 			srcp += src_pitch;
 		}
 	} else if (vi.IsPlanar()) {
+		int srcu_pitch = src->GetPitch(PLANAR_U);
+		BYTE * srcpu = src->GetWritePtr(PLANAR_U);
+		BYTE * srcpv = src->GetWritePtr(PLANAR_V);
+		int row_sizeu = src->GetRowSize(PLANAR_U);
+		int heightu = src->GetHeight(PLANAR_U);
+		int swidth = vi.GetPlaneWidthSubsampling(PLANAR_U);
+		int sheight = vi.GetPlaneHeightSubsampling(PLANAR_U);
 		int y;  // VC6 scoping sucks - Yes!
 		for (y=0; y<height; ++y) {
 			for (int x=0; x<row_size; ++x) {
@@ -552,23 +566,18 @@ PVideoFrame __stdcall Tweak::GetFrame(int n, IScriptEnvironment* env)
 			}
 			srcp += src_pitch;
 		}
-		src_pitch = src->GetPitch(PLANAR_U);
-		BYTE * srcpu = src->GetWritePtr(PLANAR_U);
-		BYTE * srcpv = src->GetWritePtr(PLANAR_V);
-		row_size = src->GetRowSize(PLANAR_U);
-		height = src->GetHeight(PLANAR_U);
 
-		for (y=0; y<height; ++y) {
-			for (int x=0; x<row_size; ++x) {
+		for (y=0; y<heightu; ++y) {
+			for (int x=0; x<row_sizeu; ++x) {
 				/* hue and saturation */
 				int u = srcpu[x];
 				int v = srcpv[x];
-        int mapped = mapUV[(u<<8) | v];
-        srcpu[x] = (BYTE)(mapped&0xff);
-        srcpv[x] = (BYTE)(mapped>>8);
+				int mapped = mapUV[(u<<8) | v];
+				srcpu[x] = (BYTE)(mapped&0xff);
+				srcpv[x] = (BYTE)(mapped>>8);
 			}
-			srcpu += src_pitch;
-			srcpv += src_pitch;
+			srcpu += srcu_pitch;
+			srcpv += srcu_pitch;
 		}
 	}
 
@@ -587,7 +596,7 @@ AVSValue __cdecl Tweak::Create(AVSValue args, void* user_data, IScriptEnvironmen
 					 args[7].AsInt(0),          // startHue
 					 args[8].AsInt(359),        // endHue
 					 args[9].AsInt(150),        // maxSat
-					 args[10].AsInt(0),          // minSat
+					 args[10].AsInt(0),         // minSat
 					 args[11].AsInt(4),			// interp
 					 env);
 	}
@@ -595,6 +604,161 @@ AVSValue __cdecl Tweak::Create(AVSValue args, void* user_data, IScriptEnvironmen
 }
 
 
+
+/**********************
+******   MaskHS   *****
+**********************/
+
+MaskHS::MaskHS( PClip _child, int _startHue, int _endHue, int _maxSat, int _minSat, bool _coring, 
+							IScriptEnvironment* env ) 
+  : GenericVideoFilter(_child), startHue(_startHue), endHue(_endHue), coring(_coring)
+{
+	try {	// HIDE DAMN SEH COMPILER BUG!!!
+  if (vi.IsRGB())
+		env->ThrowError("MaskHS: YUV data only (no RGB)");
+
+  if (vi.IsY8()) {
+      env->ThrowError("MaskHS: clip should contain chroma.");
+  }
+
+  if (startHue > 359 || startHue < 0 || endHue > 359 || endHue < 0)
+		env->ThrowError("MaskHS: startHue and endHue must be between 0 and 359.");
+
+  if (_minSat > _maxSat)
+		env->ThrowError("MaskHS: make sure that MinSat =< MaxSat");
+
+  if (_maxSat > 150 || _maxSat < 1 || _minSat > 149 || _minSat < 0)
+		env->ThrowError("MaskHS: maxSat and minSat must be between 0 and 150.");
+
+
+  // If defaults, don't check for ranges, just do all
+  if (startHue == 0 && endHue == 359 && _maxSat == 115 && _minSat == 0) {
+	  allPixels = true;
+  } else {
+	  allPixels = false;
+  }
+
+	double theta;
+
+	int maxY = coring ? 235 : 255;
+	int minY = coring ? 16 : 0;
+
+	if (!allPixels) {		
+		// Precalc hue for all U/V combos
+		for (int x = 0; x<256; x++) {
+			for (int y = 0; y<256; y++) {
+				theta = atan2(x-128, y-128) * 180.0 / 3.1415926;
+				deg[x][y] = (int) ((theta > 0) ? theta: 360+theta);
+			}
+		}
+
+		// Precalc all squares because U^2 + V^2 = sat^2
+		for (int i = 0; i<182; i++) {
+			sq[i] = i*i;
+		}
+
+		// are we going clockwise or counter clockwise
+		if (startHue > endHue) {
+			clockwise = true;
+		} else {
+			clockwise = false;
+		}
+
+		// 100% equals sat=119 (= maximal saturation of valid RGB (R=255,G=B=0)
+		// 150% (=180) - 100% (=119) overshoot
+		minSat = (int) ((119 * _minSat / 100) + 0.5);
+		maxSat = (int) ((119 * _maxSat / 100) + 0.5);
+	}
+
+	// apply mask
+	for (int u = 0; u < 256; u++) {
+      for (int v = 0; v < 256; v++) {
+        int destu = u-128;
+        int destv = v-128;
+		int iSat = 0; // won't be used in MaskHS; interpolation is skipped since p==0:
+		if (ProcessPixel(destv, destu, 0, allPixels, clockwise, startHue, endHue, maxSat, minSat, 0, deg, sq, &iSat)) {
+		  mapY[(u<<8)|v] = maxY;
+		} else {
+          mapY[(u<<8)|v] = minY;
+		}
+	  }
+	}
+
+	vi.pixel_type = VideoInfo::CS_Y8;
+	}
+	catch (...) { throw; }
+}
+
+
+
+PVideoFrame __stdcall MaskHS::GetFrame(int n, IScriptEnvironment* env)
+{
+	PVideoFrame src = child->GetFrame(n, env);
+	PVideoFrame dst = env->NewVideoFrame(vi);
+
+	const unsigned char* srcp = src->GetReadPtr();
+	unsigned char* dstp = dst->GetWritePtr();
+
+	int src_pitch = src->GetPitch();
+	int dst_pitch = dst->GetPitch();
+	int height = src->GetHeight();
+	int row_size = src->GetRowSize();
+
+	int maxY = coring ? 235 : 255;
+	int minY = coring ? 16 : 0;
+
+	// show mask
+	if (child->GetVideoInfo().IsYUY2()) {
+		for (int y = 0; y < height; y++) {
+			for (int x = 0; x < row_size; x+=4)	{
+				int u = srcp[x+1];
+				int v = srcp[x+3];
+				dstp[x>>1] = mapY[(u<<8) | v];
+				dstp[(x>>1)+1] = mapY[(u<<8) | v];
+			}
+			srcp += src_pitch;
+			dstp += dst_pitch;
+		}
+	} else if (child->GetVideoInfo().IsPlanar()) {
+		int srcu_pitch = src->GetPitch(PLANAR_U);
+		const unsigned char* srcpu = src->GetReadPtr(PLANAR_U);
+		const unsigned char* srcpv = src->GetReadPtr(PLANAR_V);
+		int row_sizeu = src->GetRowSize(PLANAR_U);
+		int heightu = src->GetHeight(PLANAR_U);
+		int swidth = child->GetVideoInfo().GetPlaneWidthSubsampling(PLANAR_U);
+		int sheight = child->GetVideoInfo().GetPlaneHeightSubsampling(PLANAR_U);
+		for (int y=0; y<heightu; ++y) {
+			for (int x=0; x<row_sizeu; ++x) {
+				for (int lumh=0; lumh<(1<<swidth); ++lumh) {
+					for (int lumv=0; lumv<(1<<sheight); ++lumv) {
+						dstp[lumv*src_pitch+(x<<swidth)+lumh] = mapY[( (srcpu[x])<<8 ) | srcpv[x]];
+					}
+				}
+			}
+			srcp += (src_pitch<<sheight);
+			dstp += (dst_pitch<<sheight);
+			srcpu += srcu_pitch;
+			srcpv += srcu_pitch;
+		}
+	}
+	return dst;
+}
+
+
+
+AVSValue __cdecl MaskHS::Create(AVSValue args, void* user_data, IScriptEnvironment* env)
+{
+	try {	// HIDE DAMN SEH COMPILER BUG!!!
+    return new MaskHS(args[0].AsClip(),
+					  args[1].AsInt(0),          // startHue
+					  args[2].AsInt(359),        // endHue
+					  args[3].AsInt(150),        // maxSat
+					  args[4].AsInt(0),          // minSat
+					  args[5].AsBool(true),      // coring
+					  env);
+	}
+	catch (...) { throw; }
+}
 
 
 
@@ -605,8 +769,8 @@ Limiter::Limiter(PClip _child, int _min_luma, int _max_luma, int _min_chroma, in
   min_chroma(_min_chroma),
   max_chroma(_max_chroma),
   show(enum SHOW(_show)) {
-	if(!vi.IsYUV())
-		env->ThrowError("Limiter: Source must be YUV");
+  if (!vi.IsYUV())
+      env->ThrowError("Limiter: Source must be YUV");
 
   if ((min_luma<0)||(min_luma>255))
       env->ThrowError("Limiter: Invalid minimum luma");
