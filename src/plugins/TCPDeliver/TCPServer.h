@@ -136,6 +136,8 @@ private:
   IScriptEnvironment* env;
   bool shutdown;
   int prefetch_frame;
+  const static int sendbufsize = 262144; // Maximum send size
+  const static int rcvbufsize = 1024;   // Smaller rcv size
 };
 
 

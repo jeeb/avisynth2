@@ -302,6 +302,9 @@ TCPClientThread::TCPClientThread(const char* hostname, int port, const char* com
     return ;
   }
 
+  setsockopt(m_socket, SOL_SOCKET, SO_RCVBUF, (char *) &rcvbufsize, sizeof(rcvbufsize));
+  setsockopt(m_socket, SOL_SOCKET, SO_SNDBUF, (char *) &sendbufsize, sizeof(sendbufsize));
+
   // Set up the sockaddr structure
   service.sin_family = AF_INET;
   service.sin_addr.s_addr = inet_addr(hostname);

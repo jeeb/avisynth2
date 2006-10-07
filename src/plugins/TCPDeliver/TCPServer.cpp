@@ -124,6 +124,8 @@ TCPServerListener::TCPServerListener(int port, PClip _child, IScriptEnvironment*
   localHost = gethostbyname("");
   localIP = inet_ntoa (*(struct in_addr *) * localHost->h_addr_list);
 
+  setsockopt(m_socket, SOL_SOCKET, SO_RCVBUF, (char *) &rcvbufsize, sizeof(rcvbufsize));
+  setsockopt(m_socket, SOL_SOCKET, SO_SNDBUF, (char *) &sendbufsize, sizeof(sendbufsize));
 
   // Set up the sockaddr structure
   service.sin_family = AF_INET;
@@ -204,11 +206,13 @@ void TCPServerListener::Listen() {
     FD_ZERO(&test_set2);
 
     bool anyconnected = false;
+	bool anydatapending = false;
     for (i = 0; i < FD_SETSIZE; i++) {
       if (s_list[i].isConnected) {
         FD_SET(s_list[i].s, &test_set);
         if (s_list[i].isDataPending) {
           FD_SET(s_list[i].s, &test_set2);
+		  anydatapending = true;
         }
         anyconnected = true;
       }
@@ -260,7 +264,7 @@ void TCPServerListener::Listen() {
       } // end if isDataPending
     }
 
-    if (!request_handled) {
+    if (!request_handled && !anydatapending) {
       t.tv_usec = 100000;  // If no request we allow it to wait 100 ms instead.
       if (prefetch_frame > 0) {
         _RPT1(0, "TCPServer: Prerequesting frame: %d", prefetch_frame);
@@ -293,6 +297,8 @@ void TCPServerListener::AcceptClient(SOCKET AcceptSocket, ClientConnection* s_li
     s_list[slot].isConnected = true;
     int one = 1;         // for 4.3 BSD style setsockopt()
     setsockopt(AcceptSocket, IPPROTO_TCP, TCP_NODELAY, (PCHAR )&one, sizeof(one));
+    setsockopt(AcceptSocket, SOL_SOCKET, SO_RCVBUF, (char *) &rcvbufsize, sizeof(rcvbufsize));
+    setsockopt(AcceptSocket, SOL_SOCKET, SO_SNDBUF, (char *) &sendbufsize, sizeof(sendbufsize));
   } else {
     _RPT0(0, "TCPServer: All slots full.\n");
     s.allocateBuffer(0);
