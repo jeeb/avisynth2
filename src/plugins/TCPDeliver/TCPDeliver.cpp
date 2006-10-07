@@ -40,9 +40,9 @@
 
 extern "C" __declspec(dllexport) const char* __stdcall AvisynthPluginInit2(IScriptEnvironment* env)
 {
+	env->CheckVersion(); 
     env->AddFunction("TCPServer", "c[port]i", Create_TCPServer, 0);
     env->AddFunction("TCPSource", "s[port]i[compression]s", Create_TCPClient, 0);
-    env->AddFunction("TCPClient", "s[port]i[compression]s", Create_TCPClient, 0);
     return "TCPDeliver for AviSynth";
 }
 
