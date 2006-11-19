@@ -58,7 +58,8 @@ public:
   virtual ~FilteredResizeH(void);
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
   // Not using Dynamic Assembled Code anymore for AMD64 compatibility
-  //void GenerateResizer(int gen_plane, IScriptEnvironment* env);
+  void GenerateResizer(int gen_plane, IScriptEnvironment* env);
+  void YUY2Resize(void);
 private:
   
   int* /*const*/ pattern_luma;
@@ -100,6 +101,9 @@ private:
   int pitch_gUV;
 };
 
+extern "C" {
+void ResampleVertical(int* cur, int fir_filter_size, int* yOfs2, const BYTE* srcp, int src_pitch, BYTE* dstp, int dst_pitch, int xloops, int y);
+}
 
 /*** Resample factory methods ***/
 

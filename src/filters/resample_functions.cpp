@@ -88,8 +88,11 @@ double MitchellNetravaliFilter::f (double x) {
 /***********************
  *** Lanczos3 filter ***
  ***********************/
+LanczosFilter::LanczosFilter(int t = 3) {
+   taps = (double)(max( 1,min(100,t)));
+}
 
-double Lanczos3Filter::sinc(double value) {
+double LanczosFilter::sinc(double value) {
   if (value != 0.0) {
     value *= M_PI;
     return sin(value) / value;
@@ -98,41 +101,61 @@ double Lanczos3Filter::sinc(double value) {
   }
 }
 
-double Lanczos3Filter::f(double value) {
-  if (value < 0.0) {
-    value = -value;
-  }
+double LanczosFilter::f(double value) {
+   value = fabs(value);
 
-  if (value < 3.0) {
-    return (sinc(value) * sinc(value / 3.0));
+  if (value < taps) {
+    return (sinc(value) * sinc(value / taps));
   } else {
     return 0.0;
   }
+}
+
+
+/***********************
+ *** Spline16 filter ***
+ ***********************/
+
+double Spline16Filter::f(double value) {
+  value = fabs(value);
+
+  if (value < 1.0) {
+    return ( ( value - 9.0/5.0 ) * value - 1.0/5.0 ) * value + 1.0;
+  } else if (value < 2.0) {
+    return ( ( -1.0/3.0 * (value-1.0) + 4.0/5.0 ) * (value-1.0) - 7.0/15.0 ) * (value-1.0);
+  }
+  return 0.0;
 }
 
 /***********************
- *** Lanczos4 filter ***
+ *** Spline36 filter ***
  ***********************/
 
-double Lanczos4Filter::sinc(double value) {
-  if (value != 0.0) {
-    value *= M_PI;
-    return sin(value) / value;
-  } else {
-    return 1.0;
+double Spline36Filter::f(double value) {
+  value = fabs(value);
+
+  if (value < 1.0) {
+    return ( ( 13.0/11.0  * value - 453.0/ 209.0 ) * value - 3.0/ 209.0  ) * value + 1.0;
+  } else if (value < 2.0) {
+    return ( ( - 6.0/11.0  * (value-1.0) + 270.0/ 209.0 ) * (value-1.0) - 156.0/ 209.0 ) *(value-1.0);
+  } else if (value < 3.0) {
+    return  ( (    1.0/11.0  * (value-2.0) -  45.0/ 209.0 ) * (value-2.0) +  26.0/ 209.0 ) *(value-2.0);
   }
+  return 0.0;
 }
 
-double Lanczos4Filter::f(double value) {
-  if (value < 0.0) {
-    value = -value;
-  }
+/***********************
+ *** Gaussian filter ***
+ ***********************/
 
-  if (value < 4.0) {
-    return (sinc(value) * sinc(value / 4.0));
-  } else {
-    return 0.0;
-  }
+GaussianFilter::GaussianFilter(double p = 30.0) {
+  param = min(100.0,max(0.1,p));
+}
+
+double GaussianFilter::f(double value) {
+  value = fabs(value);
+	double p = param*0.1;
+	return pow(2.0, - p*value*value);
 }
 
 
@@ -308,7 +331,7 @@ int* GetResamplingPatternYUV( int original_width, double subrange_start, double 
         *(cur[0]) = coeff;
         cur[0] += 1;
       }
-    }
+	}
 
     if (luma) {
       if ((start_pos + fir_filter_size) & 1) {
@@ -319,7 +342,7 @@ int* GetResamplingPatternYUV( int original_width, double subrange_start, double 
           *(cur[ii]) = 0;
           cur[ii] += 2;
         }
-    }
+	}
 
     pos += pos_step;
   }

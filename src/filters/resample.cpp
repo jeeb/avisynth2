@@ -48,7 +48,7 @@ AVSFunction Resample_filters[] = {
   { "PointResize", "cii[src_left]f[src_top]f[src_width]f[src_height]f", Create_PointResize },
   { "BilinearResize", "cii[src_left]f[src_top]f[src_width]f[src_height]f", Create_BilinearResize },
   { "BicubicResize", "cii[b]f[c]f[src_left]f[src_top]f[src_width]f[src_height]f", Create_BicubicResize },
-  { "LanczosResize", "cii[src_left]f[src_top]f[src_width]f[src_height]f", Create_Lanczos3Resize},
+  { "LanczosResize", "cii[src_left]f[src_top]f[src_width]f[src_height]f[taps]i", Create_Lanczos3Resize},
   { "Lanczos4Resize", "cii[src_left]f[src_top]f[src_width]f[src_height]f", Create_Lanczos4Resize},
   /**
     * Resize(PClip clip, dst_width, dst_height [src_left, src_top, src_width, int src_height,] )
@@ -80,13 +80,12 @@ FilteredResizeH::FilteredResizeH( PClip _child, double subrange_left, double sub
   if (target_width<8)
     env->ThrowError("Resize: Width must be bigger than or equal to 8.");
 
-//  if (vi.IsYUV())
-  if (vi.IsYV12())
+  if (vi.IsYUV())
   {
-  //  if ((target_width&1) && (vi.IsYUY2()))
-  // FIXME    env->ThrowError("Resize: YUY2 width must be even");
+    if ((target_width&1) && (vi.IsYUY2()))
+      env->ThrowError("Resize: YUY2 width must be even");
     if ((target_width&3) && (vi.IsYV12()))
-      env->ThrowError("Resize: YV12 width must be mutiple of 4.");
+      env->ThrowError("Resize: YV12 width must be multiple of 4.");
     tempY = (BYTE*) _aligned_malloc(original_width*2+4+32, 64);   // aligned for Athlon cache line
     tempUV = (BYTE*) _aligned_malloc(original_width*4+8+32, 64);  // aligned for Athlon cache line
     if (vi.IsYV12()) {
@@ -100,7 +99,7 @@ FilteredResizeH::FilteredResizeH( PClip _child, double subrange_left, double sub
   }
   else
 //    pattern_luma = GetResamplingPatternRGB(vi.width, subrange_left, subrange_width, target_width, func, env);
-	env->ThrowError("Resize: Only YV12 Supported at this stage");
+	env->ThrowError("Resize: Only YUV Supported at this stage");
   vi.width = target_width;
 
   use_dynamic_code = USE_DYNAMIC_COMPILER;
@@ -124,8 +123,8 @@ PVideoFrame __stdcall FilteredResizeH::GetFrame(int n, IScriptEnvironment* env)
   int dst_pitch = dst->GetPitch();
   if (vi.IsYV12()) {
       int plane = 0;
-#if 0 //Dynamic code is not used for AMD64 Compatibility
-      if (use_dynamic_code) {  // Use dynamic compilation?
+//      if (use_dynamic_code) {  // Use dynamic compilation?
+	  {
         gen_src_pitch = src_pitch;
         gen_dst_pitch = dst_pitch;
         gen_srcp = (BYTE*)srcp;
@@ -153,7 +152,6 @@ PVideoFrame __stdcall FilteredResizeH::GetFrame(int n, IScriptEnvironment* env)
         }
         return dst;
       }
-#endif
 	  while (plane++<3) {
 //        int org_width = (plane==1) ? original_width : (original_width+1)>>1;
         int org_width = (plane==1) ? src->GetRowSize(PLANAR_Y_ALIGNED) : src->GetRowSize(PLANAR_V_ALIGNED);
@@ -179,7 +177,7 @@ PVideoFrame __stdcall FilteredResizeH::GetFrame(int n, IScriptEnvironment* env)
       static const __int64 x0000000000FF00FF = 0x0000000000FF00FF;
       static const __int64 xFFFF0000FFFF0000 = 0xFFFF0000FFFF0000;
       static const __int64 FPround =           0x0000200000002000;  // 16384/2
-      int filter_offset=fir_filter_size_luma*8+2*sizeof(BYTE*);
+      int filter_offset=(fir_filter_size_luma*8+2*sizeof(__int64)+15)&~15;
 #ifndef _AMD64_
     __asm {
       pxor        mm0, mm0
@@ -191,7 +189,7 @@ PVideoFrame __stdcall FilteredResizeH::GetFrame(int n, IScriptEnvironment* env)
     if ((env->GetCPUFlags() & CPUF_INTEGER_SSE)) {
      for (int y=0; y<dst_height; ++y)
       {
-        int* cur_luma = array+2;
+        int* cur_luma = array+4;
         int x = dst_width / 4;
 		int i;
 		int ecx;
@@ -232,39 +230,56 @@ PVideoFrame __stdcall FilteredResizeH::GetFrame(int n, IScriptEnvironment* env)
 //		XMM6.m128i_u64[1] = FPround;
 		XMM6 = _mm_set_epi32(8192, 8192, 8192, 8192);
 
-		for(i=0;(i*8)<org_width;i++) {
+		for(i=0;i<(org_width+7)/8;i++) {
 			_mm_prefetch((char*)srcp+256+i*4, _MM_HINT_NTA);
 			XMM1.m=_mm_loadl_epi64((__m128i*)(srcp+i*8));
-			XMM1.m=_mm_unpacklo_epi8(XMM1.m, XMM0);
-			_mm_store_si128((__m128i*)(tempY+i*16), XMM1.m);
+			_mm_store_si128((__m128i*)(tempY+i*16), _mm_unpacklo_epi8(XMM1.m, XMM0));
 		}
 
 		tempcur_luma=cur_luma;
 		temp_dst=(int*)dstp;
+		__m128i secondsum;
+#ifdef _AMD64_
+#define addoffset 1
+#else
+#define addoffset 2
+#endif
 		while (x--) {
-		XMM1.m = XMM0;
-		/* welcome to pointer arithmetic hell! */
-		for(i=0;i<fir_filter_size_luma;i++) {
-			XMM2.i[0]=*(*(int**)tempcur_luma+i);
-			XMM2.i[1]=*(*((int**)tempcur_luma+1)+i);
-			XMM2.i[2]=*(*((int**)((char*)tempcur_luma+filter_offset))+i);
-			XMM2.i[3]=*(*((int**)((char*)tempcur_luma+filter_offset)+1)+i);
-			
-			XMM4.m=_mm_loadl_epi64((__m128i*)((int**)tempcur_luma+2+i*(sizeof(__int64)/sizeof(int**))));
-			XMM3.m=_mm_loadl_epi64((__m128i*)((int**)((char*)tempcur_luma+filter_offset)+2+i*(sizeof(__int64)/sizeof(int**))));
-			XMM4.m=_mm_unpacklo_epi64(XMM4.m, XMM3.m);
-			XMM5=_mm_madd_epi16(XMM2.m, XMM4.m);
-			XMM1.m=_mm_add_epi32(XMM1.m, XMM5);
-		}
-		tempcur_luma=(int*)((char*)tempcur_luma+2*filter_offset);
-		XMM1.m = _mm_add_epi32(XMM1.m, XMM6);
-		XMM1.m = _mm_srli_epi32(XMM1.m, 14);
-		XMM1.m = _mm_shufflehi_epi16(XMM1.m, 232);
-		XMM1.m = _mm_shufflelo_epi16(XMM1.m, 232);
-		XMM1.m = _mm_packus_epi16(XMM1.m, XMM1.m);
-		XMM1.m = _mm_shufflelo_epi16(XMM1.m, 232);
+			//for (int j=0; j<2; j++) {
+			//XMM7 = XMM1.m;
+			XMM1.m = secondsum = XMM0;
 
-		*temp_dst++=XMM1.i[0];
+		/* welcome to pointer arithmetic hell! */
+			for(i=0;i<(fir_filter_size_luma+1)/2;i++) {
+				__m128i firstquad = _mm_loadl_epi64((__m128i*)(*(__int64**)tempcur_luma+i));
+				__m128i secondquad = _mm_loadl_epi64((__m128i*)(*((__int64**)tempcur_luma+addoffset)+i));
+				XMM4.m=_mm_load_si128((__m128i*)((int**)tempcur_luma+2*addoffset+i*(sizeof(__m128i)/sizeof(int**))));
+				__m128i lowpair = _mm_unpacklo_epi32(firstquad, secondquad);
+				__m128i thirdquad = _mm_loadl_epi64((__m128i*)(*((__int64**)((char*)tempcur_luma+filter_offset))+i));
+				XMM5=_mm_madd_epi16(lowpair, XMM4.m);
+				__m128i fourthquad = _mm_loadl_epi64((__m128i*)(*((__int64**)((char*)tempcur_luma+filter_offset)+addoffset)+i));
+				XMM3.m=_mm_load_si128((__m128i*)((int**)((char*)tempcur_luma+filter_offset)+2*addoffset+i*(sizeof(__m128i)/sizeof(int**))));
+				__m128i nextlowpair = _mm_unpacklo_epi32(thirdquad, fourthquad);
+				XMM1.m=_mm_add_epi32(XMM1.m, XMM5);
+				__m128i tempsum = _mm_madd_epi16(nextlowpair, XMM3.m);
+				secondsum =_mm_add_epi32(secondsum, tempsum);
+			}
+			__m128i twist = _mm_unpacklo_epi64(XMM1.m, secondsum);
+			twist = _mm_add_epi32(twist, XMM6);
+			tempcur_luma=(int*)((char*)tempcur_luma+2*filter_offset);
+			XMM1.m = _mm_unpackhi_epi64(XMM1.m, secondsum);
+			XMM1.m = _mm_add_epi32(XMM1.m, twist);
+			XMM1.m = _mm_srai_epi32(XMM1.m, 14);
+			XMM1.m = _mm_packs_epi32(XMM1.m, XMM0);
+			XMM1.m = _mm_packus_epi16(XMM1.m, XMM0);
+
+			*temp_dst++ = _mm_cvtsi128_si32(XMM1.m);
+			//}
+			//XMM7 = _mm_packs_epi32(XMM7, XMM1.m);
+			//XMM7 = _mm_packus_epi16(XMM7, XMM0);
+			//_mm_storel_epi64((__m128i*)temp_dst, XMM7);
+			//temp_dst += 2;
+			//x -= 2;
 		} // end while (x--)
 /*		__asm {
       // use this as source from now on
@@ -540,9 +555,19 @@ out_yv_aloopY:
  } // end while plane.
 #ifndef _AMD64_
  __asm { emms }
+#endif
   } else 
   if (vi.IsYUY2())
-  {  
+  { 
+#ifdef _AMD64_
+	    gen_src_pitch = src_pitch;
+        gen_dst_pitch = dst_pitch;
+        gen_srcp = (BYTE*)srcp;
+        gen_dstp = dstp;
+
+		YUY2Resize();
+
+#else
     int fir_filter_size_luma = pattern_luma[0];
     int fir_filter_size_chroma = pattern_chroma[0];
     static const __int64 x0000000000FF00FF = 0x0000000000FF00FF;
@@ -1014,9 +1039,8 @@ out_i_aloopUV:
       emms
     }
   }
-#else
-  }
 #endif
+  }
   return dst;
 } 
 
@@ -1052,9 +1076,9 @@ FilteredResizeV::FilteredResizeV( PClip _child, double subrange_top, double subr
     env->ThrowError("Resize: Height must be bigger than or equal to 4.");
   if (vi.IsYV12() && (target_height&1))
     env->ThrowError("Resize: YV12 destination height must be multiple of 2.");
-/*  if (vi.IsRGB())
+  if (vi.IsRGB())
     subrange_top = vi.height - subrange_top - subrange_height;
-*/  resampling_pattern = GetResamplingPatternRGB(vi.height, subrange_top, subrange_height, target_height, func, env);
+  resampling_pattern = GetResamplingPatternRGB(vi.height, subrange_top, subrange_height, target_height, func, env);
   resampling_patternUV = GetResamplingPatternRGB(vi.height>>1, subrange_top/2.0f, subrange_height/2.0f, target_height>>1, func, env);
   vi.height = target_height;
 
@@ -1135,7 +1159,10 @@ PVideoFrame __stdcall FilteredResizeV::GetFrame(int n, IScriptEnvironment* env)
         break;
 	}
 
-    for (int yheight=0; yheight<y; yheight++) {
+#ifdef _AMD64_
+	ResampleVertical(cur, fir_filter_size, yOfs2, srcp, src_pitch, dstp, dst_pitch, xloops, y);
+    /*
+	for (int yheight=0; yheight<y; yheight++) {
 		const BYTE* srcptemp=srcp+yOfs2[*cur++];
       for (int x=0; x<(xloops*4); x++) {
         int total = 0;
@@ -1146,15 +1173,18 @@ PVideoFrame __stdcall FilteredResizeV::GetFrame(int n, IScriptEnvironment* env)
         }
 		total+=8192;
 		int tempsum=total>>14;
-        if (tempsum>255) dstp[x]=255;
-		else if (tempsum<0) dstp[x]=0;
-		else dstp[x]=tempsum;
+		dstp[x] = min(255, max(tempsum, 0));
+        //if (tempsum>255) dstp[x]=255;
+		//else if (tempsum<0) dstp[x]=0;
+		//else dstp[x]=tempsum;
       }
       dstp += dst_pitch;
       cur += fir_filter_size;
 	}
-/*  __asm {
-//    emms
+	*/
+#else
+  __asm {
+    emms
     mov         edx, cur
     pxor        mm0, mm0
     mov         edi, fir_filter_size
@@ -1325,7 +1355,8 @@ out_bloop:
     dec         y
     jnz         yloop
     emms
-  } */
+  }
+#endif
   } // end while
   return dst;
 }
@@ -1333,10 +1364,10 @@ out_bloop:
 
 FilteredResizeV::~FilteredResizeV(void)
 {
-  if (resampling_pattern) _aligned_free(resampling_pattern);
-  if (resampling_patternUV) _aligned_free(resampling_patternUV);
-  if (yOfs) delete[] yOfs;
-  if (yOfsUV) delete[] yOfsUV;
+  if (resampling_pattern) { _aligned_free(resampling_pattern); resampling_pattern = 0; }
+  if (resampling_patternUV) { _aligned_free(resampling_patternUV); resampling_patternUV = 0; }
+  if (yOfs) { delete[] yOfs; yOfs = 0; }
+  if (yOfsUV) { delete[] yOfsUV; yOfsUV = 0; }
 }
 
 
@@ -1431,11 +1462,11 @@ AVSValue __cdecl Create_BicubicResize(AVSValue args, void*, IScriptEnvironment* 
 AVSValue __cdecl Create_Lanczos3Resize(AVSValue args, void*, IScriptEnvironment* env) 
 {
   return CreateResize( args[0].AsClip(), args[1].AsInt(), args[2].AsInt(), &args[3], 
-                       &Lanczos3Filter(), env );
+                       &LanczosFilter(args[7].AsInt(3)), env );
 }
 // Lanczos 4
 AVSValue __cdecl Create_Lanczos4Resize(AVSValue args, void*, IScriptEnvironment* env) 
 {
   return CreateResize( args[0].AsClip(), args[1].AsInt(), args[2].AsInt(), &args[3], 
-                       &Lanczos4Filter(), env );
+                       &LanczosFilter(4), env );
 }
