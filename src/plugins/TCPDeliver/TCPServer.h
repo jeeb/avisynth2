@@ -45,10 +45,32 @@
 #include "TCPCompression.h"
 
 
-
 AVSValue __cdecl Create_TCPServer(AVSValue args, void* user_data, IScriptEnvironment* env);
 
-struct ClientConnection {
+class ClientConnection {
+public:
+  ClientConnection() {
+    status_text = (char*)malloc(512); 
+    compression = NULL; 
+    isDataPending = NULL;
+    reset(); 
+  }
+  virtual ~ClientConnection() {
+    free(status_text);    
+    if (compression)
+      delete compression;
+    if (isDataPending)
+      delete[] pendingData;
+
+}
+
+ void setStatus(const char *fmt, ...) {
+  va_list val;
+  va_start(val, fmt);
+  wvsprintf(status_text, fmt, val);
+  va_end(val);
+}
+
   SOCKET s;
   bool isConnected;
   bool isDataPending;
@@ -56,6 +78,7 @@ struct ClientConnection {
   unsigned int pendingBytesSent;
   unsigned int totalPendingBytes;
   TCPCompression* compression;
+  char* status_text;
 
   void reset() {
     if (isDataPending)
@@ -70,6 +93,7 @@ struct ClientConnection {
     if (compression)
       delete compression;
     compression = new TCPCompression();
+    memset(status_text, 0, 512);
   }
 
 };
@@ -109,6 +133,8 @@ private:
   SOCKET s;  
 };
 
+  const static int sendbufsize = 262144; // Maximum send size
+  const static int rcvbufsize = 1024;   // Smaller rcv size
 
 class TCPServerListener {
 public:
@@ -129,6 +155,9 @@ private:
   void SendVideoFrame(ServerReply* s);
   void SendAudioData(ServerReply* s);
   void CheckClientVersion(ServerReply* s, const char* request);
+  void SetStatus(ClientConnection* client, TCHAR *fmt, ...);
+  void UpdateStatWindow(DWORD sinceLast);
+
   WSADATA wsaData;
   SOCKET m_socket;
   sockaddr_in service;
@@ -136,10 +165,21 @@ private:
   IScriptEnvironment* env;
   bool shutdown;
   int prefetch_frame;
-  const static int sendbufsize = 262144; // Maximum send size
-  const static int rcvbufsize = 1024;   // Smaller rcv size
 
-
+  WNDCLASS wc;
+  HWND wnd;
+  HDC window_hdc;
+  __int64 StatImgTransferred;
+  __int64 StatImgTransferredUC;
+  __int64 StatAudTransferred;
+  int StatBytesSinceLast;
+  int StatRequested;
+  int StatPrerequested;
+  int StatClientsTotalConnected;
+  int StatClientsConnected;
+  int StatFramesLast;
+  int StatBytesLast;
+  int StatAudBytesLast;
 };
 
 

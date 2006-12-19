@@ -1,3 +1,15 @@
+HINSTANCE g_hInst;
+
+BOOL WINAPI DllMain(
+  HINSTANCE hinstDLL,
+  DWORD fdwReason,
+  LPVOID lpvReserved
+  ) 
+{
+  g_hInst = hinstDLL;
+  return TRUE;
+}
+
 
 BOOL CALLBACK DialogProc(
   HWND hwndDlg,  // handle to dialog box
@@ -14,14 +26,6 @@ BOOL CALLBACK DialogProc(
 				case IDCANCEL:
 					ShowWindow(hwndDlg,SW_MINIMIZE);
 					break;
-/*				case IDC_CHECK_EnableRGB:
-					break;
-				case IDC_CHECK_R:
-					break;
-				case IDC_CHECK_G:
-					break;
-				case IDC_CHECK_B:
-					break;*/
 			}
 			break;
 
@@ -36,16 +40,13 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 	switch (message) {
 		case WM_COMMAND:
 			break;
-		case WM_DESTROY:
-			PostQuitMessage(0);
-			break;
 		default:
 			return DefWindowProc(hWnd, message, wParam, lParam);
     }
 	return 0;
 }
 
-void startWindow() {
+/*void startWindow() {
 	MSG msg;
 	WNDCLASSEX wcex;
 	wcex.cbSize = sizeof(WNDCLASSEX); 
@@ -61,13 +62,13 @@ void startWindow() {
 	wcex.lpszClassName	= "TCPServer GUI";
 	wcex.hIconSm		= LoadIcon(NULL, MAKEINTRESOURCE(IDI_APPLICATION));
 	RegisterClassEx(&wcex);
-	hDlg=CreateDialog(hInstance,MAKEINTRESOURCE(IDD_SERVERGUI),NULL,DialogProc);
+//	hDlg=CreateDialog(hInstance,MAKEINTRESOURCE(IDD_SERVERGUI),NULL,DialogProc);
 
-    while (GetMessage(&msg, NULL, 0, 0))
+  while (GetMessage(&msg, NULL, 0, 0))
 	if (NULL == hDlg || !IsDialogMessage(hDlg, &msg)) {
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
 	}
 }
 
-
+*/

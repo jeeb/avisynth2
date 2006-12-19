@@ -13,6 +13,10 @@
 #define IDC_TIMESTATS                   1007
 #define IDC_SERVERSTATUS                1008
 #define IDC_STATUS_GROUP                1009
+#define IDC_CONNECTIONSETTIGS           1010
+#define IDC_STATIC_STATUS               1011
+#define IDC_STATIC_STATS                1012
+#define IDC_OVERALLSERVER               1013
 
 // Next default values for new objects
 // 

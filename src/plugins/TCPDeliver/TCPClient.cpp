@@ -299,6 +299,8 @@ TCPClientThread::TCPClientThread(const char* hostname, int port, const char* com
     WSACleanup();
     return ;
   }
+  const static int sendbufsize = 1024; // Small send size
+  const static int rcvbufsize = 262144;   // Maximum rcv size
 
   setsockopt(m_socket, SOL_SOCKET, SO_RCVBUF, (char *) &rcvbufsize, sizeof(rcvbufsize));
   setsockopt(m_socket, SOL_SOCKET, SO_SNDBUF, (char *) &sendbufsize, sizeof(sendbufsize));

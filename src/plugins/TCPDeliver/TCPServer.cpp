@@ -36,11 +36,11 @@
 
 
 #include "TCPServer.h"
+#include "ServerGUICode.h"
 
 HANDLE hThread;
 HWND hDlg;  // Windowhandle
 
-#include "ServerGUICode.h"
 
 /**************************  TCP Server *****************************
   The server is basicly a thread that is spawned.
@@ -60,8 +60,6 @@ TCPServer::TCPServer(PClip _child, int port, IScriptEnvironment* env) : GenericV
 
   _RPT0(0, "TCPServer: Opening instance\n");
   s = new TCPServerListener(port, child, env);
-  //  if(!hThread) hThread=CreateThread(NULL, 10000, (unsigned long (__stdcall *)(void *))startWindow, 0, 0 , &id );
-  //  startWindow();
 }
 
 TCPServer::~TCPServer() {
@@ -143,6 +141,28 @@ TCPServerListener::TCPServerListener(int port, PClip _child, IScriptEnvironment*
 
   shutdown = false;
 
+	// setup the window and GDI stuff
+/*  int SCRWIDTH = 400;
+  int SCRHEIGHT = 200;
+	RECT rect;
+	wc.style = CS_OWNDC | CS_VREDRAW | CS_HREDRAW;
+	wc.lpfnWndProc = WndProc;
+	wc.cbClsExtra = wc.cbWndExtra = 0;
+	wc.hInstance = 0;
+	wc.hIcon = NULL;
+	wc.hCursor = LoadCursor(0,IDC_ARROW);
+	wc.hbrBackground = NULL;
+	wc.lpszMenuName = NULL;
+	wc.lpszClassName = "TCPServer GUI";
+	RegisterClass(&wc);
+	rect.left = rect.top = 0;
+	rect.right = SCRWIDTH, rect.bottom = SCRHEIGHT;
+	AdjustWindowRect( &rect, WS_POPUP|WS_SYSMENU|WS_CAPTION, 0 );
+	rect.right -= rect.left, rect.bottom -= rect.top;
+*/
+	wnd=CreateDialog(g_hInst,MAKEINTRESOURCE(IDD_SERVERGUI),0,DialogProc);
+	ShowWindow(wnd,SW_NORMAL);
+
 //  AfxBeginThread(StartServer, this , THREAD_PRIORITY_NORMAL, 0, 0, NULL);
   CreateThread(NULL,NULL,StartServer,this, NULL,NULL);
 
@@ -176,8 +196,11 @@ void TCPServerListener::Listen() {
   timeval t2; // Always nonblock
   t2.tv_sec = 0;
   t2.tv_usec = 0;
+  StatImgTransferred = StatImgTransferredUC = StatAudTransferred = 0;
+  StatBytesSinceLast = StatRequested = StatPrerequested = StatClientsConnected = StatClientsTotalConnected = 0;
+  StatBytesLast = StatFramesLast = 0;
 
-
+  char* clientText = (char*)malloc(8000);
 
   ClientConnection s_list[FD_SETSIZE];
   int i;
@@ -186,12 +209,14 @@ void TCPServerListener::Listen() {
   }
   ServerReply s;
 
-  for (i = 0; i < FD_SETSIZE ; i++)
-    memset(&s_list[i], 0, sizeof(ClientConnection));
+//  for (i = 0; i < FD_SETSIZE ; i++)
+//    memset(&s_list[i], 0, sizeof(ClientConnection));
+  UpdateStatWindow(0);
+  DWORD tick = GetTickCount();
 
   while (!shutdown) {
     // Attempt to Accept an incoming request
-
+    clientText[0] = 0;
     FD_ZERO(&test_set);
     FD_SET(m_socket, &test_set);
     select(0, &test_set, NULL, NULL, &t2);
@@ -206,13 +231,15 @@ void TCPServerListener::Listen() {
     FD_ZERO(&test_set2);
 
     bool anyconnected = false;
-	bool anydatapending = false;
+	  bool anydatapending = false;
+    bool updateStats = (abs((int)(GetTickCount() - tick)) > 500);
+
     for (i = 0; i < FD_SETSIZE; i++) {
       if (s_list[i].isConnected) {
         FD_SET(s_list[i].s, &test_set);
         if (s_list[i].isDataPending) {
           FD_SET(s_list[i].s, &test_set2);
-		  anydatapending = true;
+		      anydatapending = true;
         }
         anyconnected = true;
       }
@@ -225,12 +252,13 @@ void TCPServerListener::Listen() {
 
     select(0, &test_set, &test_set2, NULL, &t);
     bool request_handled = false;
+    StatClientsConnected  = 0;
 
     for (i = 0; i < FD_SETSIZE; i++) {
       s.dataSize = 0;
       if (s_list[i].isConnected) {
+        StatClientsConnected ++;
         if (FD_ISSET(s_list[i].s, &test_set) && (!s_list[i].isDataPending)) {
-
           request_handled = true;
           TCPRecievePacket* tr = new TCPRecievePacket(s_list[i].s);
 
@@ -250,9 +278,12 @@ void TCPServerListener::Listen() {
             _RPT0(0, "TCPServer: Connection Closed.\n");
             closesocket(s_list[i].s);
             s_list[i].reset();
+            s_list[i].setStatus("Connection Closed");
           }
           delete tr;
         } // end if fd is set
+        if (updateStats)
+          sprintf_s(clientText, 8000, "[%d]: %s", i, s_list[i].status_text);
       } // end if list != null
     } // end for i
 
@@ -267,12 +298,20 @@ void TCPServerListener::Listen() {
     if (!request_handled && !anydatapending) {
       t.tv_usec = 100000;  // If no request we allow it to wait 100 ms instead.
       if (prefetch_frame > 0) {
-        _RPT1(0, "TCPServer: Prerequesting frame: %d", prefetch_frame);
+        _RPT2(0, "TCPServer: Prerequesting frame: %d (%d)", prefetch_frame, GetTickCount());
         child->GetFrame(prefetch_frame, env);  // We are idle - prefetch frame
         prefetch_frame = -1;
+        StatPrerequested++;
       }
     } else {
       t.tv_usec = 1000; // Allow 1ms before prefetching frame.
+      t.tv_sec  = 0;
+    }
+
+    if (updateStats) {
+      SetDlgItemText(wnd,IDC_SERVERSTATUS,clientText);
+      UpdateStatWindow(GetTickCount() - tick);
+      tick = GetTickCount();
     }
   } // while !shutdown
 
@@ -291,10 +330,32 @@ void TCPServerListener::Listen() {
 
   closesocket(m_socket);
   WSACleanup();
+  DestroyWindow(wnd);
+
   thread_running = false;
   _RPT0(0, "TCPServer: Client thread no longer running.\n");
 }
 
+void TCPServerListener::UpdateStatWindow(DWORD sinceLast) {
+  if (!sinceLast)
+    sinceLast = 0;
+
+  char buf[4096];
+  sprintf_s(&buf[0], 4096, "Clients Connected:%d, Total Clients:%d\r\n"
+    "Frames Requested:%d, Frames PreRendered:%d\r\n"
+    "Speed: %5.2fFPS, %dKB/s\r\n"
+    "Frame data sent (compressed):%dMB, Uncompressed:%dMB (%d%%)\r\n"
+    "Audio data sent:%dKB",
+    StatClientsConnected, StatClientsTotalConnected,
+    StatRequested, StatPrerequested,
+    ((float)StatFramesLast * 1000.0f / (float)sinceLast), (int)(((float)StatBytesLast * 1000.0f) / ((float)sinceLast * 1024.0f)),
+    (int)(StatImgTransferred>>20), (int)(StatImgTransferredUC>>20), (int)(100.0f*(float)StatImgTransferred / (float)StatImgTransferredUC),
+    (int)(StatAudTransferred>>10)
+    );
+
+  SetDlgItemText(wnd,IDC_OVERALLSERVER,buf);
+  StatBytesLast = StatFramesLast = 0;
+}
 
 void TCPServerListener::AcceptClient(SOCKET AcceptSocket, ClientConnection* s_list) {
   ServerReply s;
@@ -308,10 +369,13 @@ void TCPServerListener::AcceptClient(SOCKET AcceptSocket, ClientConnection* s_li
     s_list[slot].reset();
     s_list[slot].s = AcceptSocket;
     s_list[slot].isConnected = true;
+    s_list[slot].setStatus("Client Connected");
+    StatClientsTotalConnected++;
     int one = 1;         // for 4.3 BSD style setsockopt()
     setsockopt(AcceptSocket, IPPROTO_TCP, TCP_NODELAY, (PCHAR )&one, sizeof(one));
     setsockopt(AcceptSocket, SOL_SOCKET, SO_RCVBUF, (char *) &rcvbufsize, sizeof(rcvbufsize));
     setsockopt(AcceptSocket, SOL_SOCKET, SO_SNDBUF, (char *) &sendbufsize, sizeof(sendbufsize));
+    
   } else {
     _RPT0(0, "TCPServer: All slots full.\n");
     s.allocateBuffer(0);
@@ -433,8 +497,9 @@ void TCPServerListener::SendPendingData(ClientConnection* cc) {
     cc->isDataPending = false;
     delete[] cc->pendingData;
     cc->totalPendingBytes = 0;
+    _RPT1(0, "Finished sending data (%d)", GetTickCount());
   }
-
+  StatBytesLast +=r;
 }
 
 /**********************************************
@@ -581,10 +646,15 @@ void TCPServerListener::SendFrameInfo(ServerReply* s, const char* request) {
   }
 
   s->setType(SERVER_SENDING_FRAME);
-
   // Send Reply
-  memcpy(s->data, &sfi, sizeof(ServerFrameInfo));
-  
+  memcpy(s->data, &sfi, sizeof(ServerFrameInfo));  
+  s->client->setStatus("Sending Frame %u Compression: %u of %ukB (%d%%)", f->n, sfi.compressed_bytes>>10,  sfi.data_size>>10, (int)(100.0f*sfi.compressed_bytes/sfi.data_size));
+
+  // Update stats
+  StatRequested++;
+  StatFramesLast++;
+  StatImgTransferred += sfi.compressed_bytes;
+  StatImgTransferredUC += sfi.data_size;
 }
 
 void TCPServerListener::SendAudioInfo(ServerReply* s, const char* request) {
@@ -593,8 +663,9 @@ void TCPServerListener::SendAudioInfo(ServerReply* s, const char* request) {
   s->allocateBuffer(sizeof(ServerAudioInfo) + a->bytes);
   s->setType(SERVER_SENDING_AUDIO);
 
-  if (a->bytes != child->GetVideoInfo().BytesFromAudioSamples(a->count))
+  if (a->bytes != child->GetVideoInfo().BytesFromAudioSamples(a->count)) {
     _RPT0(1, "TCPServer: Did not recieve proper bytecount.\n");
+  }
 
   ServerAudioInfo sfi;
   sfi.compression = ServerAudioInfo::COMPRESSION_NONE;
@@ -603,6 +674,8 @@ void TCPServerListener::SendAudioInfo(ServerReply* s, const char* request) {
 
   memcpy(s->data, &sfi, sizeof(ServerAudioInfo));
   child->GetAudio(s->data + sizeof(ServerAudioInfo), a->start, a->count, env);
+  s->client->setStatus("Sending Audio: %d samples, %dkB.", (int)a->count, (int)(child->GetVideoInfo().BytesFromAudioSamples(a->count)>>10));  
+  StatAudTransferred += child->GetVideoInfo().BytesFromAudioSamples(a->count);
 }
 
 void TCPServerListener::KillThread() {

@@ -87,8 +87,6 @@ private:
   SOCKET m_socket;
   sockaddr_in service;  
   bool data_waiting;
-  const static int sendbufsize = 1024; // Small send size
-  const static int rcvbufsize = 262144;   // Maximum rcv size
 };
 
 DWORD WINAPI StartClient(LPVOID p);

@@ -1,199 +1,54 @@
-//Microsoft Developer Studio generated resource script.
-//
+#define APSTUDIO_READONLY_SYMBOLS 0
 #include "resource.h"
-
-#define APSTUDIO_READONLY_SYMBOLS
-/////////////////////////////////////////////////////////////////////////////
-//
-// Generated from the TEXTINCLUDE 2 resource.
-//
-#include "afxres.h"
-
-/////////////////////////////////////////////////////////////////////////////
-#undef APSTUDIO_READONLY_SYMBOLS
-
-/////////////////////////////////////////////////////////////////////////////
-// Danish resources
-
-#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_DAN)
-#ifdef _WIN32
-LANGUAGE LANG_DANISH, SUBLANG_DEFAULT
-#pragma code_page(1252)
-#endif //_WIN32
-
-#ifdef APSTUDIO_INVOKED
-/////////////////////////////////////////////////////////////////////////////
-//
-// TEXTINCLUDE
-//
-
-1 TEXTINCLUDE DISCARDABLE 
-BEGIN
-    "resource.h\0"
-END
-
-2 TEXTINCLUDE DISCARDABLE 
-BEGIN
-    "#include ""afxres.h""\r\n"
-    "\0"
-END
-
-3 TEXTINCLUDE DISCARDABLE 
-BEGIN
-    "\r\n"
-    "\0"
-END
-
-#endif    // APSTUDIO_INVOKED
-
-
-/////////////////////////////////////////////////////////////////////////////
-//
-// Dialog
-//
-
-IDD_SERVERGUI DIALOG DISCARDABLE  0, 0, 288, 130
-STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+LANGUAGE 9,1
+IDD_SERVERGUI DIALOGEX 0,0,287,144
 CAPTION "Dialog"
-FONT 8, "MS Sans Serif"
+FONT 8,"MS Sans Serif",0,0
+STYLE 0x80CE0080
 BEGIN
-    GROUPBOX        "Server Status",IDC_STATUS_GROUP,7,7,274,116
-    EDITTEXT        IDC_SERVERSTATUS,14,18,267,106,ES_AUTOHSCROLL | 
-                    ES_READONLY | NOT WS_BORDER
+  CONTROL "Server Status",IDC_STATUS_GROUP,"Button",0x50000007,8,7,274,133
+  CONTROL "",IDC_SERVERSTATUS,"Edit",0x50810880,14,73,262,59,0x00000200
+  CONTROL "",IDC_OVERALLSERVER,"Edit",0x58010004,16,20,260,48,0x00000200
 END
-
-
-/////////////////////////////////////////////////////////////////////////////
-//
-// DESIGNINFO
-//
-
-#ifdef APSTUDIO_INVOKED
-GUIDELINES DESIGNINFO DISCARDABLE 
-BEGIN
-    IDD_SERVERGUI, DIALOG
-    BEGIN
-        LEFTMARGIN, 7
-        RIGHTMARGIN, 281
-        TOPMARGIN, 7
-        BOTTOMMARGIN, 123
-    END
-END
-#endif    // APSTUDIO_INVOKED
-
-
-#ifndef _MAC
-/////////////////////////////////////////////////////////////////////////////
-//
-// Version
-//
-
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 1,0,1,0
- PRODUCTVERSION 1,0,1,0
- FILEFLAGSMASK 0x3fL
-#ifdef _DEBUG
- FILEFLAGS 0x1L
-#else
- FILEFLAGS 0x0L
-#endif
- FILEOS 0x40004L
- FILETYPE 0x2L
- FILESUBTYPE 0x0L
+FILEVERSION 1,0,1,0
+PRODUCTVERSION 1,0,1,0
+FILEOS 0x00040004
+FILETYPE 0x00000002
 BEGIN
-    BLOCK "StringFileInfo"
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "000004B0"
     BEGIN
-        BLOCK "000004b0"
-        BEGIN
-            VALUE "Comments", "\0"
-            VALUE "CompanyName", "avisynth.org\0"
-            VALUE "FileDescription", "TCPDeliver\0"
-            VALUE "FileVersion", "1, 0, 1, 0\0"
-            VALUE "InternalName", "TCPDeliver\0"
-            VALUE "LegalCopyright", "Copyright © 2004-2006, Klaus Post. \0"
-            VALUE "LegalTrademarks", "Released under GPL.\0"
-            VALUE "OriginalFilename", "TCPDeliver.dll\0"
-            VALUE "PrivateBuild", "\0"
-            VALUE "ProductName", "AviSynth TCPDeliver\0"
-            VALUE "ProductVersion", "1, 0, 1, 0\0"
-            VALUE "SpecialBuild", "\0"
-        END
+      VALUE "CompanyName", "avisynth.org\0"
+      VALUE "FileDescription", "TCPDeliver\0"
+      VALUE "FileVersion", "1, 0, 1, 0\0"
+      VALUE "InternalName", "TCPDeliver\0"
+      VALUE "LegalCopyright", "Copyright © 2004-2006, Klaus Post. \0"
+      VALUE "LegalTrademarks", "Released under GPL.\0"
+      VALUE "OriginalFilename", "TCPDeliver.dll\0"
+      VALUE "ProductName", "AviSynth TCPDeliver\0"
+      VALUE "ProductVersion", "1, 0, 1, 0\0"
     END
-    BLOCK "VarFileInfo"
-    BEGIN
-        VALUE "Translation", 0x0, 1200
-    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x0000, 0x04B0
+  END
 END
-
-#endif    // !_MAC
-
-#endif    // Danish resources
-/////////////////////////////////////////////////////////////////////////////
-
-
-/////////////////////////////////////////////////////////////////////////////
-// English (U.S.) resources
-
-#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
-#ifdef _WIN32
-LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
-#pragma code_page(1252)
-#endif //_WIN32
-
-/////////////////////////////////////////////////////////////////////////////
-//
-// Dialog
-//
-
-IDD_CLIENTGUI DIALOG DISCARDABLE  0, 0, 281, 186
-STYLE WS_CHILD | WS_VISIBLE | WS_CAPTION
+IDD_CLIENTGUI DIALOGEX 0,0,281,186
 CAPTION "TCP Deliver Client"
-FONT 8, "MS Sans Serif"
+FONT 8,"MS Sans Serif",0,0
+STYLE 0x50C00000
 BEGIN
-    EDITTEXT        IDC_IP,13,22,145,14,ES_AUTOHSCROLL
-    EDITTEXT        IDC_EDIT2,181,23,31,14,ES_AUTOHSCROLL
-    RTEXT           "Port:",IDC_PORT_TEXT,157,22,21,13,SS_CENTERIMAGE
-    GROUPBOX        "Connection Settings",IDC_STATIC,7,7,265,39
-    PUSHBUTTON      "Reconnect",IDC_RECONNECT_BUTTON,220,22,44,15
-    GROUPBOX        "Connection status",IDC_STATIC,7,54,265,30
-    EDITTEXT        IDC_STATUS,13,65,249,15,ES_AUTOHSCROLL | ES_READONLY
-    GROUPBOX        "Statistics",IDC_STATIC,7,96,265,83
-    EDITTEXT        IDC_FRAME_INFORMATION,16,108,249,12,ES_AUTOHSCROLL | 
-                    ES_READONLY
-    EDITTEXT        IDC_TIMESTATS,16,127,249,45,ES_AUTOHSCROLL | ES_READONLY
+  CONTROL "",IDC_IP,"Edit",0x50010080,13,22,145,14,0x00000200
+  CONTROL "",IDC_EDIT2,"Edit",0x50010080,181,23,31,14,0x00000200
+  CONTROL "Port:",IDC_PORT_TEXT,"Static",0x50020202,157,22,21,13
+  CONTROL "Connection Settings",IDC_CONNECTIONSETTIGS,"Button",0x50000007,7,7,265,39
+  CONTROL "Reconnect",IDC_RECONNECT_BUTTON,"Button",0x50010000,220,22,44,15
+  CONTROL "Connection status",IDC_STATIC_STATUS,"Button",0x50000007,7,54,265,30
+  CONTROL "",IDC_STATUS,"Edit",0x50010880,13,65,249,15,0x00000200
+  CONTROL "Statistics",IDC_STATIC_STATS,"Button",0x50000007,7,96,265,83
+  CONTROL "",IDC_FRAME_INFORMATION,"Edit",0x50010880,16,108,249,12,0x00000200
+  CONTROL "",IDC_TIMESTATS,"Edit",0x50010880,16,127,249,45,0x00000200
 END
-
-
-/////////////////////////////////////////////////////////////////////////////
-//
-// DESIGNINFO
-//
-
-#ifdef APSTUDIO_INVOKED
-GUIDELINES DESIGNINFO DISCARDABLE 
-BEGIN
-    IDD_CLIENTGUI, DIALOG
-    BEGIN
-        LEFTMARGIN, 7
-        RIGHTMARGIN, 272
-        TOPMARGIN, 7
-        BOTTOMMARGIN, 179
-    END
-END
-#endif    // APSTUDIO_INVOKED
-
-#endif    // English (U.S.) resources
-/////////////////////////////////////////////////////////////////////////////
-
-
-
-#ifndef APSTUDIO_INVOKED
-/////////////////////////////////////////////////////////////////////////////
-//
-// Generated from the TEXTINCLUDE 3 resource.
-//
-
-
-/////////////////////////////////////////////////////////////////////////////
-#endif    // not APSTUDIO_INVOKED
-
