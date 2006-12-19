@@ -38,6 +38,7 @@
 
 #include "lzo/include/lzoconf.h"
 #include "lzo/include/lzo1x.h"
+#include "lzo/include/lzo_asm.h"
 #include "huffman.h"
 #include "TCPCommon.h"
 #include "avisynth.h"

@@ -469,6 +469,9 @@ void TCPClientThread::StartRequestLoop() {
     }
     _RPT0(0, "TCPClient: Returning reply.\n");
 
+    if (reply->last_reply_type == REQUEST_DISCONNECT) {
+        reply->last_reply_type = INTERNAL_DISCONNECTED;
+    }
     if (disconnect) {
       reply->last_reply_type = INTERNAL_DISCONNECTED;
     }

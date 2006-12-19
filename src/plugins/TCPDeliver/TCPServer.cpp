@@ -246,7 +246,7 @@ void TCPServerListener::Listen() {
             } // end if datasize > 0
 
           }
-          else { // isDisconnected
+          if (tr->isDisconnected) { 
             _RPT0(0, "TCPServer: Connection Closed.\n");
             closesocket(s_list[i].s);
             s_list[i].reset();
@@ -275,6 +275,19 @@ void TCPServerListener::Listen() {
       t.tv_usec = 1000; // Allow 1ms before prefetching frame.
     }
   } // while !shutdown
+
+  // Send disconnect signal to all connected clients
+  for (i = 0; i < FD_SETSIZE; i++) {
+    if (s_list[i].isConnected) {
+      s.allocateBuffer(0);
+      s.setType(REQUEST_DISCONNECT);
+      SendPacket(&s_list[i], &s);
+      SendPendingData(&s_list[i]);
+      s_list[i].isConnected = false;
+      closesocket(s_list[i].s);
+      s_list[i].reset();
+    }
+  }
 
   closesocket(m_socket);
   WSACleanup();

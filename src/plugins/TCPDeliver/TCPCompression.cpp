@@ -96,8 +96,10 @@ yloopback:
   }
   int in_size = pitch*h;
   int out_size = -1;
-  dst = (BYTE*)_aligned_malloc(in_size + (in_size >>6) + 16 + 3, 16);
-  lzo1x_1_compress(image, in_size ,(unsigned char *)dst, (unsigned int *)&out_size , wrkmem);
+   
+  dst = (BYTE*)_aligned_malloc(in_size + (in_size / 16) + 64 + 3, 16);
+//  dst = (BYTE*)_aligned_malloc(in_size + (in_size >>6) + 16 + 3, 16);
+  lzo1x_1_compress(image, in_size ,(unsigned char *)dst, (lzo_uint *)&out_size , wrkmem);
   _RPT2(0, "TCPCompression: Compressed %d bytes into %d bytes.\n", in_size, out_size);
   return out_size;
 }
@@ -107,8 +109,9 @@ int PredictDownLZO::DeCompressImage(BYTE* image, int rowsize, int h, int pitch, 
   // Height > 2
   inplace = false;    
   unsigned int dst_size = pitch*h;
-  dst = (BYTE*)_aligned_malloc(dst_size, 64);
-  lzo1x_decompress(image, in_size, dst, &dst_size, wrkmem);
+  dst = (BYTE*)_aligned_malloc(dst_size+4, 64);  // LZO fast may overwrite the buffer by up to 3 bytes
+  lzo1x_decompress_asm_fast(image, in_size, dst, (lzo_uint *)&dst_size, wrkmem);
+//  lzo1x_decompress(image, in_size, dst, &dst_size, wrkmem);
 
   if ((int)dst_size != pitch*h) {
     _RPT0(1,"TCPCompression: Size did NOT match");

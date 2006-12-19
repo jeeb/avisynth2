@@ -73,7 +73,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="odbc32.lib odbccp32.lib ws2_32.lib lzo/debug/lzo.lib zlib/lib/zlibstat.lib User32.lib"
+				AdditionalDependencies="odbc32.lib odbccp32.lib ws2_32.lib lzo/lzo2.lib zlib/lib/zlibstat.lib User32.lib"
 				OutputFile=".\Debug/TCPDeliver.dll"
 				LinkIncremental="2"
 				SuppressStartupBanner="true"
@@ -175,7 +175,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="libcmt.lib odbc32.lib odbccp32.lib ws2_32.lib lzo/release/lzo.lib zlib/lib/zlibstat.lib User32.lib"
+				AdditionalDependencies="odbc32.lib odbccp32.lib ws2_32.lib lzo/lzo2.lib zlib/lib/zlibstat.lib User32.lib"
 				OutputFile=".\Release/TCPDeliver.dll"
 				LinkIncremental="2"
 				SuppressStartupBanner="true"
