@@ -323,7 +323,17 @@ void TCPServerListener::SendPacket(ClientConnection* cc, ServerReply* s) {
   _RPT0(0, "TCPServer: Sending packet.\n");
 
   unsigned int BytesSent = 0;
-  send(cc->s, (const char*)&s->dataSize, 4, 0);
+  while (BytesSent < 4) {
+    int r = send(cc->s, (const char*)(&s->dataSize) + BytesSent, 4-BytesSent, 0);
+    if (r == SOCKET_ERROR || r < 0) {
+      _RPT0(0, "TCPServer: Could not send packet (SOCKET_ERROR). Connection closed\n");
+      closesocket(cc->s);
+      cc->isConnected = false;
+      cc->totalPendingBytes = 0;
+      return;
+    }
+	BytesSent += r;
+  }
   cc->pendingData = s->internal_data;
   cc->isDataPending = !!s->dataSize;
   cc->totalPendingBytes = s->dataSize;
@@ -478,15 +488,19 @@ void TCPServerListener::SendParityInfo(ServerReply* s, const char* request) {
 // Requests should optimally be handled by a separate thread to avoid blocking other clients while requesting the frame.
 void TCPServerListener::SendFrameInfo(ServerReply* s, const char* request) {
   _RPT0(0, "TCPServer: Sending Frame Info!\n");
-  ClientRequestFrame f;
-  memcpy(&f, request, sizeof(ClientRequestFrame));
-  PVideoFrame src = child->GetFrame(f.n, env);
-  prefetch_frame = f.n + 1;
+  ClientRequestFrame* f = (ClientRequestFrame *) request;
+
+  PVideoFrame src = child->GetFrame(f->n, env);
+  prefetch_frame = f->n + 1;
+
+  env->MakeWritable(&src);
 
   ServerFrameInfo sfi;
   memset(&sfi, 0, sizeof(ServerFrameInfo));
-  sfi.framenumber = f.n;
+  sfi.framenumber = f->n;
   sfi.compression = ServerFrameInfo::COMPRESSION_NONE;
+
+    // Prepare data
   sfi.height = src->GetHeight();
   sfi.row_size = src->GetRowSize();
   sfi.pitch = src->GetPitch();
@@ -509,7 +523,6 @@ void TCPServerListener::SendFrameInfo(ServerReply* s, const char* request) {
 
   // Compress the data.
   if (!child->GetVideoInfo().IsPlanar()) {
-    env->MakeWritable(&src);
     
     sfi.compression = s->client->compression->compression_type;
     sfi.compressed_bytes = s->client->compression->CompressImage(src->GetWritePtr(), src_rowsize, src_height, src_pitch);
@@ -523,7 +536,6 @@ void TCPServerListener::SendFrameInfo(ServerReply* s, const char* request) {
     }
    
   } else {
-    env->MakeWritable(&src);
     BYTE *dst1, *dst2, *dst3;
     sfi.row_sizeUV = src->GetRowSize(PLANAR_U_ALIGNED);
     sfi.pitchUV = src->GetPitch(PLANAR_U);
@@ -559,26 +571,25 @@ void TCPServerListener::SendFrameInfo(ServerReply* s, const char* request) {
 
   // Send Reply
   memcpy(s->data, &sfi, sizeof(ServerFrameInfo));
+  
 }
 
 void TCPServerListener::SendAudioInfo(ServerReply* s, const char* request) {
   _RPT0(0, "TCPServer: Sending Audio Info!\n");
-  ClientRequestAudio a;
-  memcpy(&a, request, sizeof(ClientRequestAudio));
-  s->allocateBuffer(sizeof(ServerAudioInfo) + a.bytes);
+  ClientRequestAudio* a = (ClientRequestAudio *) request;
+  s->allocateBuffer(sizeof(ServerAudioInfo) + a->bytes);
   s->setType(SERVER_SENDING_AUDIO);
 
-  if (a.bytes != child->GetVideoInfo().BytesFromAudioSamples(a.count)) {
+  if (a->bytes != child->GetVideoInfo().BytesFromAudioSamples(a->count))
     _RPT0(1, "TCPServer: Did not recieve proper bytecount.\n");
-  }
 
   ServerAudioInfo sfi;
   sfi.compression = ServerAudioInfo::COMPRESSION_NONE;
-  sfi.compressed_bytes = a.bytes;
-  sfi.data_size = a.bytes;
+  sfi.compressed_bytes = a->bytes;
+  sfi.data_size = a->bytes;
 
   memcpy(s->data, &sfi, sizeof(ServerAudioInfo));
-  child->GetAudio(s->data + sizeof(ServerAudioInfo), a.start, a.count, env);
+  child->GetAudio(s->data + sizeof(ServerAudioInfo), a->start, a->count, env);
 }
 
 void TCPServerListener::KillThread() {

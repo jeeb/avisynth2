@@ -125,8 +125,6 @@ PVideoFrame __stdcall TCPClient::GetFrame(int n, IScriptEnvironment* env) {
     incoming_bytes = fi->data_size;
     // Todo: Insert compression class.
 
-    env->MakeWritable(&frame);
-
     BYTE* dstp = frame->GetWritePtr();
     BYTE* srcp = (unsigned char*)client->reply->last_reply + sizeof(ServerFrameInfo);
     TCPCompression* t = 0;
@@ -230,7 +228,7 @@ void __stdcall TCPClient::GetAudio(void* buf, __int64 start, __int64 count, IScr
   }
 
   _RPT1(0, "TCPClient: Got %d bytes of audio (GetAudio)\n", ai->compressed_bytes);
-  memcpy(buf, client->reply->last_reply + sizeof(ClientRequestAudio), ai->data_size);
+  memcpy(buf, client->reply->last_reply + sizeof(ServerAudioInfo), ai->data_size);
 }
 
 
