@@ -36,7 +36,7 @@
 
 #include "audio.h"
 
-#define BIGBUFFSIZE (256*1024) // Use a 256Kb buffer for EnsureVBRMP3Sync seeking & Normalize scanning
+#define BIGBUFFSIZE (2048*1024) // Use a 2MB buffer for EnsureVBRMP3Sync seeking & Normalize scanning
 
 /********************************************************************
 ***** Declare index of new filters for Avisynth's filter engine *****
@@ -257,6 +257,9 @@ AVSValue __cdecl EnsureVBRMP3Sync::Create(AVSValue args, void*, IScriptEnvironme
 
 MergeChannels::MergeChannels(PClip _clip, int _num_children, PClip* _child_array, IScriptEnvironment* env)
     : GenericVideoFilter(_clip), num_children(_num_children), child_array(_child_array) {
+  VideoInfo vi2;
+  PClip tclip;
+
   clip_channels = new int[num_children];
   clip_offset = new signed char * [num_children];
   clip_channels[0] = vi.AudioChannels();
@@ -285,6 +288,7 @@ MergeChannels::~MergeChannels() {
   }
   delete[] clip_channels;
   delete[] clip_offset;
+  delete[] child_array;
 }
 
 
@@ -762,29 +766,39 @@ void __stdcall Normalize::GetAudio(void* buf, __int64 start, __int64 count, IScr
           if (sample < i_neg_volume) {	// Cope with MIN_SHORT
 		    i_neg_volume = sample;
 		    negpeaksampleno = chanXbcount*i+j;
+			if (sample <= -32767) {
+			  i = passes;
+			  break;
+			}
 		  }
 		  else if (sample > i_pos_volume) {
 			i_pos_volume = sample;
 			pospeaksampleno = chanXbcount*i+j;
+			if (sample == 32767) {
+			  i = passes;
+			  break;
+			}
 		  }
         }
       }
-      // Remaining samples
-      const __int64 rem_samples = vi.num_audio_samples % bcount;
-      const int chanXremcount = rem_samples * vi.AudioChannels();
+	  // Remaining samples
+	  if ((i_pos_volume != 32767) && (i_neg_volume > -32767)) {
+		const __int64 rem_samples = vi.num_audio_samples % bcount;
+		const int chanXremcount = rem_samples * vi.AudioChannels();
 
-      child->GetAudio(samples, bcount*passes, rem_samples, env);
-      for (int j = 0; j < chanXremcount; j++) {
-		const short sample=samples[j];
-        if (sample < i_neg_volume) {	// Cope with MIN_SHORT
-		  i_neg_volume = sample;
-		  negpeaksampleno = chanXbcount*passes+j;
+		child->GetAudio(samples, bcount*passes, rem_samples, env);
+		for (int j = 0; j < chanXremcount; j++) {
+		  const short sample=samples[j];
+		  if (sample < i_neg_volume) {	// Cope with MIN_SHORT
+			i_neg_volume = sample;
+			negpeaksampleno = chanXbcount*passes+j;
+		  }
+		  else if (sample > i_pos_volume) {
+			i_pos_volume = sample;
+			pospeaksampleno = chanXbcount*passes+j;
+		  }
 		}
-		else if (sample > i_pos_volume) {
-		  i_pos_volume = sample;
-		  pospeaksampleno = chanXbcount*passes+j;
-		}
-      }
+	  }
 	  if (bigbuff) delete[] samples;
 
 	  i_pos_volume = -i_pos_volume; // Remember -ve has 1 more range than +ve, i.e. -32768
@@ -819,7 +833,7 @@ void __stdcall Normalize::GetAudio(void* buf, __int64 start, __int64 count, IScr
 	  __int64 peaksampleno=-1;
 	  
       for (__int64 i = 0;i < passes;i++) {
-        child->GetAudio(buf, bcount*i, bcount, env);
+        child->GetAudio(samples, bcount*i, bcount, env);
         for (int j = 0;j < chanXbcount;j++) {
 		  const SFLOAT sample = fabs(samples[j]);
           if (sample > max_volume) {
@@ -832,7 +846,7 @@ void __stdcall Normalize::GetAudio(void* buf, __int64 start, __int64 count, IScr
       const __int64 rem_samples = vi.num_audio_samples % bcount;
       const int chanXremcount = rem_samples * vi.AudioChannels();
 
-      child->GetAudio(buf, bcount*passes, rem_samples, env);
+      child->GetAudio(samples, bcount*passes, rem_samples, env);
       for (int j = 0;j < chanXremcount;j++) {
 		const SFLOAT sample = fabs(samples[j]);
         if (sample > max_volume) {
@@ -929,13 +943,12 @@ AVSValue __cdecl Normalize::Create(AVSValue args, void*, IScriptEnvironment* env
 
 MixAudio::MixAudio(PClip _child, PClip _clip, double _track1_factor, double _track2_factor, IScriptEnvironment* env)
     : GenericVideoFilter(ConvertAudio::Create(_child, SAMPLE_INT16 | SAMPLE_FLOAT, SAMPLE_FLOAT)),
-    tclip(_clip),
     track1_factor(int(_track1_factor*131072.0 + 0.5)),
     track2_factor(int(_track2_factor*131072.0 + 0.5)),
     t1factor(float(_track1_factor)),
     t2factor(float(_track2_factor)) {
 
-  clip = ConvertAudio::Create(tclip, vi.SampleType(), vi.SampleType());  // Clip 2 should now be same type as clip 1.
+  clip = ConvertAudio::Create(_clip, vi.SampleType(), vi.SampleType());  // Clip 2 should now be same type as clip 1.
   const VideoInfo vi2 = clip->GetVideoInfo();
 
   if (vi.audio_samples_per_second != vi2.audio_samples_per_second)

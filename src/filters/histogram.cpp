@@ -36,7 +36,8 @@
 #include "stdafx.h"
 
 #include "histogram.h"
-
+#include "text-overlay.h"
+#include "../core/info.h"
 
 
 
@@ -132,6 +133,18 @@ Histogram::Histogram(PClip _child, int _mode, IScriptEnvironment* env)
 
      aud_clip = ConvertAudio::Create(child,SAMPLE_INT16,SAMPLE_INT16);
   }
+
+  if (mode == 7) {
+    child->SetCacheHints(CACHE_AUDIO,4096*1024);
+    if (!vi.IsPlanar())
+      env->ThrowError("Histogram: Audiolevels mode only available in planar YUV.");
+    if (vi.IsY8())
+      env->ThrowError("Histogram: AudioLevels mode not available in Y8.");
+
+     aud_clip = ConvertAudio::Create(child,SAMPLE_INT16,SAMPLE_INT16);
+
+  }
+
 }
 
 PVideoFrame __stdcall Histogram::GetFrame(int n, IScriptEnvironment* env) 
@@ -151,10 +164,116 @@ PVideoFrame __stdcall Histogram::GetFrame(int n, IScriptEnvironment* env)
     return DrawMode5(n, env);
   case 6:
     return DrawMode6(n, env);
+  case 7:
+    return DrawMode7(n, env);
   }
   return DrawMode0(n, env);
 }
 
+PVideoFrame Histogram::DrawMode7(int n, IScriptEnvironment* env) {
+  PVideoFrame src = child->GetFrame(n, env);
+  env->MakeWritable(&src);
+  int w = src->GetRowSize();
+  int h = src->GetHeight();
+  int channels = vi.AudioChannels();
+
+  int bar_w = 60;  // Must be divideable by 4 (for subsampling)
+  int total_width = (1+channels*2)*bar_w; // Total width in pixels.
+
+  if (total_width > w) {
+    bar_w = ((w / (1+channels*2)) / 4)* 4;
+  }
+  total_width = (1+channels*2)*bar_w; // Total width in pixels.
+  int bar_h = vi.height;
+
+  // Get audio for current frame.
+  __int64 start = vi.AudioSamplesFromFrames(n); 
+  __int64 end = vi.AudioSamplesFromFrames(n+1); 
+  __int64 count = end-start;
+  signed short* samples = new signed short[(int)count*vi.AudioChannels()];
+
+  aud_clip->GetAudio(samples, max(0,start), count, env);
+
+  // Find maximum volume.
+  int c = (int)count;
+  int* channel_max = new int[channels];
+  for (int ch = 0; ch<channels; ch++) {
+    int max_vol=0;
+    for (int i=0; i < c;i++) {
+      max_vol = max(max_vol, abs((int)samples[i*channels+ch]));
+    }
+    channel_max[ch] = max_vol;
+  }
+
+  // Draw bars
+  BYTE* srcpY = src->GetWritePtr(PLANAR_Y);
+  int Ypitch = src->GetPitch(PLANAR_Y);
+  BYTE* srcpU = src->GetWritePtr(PLANAR_U);
+  BYTE* srcpV = src->GetWritePtr(PLANAR_V);
+  int UVpitch = src->GetPitch(PLANAR_U);
+  int xSubS = vi.GetPlaneWidthSubsampling(PLANAR_U);
+  int ySubS = vi.GetPlaneHeightSubsampling(PLANAR_U);
+
+  // Draw Dotted lines
+  int lines = 16;  // Line every 6dB  (96/6)
+  int* lines_y = new int[lines];
+  float line_every = (float)bar_h / (float)lines;
+  char text[400];
+  for (int i=0; i<lines; i++) {
+    lines_y[i] = (int)(line_every*i);
+    if (!(i&1)) {
+      sprintf(text,"-%ddB",i*6);
+      DrawString(src, 0, i ? lines_y[i]-10 : 0, text);
+    }
+  }
+  for (int x=0; x<w; x++) {
+    if (!(x&3)) {
+      for (int i=0; i<lines; i++) {
+        srcpY[x+lines_y[i]*Ypitch] = 0xff;
+      }  
+    }
+  }
+
+  for (int ch = 0; ch<channels; ch++) {
+    int max = channel_max[ch];
+    double ch_db = 96;
+    if (max>0) {
+       ch_db = 8.685889638 * log(32768.0/(double)max);
+    }
+    int x_pos = ((ch*2)+1)*bar_w;
+    int x_end = x_pos+bar_w;
+    int y_pos = (int)(((double)bar_h*ch_db) / 96.0);
+    int y_end = src->GetHeight(PLANAR_Y);
+    // Luma
+    for (int y = y_pos; y<y_end; y++) {
+      for (int x = x_pos; x < x_end; x++) {
+        srcpY[x+y*Ypitch] = 0x48;
+      }
+    }
+    // Chroma
+    x_pos >>= xSubS;
+    x_end >>= xSubS;
+    y_pos >>= ySubS;
+    y_end = src->GetHeight(PLANAR_U);
+    BYTE u_val = 0;
+    BYTE v_val = (max>=32767) ? 0xff : 0;
+    for (int y = y_pos; y<y_end; y++) {
+      for (int x = x_pos; x < x_end; x++) {
+        srcpU[x+y*UVpitch] = u_val;
+        srcpV[x+y*UVpitch] = v_val;
+      }
+    }
+    // Draw text
+    char text[400];
+    sprintf(text,"%5.2fdB",(float)-ch_db);
+    DrawString(src, x_pos<<xSubS, vi.height-20, text);
+
+  }
+
+  delete[] channel_max;
+  delete[] samples;
+  return src;
+}
 
 PVideoFrame Histogram::DrawMode6(int n, IScriptEnvironment* env) {
   PVideoFrame dst = env->NewVideoFrame(vi);
@@ -197,7 +316,7 @@ PVideoFrame Histogram::DrawMode6(int n, IScriptEnvironment* env) {
   aud_clip->GetAudio(samples, max(0,start), count, env);
   
   int c = (int)count;
-  for (int i=1; i < count;i++) {
+  for (int i=1; i < c;i++) {
     int l1 = (int)samples[i*2-2];
     int r1 = (int)samples[i*2-1];
     int l2 = (int)samples[i*2];
@@ -242,7 +361,7 @@ PVideoFrame Histogram::DrawMode5(int n, IScriptEnvironment* env) {
   aud_clip->GetAudio(samples, max(0,start), count, env);
   
   int c = (int)count;
-  for (int i=1; i < count;i++) {
+  for (int i=1; i < c;i++) {
     int l1 = (int)samples[i*2-2];
     int r1 = (int)samples[i*2-1];
     int l2 = (int)samples[i*2];
@@ -881,6 +1000,9 @@ AVSValue __cdecl Histogram::Create(AVSValue args, void*, IScriptEnvironment* env
 
   if (!lstrcmpi(st_m, "stereooverlay"))
     mode = 6;
+
+  if (!lstrcmpi(st_m, "audiolevels"))
+    mode = 7;
 
   return new Histogram(args[0].AsClip(), mode, env);
 }

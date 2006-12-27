@@ -4,6 +4,7 @@
 	Version="8,00"
 	Name="avisynth"
 	ProjectGUID="{663487D5-F79A-4DAA-BC67-319FE0827A48}"
+	RootNamespace="avisynth"
 	>
 	<Platforms>
 		<Platform
@@ -505,6 +506,10 @@
 			</File>
 			<File
 				RelativePath="core\Error.h"
+				>
+			</File>
+			<File
+				RelativePath=".\core\info.h"
 				>
 			</File>
 			<File

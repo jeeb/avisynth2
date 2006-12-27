@@ -647,7 +647,7 @@ MaskHS::MaskHS( PClip _child, int _startHue, int _endHue, int _maxSat, int _minS
 		// Precalc hue for all U/V combos
 		for (int x = 0; x<256; x++) {
 			for (int y = 0; y<256; y++) {
-				theta = atan2(x-128, y-128) * 180.0 / 3.1415926;
+				theta = atan2((float)x-128.0f, (float)y-128.0f) * 180.0 / 3.1415926;
 				deg[x][y] = (int) ((theta > 0) ? theta: 360+theta);
 			}
 		}

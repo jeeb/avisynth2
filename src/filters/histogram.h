@@ -56,6 +56,7 @@ public:
   PVideoFrame Histogram::DrawMode4(int n, IScriptEnvironment* env);
   PVideoFrame Histogram::DrawMode5(int n, IScriptEnvironment* env);
   PVideoFrame Histogram::DrawMode6(int n, IScriptEnvironment* env);
+  PVideoFrame Histogram::DrawMode7(int n, IScriptEnvironment* env);
 
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
 private:
