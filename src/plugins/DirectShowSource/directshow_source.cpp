@@ -35,7 +35,7 @@
 
 #include "directshow_source.h"
 
-#define DSS_VERSION "2.5.7"
+#define DSS_VERSION "2.6.0"
 
 /************************************
  *          Logging Utility         *
@@ -182,13 +182,16 @@ GetSample::GetSample(bool _load_audio, bool _load_video, unsigned _media, LOG* _
 	  no_my_media_types = i;
 	}
 	else {
-	  // Make sure my_media_types[5] is long enough!
+	  // Make sure my_media_types[8] is long enough!
 	  unsigned i=0;
 	  if (media & mediaYV12)   InitMediaType(my_media_types[i++], MEDIATYPE_Video, MEDIASUBTYPE_YV12);
 	  if (media & mediaYUY2)   InitMediaType(my_media_types[i++], MEDIATYPE_Video, MEDIASUBTYPE_YUY2);
 	  if (media & mediaARGB)   InitMediaType(my_media_types[i++], MEDIATYPE_Video, MEDIASUBTYPE_ARGB32);
 	  if (media & mediaRGB32)  InitMediaType(my_media_types[i++], MEDIATYPE_Video, MEDIASUBTYPE_RGB32);
 	  if (media & mediaRGB24)  InitMediaType(my_media_types[i++], MEDIATYPE_Video, MEDIASUBTYPE_RGB24);
+	  if (media & mediaYV411)  InitMediaType(my_media_types[i++], MEDIATYPE_Video, MEDIASUBTYPE_Y411); //Needs unpacking
+	  if (media & mediaYV411)  InitMediaType(my_media_types[i++], MEDIATYPE_Video, MEDIASUBTYPE_Y41P); //Needs unpacking
+	  if (media & mediaYV24)  InitMediaType(my_media_types[i++], MEDIATYPE_Video, MEDIASUBTYPE_AYUV);  //Needs unpacking
 	  no_my_media_types = i;
 	  if (media == mediaNONE) media = mediaAUTO;
 	}
@@ -260,24 +263,75 @@ GetSample::GetSample(bool _load_audio, bool _load_video, unsigned _media, LOG* _
         env->BitBlt(pvf->GetWritePtr(), pvf->GetPitch(), buf, (rowsize+3)&~3, rowsize, pvf->GetHeight());
       }
       else {
+        if (vi.IsYV12()) {
+          const int rowsize = pvf->GetRowSize(PLANAR_Y);
+          const int height  = pvf->GetHeight(PLANAR_Y);
 
-        const int rowsize = pvf->GetRowSize(PLANAR_Y);
-        const int height  = pvf->GetHeight(PLANAR_Y);
+          // All planar formats have Y rows 32bit aligned
+          env->BitBlt(pvf->GetWritePtr(PLANAR_Y), pvf->GetPitch(PLANAR_Y), buf, (rowsize+3)&~3, rowsize, height);
 
-        // All planar formats have Y rows 32bit aligned
-        env->BitBlt(pvf->GetWritePtr(PLANAR_Y), pvf->GetPitch(PLANAR_Y), buf, (rowsize+3)&~3, rowsize, height);
+          const int UVrowsize = pvf->GetRowSize(PLANAR_V);
+          const int UVheight  = pvf->GetHeight(PLANAR_V);
 
-        const int UVrowsize = pvf->GetRowSize(PLANAR_V);
-        const int UVheight  = pvf->GetHeight(PLANAR_V);
+          // YV12 format has UV rows 16bit aligned with
+          // V plane first, after aligned end of Y plane
+          buf += ((rowsize+3)&~3) * height;
+          env->BitBlt(pvf->GetWritePtr(PLANAR_V), pvf->GetPitch(PLANAR_V), buf, (UVrowsize+1)&~1, UVrowsize, UVheight);
 
-        // YV12 format has UV rows 16bit aligned with
-        // V plane first, after aligned end of Y plane
-        buf += ((rowsize+3)&~3) * height;
-        env->BitBlt(pvf->GetWritePtr(PLANAR_V), pvf->GetPitch(PLANAR_V), buf, (UVrowsize+1)&~1, UVrowsize, UVheight);
+          // And U plane last, after aligned end of V plane
+          buf += ((UVrowsize+1)&~1) * UVheight;
+          env->BitBlt(pvf->GetWritePtr(PLANAR_U), pvf->GetPitch(PLANAR_U), buf, (UVrowsize+1)&~1, UVrowsize, UVheight);
+        } else {  // 4:1:1 or 4:4:4 which needs packed -> planar conversion.
 
-        // And U plane last, after aligned end of V plane
-        buf += ((UVrowsize+1)&~1) * UVheight;
-        env->BitBlt(pvf->GetWritePtr(PLANAR_U), pvf->GetPitch(PLANAR_U), buf, (UVrowsize+1)&~1, UVrowsize, UVheight);
+          const int rowsize = pvf->GetRowSize(PLANAR_Y);
+          const int height  = pvf->GetHeight(PLANAR_Y);
+
+          BYTE* dstY = pvf->GetWritePtr(PLANAR_Y);
+          BYTE* dstU = pvf->GetWritePtr(PLANAR_U);
+          BYTE* dstV = pvf->GetWritePtr(PLANAR_V);
+          BYTE* srcP = buf;
+
+
+          if (vi.IsYV24()) {  // A0 Y0 U0 V0
+            int src_pitch = vi.width *4;  // Naturally aligned.
+            int rowdiv4 = rowsize / 4;
+            for (int y=0; y<height; y++) {
+              for(int x=0; x<rowdiv4;x++) {
+                  dstY[x] = srcP[(x<<2)+1];
+                  dstU[x] = srcP[(x<<2)+2];
+                  dstV[x] = srcP[(x<<2)+3];
+              }
+              dstY += pvf->GetPitch(PLANAR_Y);
+              dstU += pvf->GetPitch(PLANAR_U);
+              dstV += pvf->GetPitch(PLANAR_V);
+              srcP += src_pitch;
+            }
+          } else if (vi.IsYV411()) {  // U0 Y0 V0 Y1   U4 Y2 V4 Y3   Y4 Y5 Y6 Y8
+            int src_pitch = (vi.width / 8) * 12;  // Naturally aligned.
+            for (int y=0; y<height; y++) {
+              int Yx = 0;
+              int UVx = 0;
+              for(int x=0; x<rowsize;x+=12) {
+                  dstU[UVx] = srcP[x];
+                  dstY[Yx++] = srcP[x+1];
+                  dstV[UVx++] = srcP[x+2];
+                  dstY[Yx++] = srcP[x+3];
+                  dstU[UVx] = srcP[x+4];
+                  dstY[Yx++] = srcP[x+5];
+                  dstV[UVx++] = srcP[x+6];
+                  dstY[Yx++] = srcP[x+7];
+                  dstY[Yx++] = srcP[x+8];
+                  dstY[Yx++] = srcP[x+9];
+                  dstY[Yx++] = srcP[x+10];
+                  dstY[Yx++] = srcP[x+11];
+              }
+              dstY += pvf->GetPitch(PLANAR_Y);
+              dstU += pvf->GetPitch(PLANAR_U);
+              dstV += pvf->GetPitch(PLANAR_V);
+              srcP += src_pitch;
+            }
+          }          
+        }
       }
     }
     else if (pvf) {
@@ -864,6 +918,20 @@ pbFormat:
 		  return S_FALSE;
 		}
 		pixel_type = VideoInfo::CS_YV12;
+
+    } else if        (pmt->subtype == MEDIASUBTYPE_Y411) {  
+		if (!(media & mediaYV411)) {
+		  dssRPT0(dssNEG,  "*** Video: Subtype denied - YV411\n");
+		  return S_FALSE;
+		}
+		pixel_type = VideoInfo::CS_YV411;
+
+    } else if        (pmt->subtype == MEDIASUBTYPE_AYUV) {  
+		if (!(media & mediaYV24)) {
+		  dssRPT0(dssNEG,  "*** Video: Subtype denied - YV24\n");
+		  return S_FALSE;
+		}
+		pixel_type = VideoInfo::CS_YV24;
 
 	  } else if (pmt->subtype == MEDIASUBTYPE_YUY2) {
 		if (!(media & mediaYUY2)) {
@@ -1505,7 +1573,7 @@ DirectShowSource::DirectShowSource(const char* filename, int _avg_time_per_frame
       if (!get_sample.IsConnected()) {
         if (_enable_video)
           env->ThrowError("DirectShowSource: GRF file does not have a compatible open video pin.\n"
-                          "Graph must have 1 output pin that will bid RGB24, RGB32, ARGB, YUY2 or YV12");
+                          "Graph must have 1 output pin that will bid RGB24, RGB32, ARGB, YUY2, YV12 Y411 or AYUV");
         else
           env->ThrowError("DirectShowSource: GRF file does not have a compatible open audio pin.\n"
                           "Graph must have 1 output pin that will bid 8, 16, 24 or 32 bit PCM or IEEE Float.");
@@ -1988,6 +2056,8 @@ AVSValue __cdecl Create_DirectShowSource(AVSValue args, void*, IScriptEnvironmen
     const char* pixel_type = args[8].AsString();
     if      (!lstrcmpi(pixel_type, "YUY2"))  { _media = GetSample::mediaYUY2; }
     else if (!lstrcmpi(pixel_type, "YV12"))  { _media = GetSample::mediaYV12; }
+    else if (!lstrcmpi(pixel_type, "YV411"))  { _media = GetSample::mediaYV411; }
+    else if (!lstrcmpi(pixel_type, "YV24"))  { _media = GetSample::mediaYV24; }
     else if (!lstrcmpi(pixel_type, "RGB24")) { _media = GetSample::mediaRGB24; }
     else if (!lstrcmpi(pixel_type, "RGB32")) { _media = GetSample::mediaRGB32 | GetSample::mediaARGB; }
     else if (!lstrcmpi(pixel_type, "ARGB"))  { _media = GetSample::mediaARGB; }
@@ -1996,7 +2066,7 @@ AVSValue __cdecl Create_DirectShowSource(AVSValue args, void*, IScriptEnvironmen
     else if (!lstrcmpi(pixel_type, "AUTO"))  { _media = GetSample::mediaAUTO; }
     else {
       env->ThrowError("DirectShowSource: pixel_type must be \"RGB24\", \"RGB32\", \"ARGB\", "
-                                           "\"YUY2\", \"YV12\", \"RGB\", \"YUV\" or \"AUTO\"");
+                                           "\"YUY2\", \"YV12\", \"YV24\", \"YV411\", \"RGB\", \"YUV\" or \"AUTO\"");
     }
   }
   const int _frames = args[9].AsInt(0);

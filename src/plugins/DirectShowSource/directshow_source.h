@@ -193,7 +193,7 @@ class GetSample : public IBaseFilter, public IPin, public IMemInputPin {
   AM_MEDIA_TYPE *am_media_type;
 
   unsigned media, no_my_media_types;
-  AM_MEDIA_TYPE *my_media_types[5];
+  AM_MEDIA_TYPE *my_media_types[8];
 
   PVideoFrame pvf;
 
@@ -206,8 +206,10 @@ public:
     mediaARGB   = 1<<3,
     mediaRGB32  = 1<<4,
     mediaRGB24  = 1<<5,
+    mediaYV24   = 1<<6, // 2.6
+    mediaYV411  = 1<<7, // 2.6
     mediaRGB    = mediaARGB | mediaRGB32 | mediaRGB24,
-    mediaYUV    = mediaYUV9 | mediaYV12 | mediaYUY2,
+    mediaYUV    = mediaYUV9 | mediaYV12 | mediaYUY2 | mediaYV24 | mediaYV411,
     mediaAUTO   = mediaRGB | mediaYUV
   };
   
