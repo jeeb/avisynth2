@@ -601,15 +601,15 @@ AVSValue __cdecl ShowFrameNumber::Create(AVSValue args, void*, IScriptEnvironmen
 
 
 /***********************************
- *******   Show SMPTE code    ******
- **********************************/
+*******   Show SMPTE code    ******
+**********************************/
 
 ShowSMPTE::ShowSMPTE(PClip _child, double _rate, const char* offset, int _offset_f, int _x, int _y, const char _fontname[],
-					 int _size, int _textcolor, int _halocolor, IScriptEnvironment* env)
-  : GenericVideoFilter(_child), x(_x), y(_y),
-    antialiaser(vi.width, vi.height, _fontname, _size*8,
-                vi.IsYUV() ? RGB2YUV(_textcolor) : _textcolor,
-                vi.IsYUV() ? RGB2YUV(_halocolor) : _halocolor )
+                     int _size, int _textcolor, int _halocolor, IScriptEnvironment* env)
+                     : GenericVideoFilter(_child), x(_x), y(_y),
+                     antialiaser(vi.width, vi.height, _fontname, _size*8,
+                     vi.IsYUV() ? RGB2YUV(_textcolor) : _textcolor,
+                     vi.IsYUV() ? RGB2YUV(_halocolor) : _halocolor )
 {
   int off_f, off_sec, off_min, off_hour;
 
@@ -626,58 +626,58 @@ ShowSMPTE::ShowSMPTE(PClip _child, double _rate, const char* offset, int _offset
     dropframe = false;
   } 
   else if (_rate == 30) {
-  rate = 30;
-  dropframe = false;
+    rate = 30;
+    dropframe = false;
   } 
   else if (_rate > 29.969 && _rate < 29.971) {
     rate = 30;
     dropframe = true;
   } 
   else {
-//    env->ThrowError("ShowSMPTE: rate argument must be 24, 25, 30, or 29.97");
-    env->ThrowError("ShowSMPTE: rate argument must be 23.976, 24, 25, 30, or 29.97");
+    rate = 0;
   }
 
   if (offset) {
-	if (strlen(offset)!=11 || offset[2] != ':' || offset[5] != ':' || offset[8] != ':')
-	  env->ThrowError("ShowSMPTE:  offset should be of the form \"00:00:00:00\" ");
-	if (!isdigit(offset[0]) || !isdigit(offset[1]) || !isdigit(offset[3]) || !isdigit(offset[4])
-	 || !isdigit(offset[6]) || !isdigit(offset[7]) || !isdigit(offset[9]) || !isdigit(offset[10]))
-	  env->ThrowError("ShowSMPTE:  offset should be of the form \"00:00:00:00\" ");
+    if (strlen(offset)!=11 || offset[2] != ':' || offset[5] != ':' || offset[8] != ':')
+      env->ThrowError("ShowSMPTE:  offset should be of the form \"00:00:00:00\" ");
+    if (!isdigit(offset[0]) || !isdigit(offset[1]) || !isdigit(offset[3]) || !isdigit(offset[4])
+      || !isdigit(offset[6]) || !isdigit(offset[7]) || !isdigit(offset[9]) || !isdigit(offset[10]))
+      env->ThrowError("ShowSMPTE:  offset should be of the form \"00:00:00:00\" ");
 
-	off_hour = atoi(offset);
+    off_hour = atoi(offset);
 
-	off_min = atoi(offset+3);
-	if (off_min > 59)
-	  env->ThrowError("ShowSMPTE:  make sure that the number of minutes in the offset is in the range 0..59");
+    off_min = atoi(offset+3);
+    if (off_min > 59)
+      env->ThrowError("ShowSMPTE:  make sure that the number of minutes in the offset is in the range 0..59");
 
-	off_sec = atoi(offset+6);
-	if (off_sec > 59)
-	  env->ThrowError("ShowSMPTE:  make sure that the number of seconds in the offset is in the range 0..59");
+    off_sec = atoi(offset+6);
+    if (off_sec > 59)
+      env->ThrowError("ShowSMPTE:  make sure that the number of seconds in the offset is in the range 0..59");
 
-	off_f = atoi(offset+9);
-	if (off_f >= rate)
-	  env->ThrowError("ShowSMPTE:  make sure that the number of frames in the offset is in the range 0..%d", rate-1);
+    off_f = atoi(offset+9);
+    if (off_f >= rate)
+      env->ThrowError("ShowSMPTE:  make sure that the number of frames in the offset is in the range 0..%d", rate-1);
 
-	offset_f = off_f + rate*(off_sec + 60*off_min + 3600*off_hour);
-	if (dropframe) {
-	  if (rate == 30) {
-		int c = 0;
-		c = off_min + 60*off_hour;  // number of drop events
-		c -= c/10; // less non-drop events on 10 minutes
-		c *=2; // drop 2 frames per drop event
-		offset_f -= c;
-	  }
-	  else if (rate == 24) {
-//  Need to cogitate with the guys about this
-//  gotta drop 86.3 counts per hour. So until
-//  a proper formula is found, just wing it!
-		offset_f -= 2 * ((offset_f+1001)/2002);
-	  }
-	}
+    offset_f = off_f + rate*(off_sec + 60*off_min + 3600*off_hour);
+
+    if (dropframe) {
+      if (rate == 30) {
+        int c = 0;
+        c = off_min + 60*off_hour;  // number of drop events
+        c -= c/10; // less non-drop events on 10 minutes
+        c *=2; // drop 2 frames per drop event
+        offset_f -= c;
+      }
+      else if (rate == 24) {
+        //  Need to cogitate with the guys about this
+        //  gotta drop 86.3 counts per hour. So until
+        //  a proper formula is found, just wing it!
+        offset_f -= 2 * ((offset_f+1001)/2002);
+      }
+    }
   }
   else {
-	offset_f = _offset_f;
+    offset_f = _offset_f;
   }
 }
 
@@ -692,31 +692,36 @@ PVideoFrame __stdcall ShowSMPTE::GetFrame(int n, IScriptEnvironment* env)
 
   if (dropframe) {
     if (rate == 30) {
-	// at 10:00, 20:00, 30:00, etc. nothing should happen if offset=0
-	  int high = n / 17982;
-	  int low = n % 17982;
-	  if (low>=2)
-		low += 2 * ((low-2) / 1798);
-	  n = high * 18000 + low;
-	}
-	else if (rate == 24) {
-//  Needs some cogitating
-	  n += 2 * ((n+1001)/2002);
-	}
+      // at 10:00, 20:00, 30:00, etc. nothing should happen if offset=0
+      int high = n / 17982;
+      int low = n % 17982;
+      if (low>=2)
+        low += 2 * ((low-2) / 1798);
+      n = high * 18000 + low;
+    } else if (rate == 24) {
+      //  Needs some cogitating
+      n += 2 * ((n+1001)/2002);
+    }
   }
+  char text[17];
 
-  int frames = n % rate;
-  int sec = n/rate;
-  int min = sec/60;
-  int hour = sec/3600;
+  if (rate > 0) {
+    int frames = n % rate;
+    int sec = n/rate;
+    int min = sec/60;
+    int hour = sec/3600;
 
-  char text[16];
-  wsprintf(text, "%02d:%02d:%02d:%02d", hour, min%60, sec%60, frames);
+    wsprintf(text, "%02d:%02d:%02d:%02d", hour, min%60, sec%60, frames);
+  } else {
+    int ms = (int)(((__int64)n * vi.fps_denominator * 1000 / (__int64)vi.fps_numerator)%1000);
+    int sec = (__int64)n * vi.fps_denominator / vi.fps_numerator;
+    int min = sec/60;
+    int hour = sec/3600;
 
+    wsprintf(text, "%02d:%02d:%02d:%03d", hour, min%60, sec%60, ms);
+  }
   HDC hdc = antialiaser.GetDC();
   SetTextAlign(hdc, TA_BASELINE|TA_CENTER);
-  // RECT r = { 0, 0, 32767, 32767 };
-  // FillRect(hdc, &r, (HBRUSH)GetStockObject(BLACK_BRUSH));
   TextOut(hdc, x*8, y*8-48, text, strlen(text));
   GdiFlush();
 
