@@ -93,7 +93,7 @@ void WavOutput::encodeLoop() {
   __int64 encodedSamples = 0;
   while (!sb->lastBlock && !exitThread) {
     encodedSamples += sb->numSamples;
-    this->updateSampleStats(encodedSamples / 1000, vi.num_audio_samples / 1000);
+    this->updateSampleStats(encodedSamples, vi.num_audio_samples);
     sf_write_raw(sndfile, sb->getSamples(), vi.BytesFromAudioSamples(sb->numSamples));
     delete sb;
     if (input)

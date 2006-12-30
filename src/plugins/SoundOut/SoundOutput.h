@@ -22,7 +22,7 @@ public:
 protected:
   virtual bool initEncoder() { return true;}   // Called to Init the encoder, returns false if error occured.
   void updatePercent(int p);
-  void updateSampleStats(int processed,int total);
+  void updateSampleStats(__int64 processed,__int64 total);
   HWND wnd;
   HWND statWnd;
   SampleFetcher *input;

@@ -240,7 +240,7 @@ void Mp2Output::encodeLoop() {
       }
     }
     encodedSamples += sb->numSamples;
-    this->updatePercent(encodedSamples * 100 / vi.num_audio_samples);
+    this->updateSampleStats(encodedSamples, vi.num_audio_samples);
     delete sb;
     if (input)
       sb = input->GetNextBlock();

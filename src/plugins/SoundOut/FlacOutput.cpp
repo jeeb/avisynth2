@@ -114,7 +114,7 @@ void 	FlacOutput::progress_callback (FLAC__uint64 bytes_written, FLAC__uint64 sa
   char buf[800];
   sprintf_s(buf, 800, "Written %dk of %dk samples (%d%%)\n"
     "Written %d%s data. Compression: %d%%.",
-    (int)(samples_written/1000), (int)(vi.num_audio_samples/1000), percent,
+    (int)(samples_written), (int)(vi.num_audio_samples), percent,
     totalWritten, tw_m, compression);
 
   if (!exitThread) {

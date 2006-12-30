@@ -96,7 +96,7 @@ void MacOutput::encodeLoop() {
     pAPECompress->AddData((unsigned char*)sb->getSamples(), vi.BytesFromAudioSamples(sb->numSamples));
 
     encodedSamples += sb->numSamples;
-    this->updateSampleStats(encodedSamples / 1000, vi.num_audio_samples / 1000);
+    this->updateSampleStats(encodedSamples, vi.num_audio_samples);
 
     delete sb;
     if (input)

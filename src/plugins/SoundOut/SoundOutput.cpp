@@ -98,8 +98,7 @@ void SoundOutput::startEncoding() {
   so_out = this;
 	wnd=CreateDialog(g_hInst,MAKEINTRESOURCE(IDD_DLG_CONVERT),0,ConvertProgressProc);
   SendMessage(wnd,WM_SETICON,ICON_SMALL, (LPARAM)LoadImage( g_hInst, MAKEINTRESOURCE(ICO_AVISYNTH),IMAGE_ICON,0,0,0));
-  SetDlgItemText(wnd,IDC_STC_INFOTEXT,"Initializing...");
-  SetDlgItemText(wnd,IDC_STC_INFOTEXT,"Beginning Compression...");
+  SetDlgItemText(wnd,IDC_STC_CONVERTMSG,"Initializing...");
 
   exitThread = false;
   encodeThread = CreateThread(NULL,NULL,StartEncoder,this, NULL,NULL);
@@ -118,11 +117,12 @@ void SoundOutput::updatePercent(int p) {
     SendDlgItemMessage(wnd, IDC_PGB_CONVERTPROGRESS, PBM_SETPOS, p, 0);
 }
 
-void SoundOutput::updateSampleStats(int processed,int total) {
+void SoundOutput::updateSampleStats(__int64 processed,__int64 total) {
   char buf[800];
-  int percent = (__int64)(processed) * 100 / total;
-  sprintf_s(buf, 800, "Processed %d000 of %d000 samples (%d%%)\n",
-    processed, total, percent);
+  int percent = (int)(processed * 100 / total);
+  sprintf_s(buf, 800, "Processed %d%u of %d%u samples (%d%%)\n",
+    (int)(processed>>32),(unsigned int)(processed&0xffffffff), 
+    (int)(total>>32),(unsigned int)(total&0xffffffff), percent);
 
   if (!exitThread) {
     SetDlgItemText(wnd,IDC_STC_CONVERTMSG,buf);
