@@ -156,24 +156,36 @@ void SoundOutput::updateSampleStats(__int64 processed,__int64 total) {
   int e_hours = e_millis / (1000*60*60);
   int e_mins = (e_millis / (1000*60)) % 60;
   int e_secs = (e_millis / 1000) %60;
-
+  int sp_secs = (int)(processed / vi.audio_samples_per_second);
+  int sp_hours = sp_secs / (60*60);
+  int sp_mins = (sp_secs / 60) % 60;
+  float speed = (1000.0f * sp_secs) / millis;
+  sp_secs %= 60;
+  int tot_secs = (int)(total / vi.audio_samples_per_second);
+  int tot_hours = sp_secs / (60*60);
+  int tot_mins = (sp_secs / 60) % 60;
+  tot_secs %= 60;
   if (total > 0xffffffff) {
     sprintf_s(buf, 800, "Processed %d%u of %d%u samples (%d%%)\n"
-      "Time Elapsed: %02d:%02d:%02d. ETA: %02d:%02d:%02d.\n"
+      "Source Position: [%02d:%02d:%02d] of [%02d:%02d:%02d]  Speed: %1.2f x Realtime\n"
+      "Time Elapsed: [%02d:%02d:%02d]  ETA: [%02d:%02d:%02d]\n"
       ,(int)(processed>>32),(unsigned int)(processed&0xffffffff),(int)(total>>32),(unsigned int)(total&0xffffffff), (int)percent,
+      sp_hours, sp_mins, sp_secs, tot_hours, tot_mins, tot_secs, speed,
       hours,mins,secs, e_hours, e_mins, e_secs
       );
   } else {
     sprintf_s(buf, 800, "Processed %u of %u samples (%d%%)\n"
-       "Time Elapsed: %02d:%02d:%02d. ETA: %02d:%02d:%02d.\n"
+      "Source Position: [%02d:%02d:%02d] of [%02d:%02d:%02d]  Speed: %1.2f x Realtime\n"
+      "Time Elapsed: [%02d:%02d:%02d]  ETA: [%02d:%02d:%02d]\n"
        ,(unsigned int)(processed), 
       (unsigned int)(total), (int)percent,
+      sp_hours, sp_mins, sp_secs, tot_hours, tot_mins, tot_secs, speed,
       hours,mins,secs, e_hours, e_mins, e_secs
       );
   }
   if (!exitThread) {
     SetDlgItemText(wnd,IDC_STC_CONVERTMSG,buf);
-    this->updatePercent(percent);
+    this->updatePercent((int)percent);
   }
   lastUpdateTick = GetTickCount();
 }

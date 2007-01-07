@@ -52,12 +52,20 @@ WavOutput::WavOutput(PClip _child, IScriptEnvironment* _env) : SoundOutput(Conve
   for (int i = 0; i< 7; i++) {
      SendDlgItemMessage(wnd, IDC_WAVTYPE, CB_ADDSTRING, 0, (LPARAM)WAV_TypeString[i]);
   }
-  SendDlgItemMessage(wnd, IDC_WAVTYPE,CB_SETCURSEL,0,0);  // TODO: Registry
+  params["type"] = AVSValue(0);
   params["extension"] = AVSValue(".wav");
+  params["peakchunck"] = AVSValue(false);
+  setParamsToGUI();
 }
 
 WavOutput::~WavOutput(void)
 {
+}
+
+bool WavOutput::setParamsToGUI() {
+  SendDlgItemMessage(wnd, IDC_WAVTYPE,CB_SETCURSEL,params["type"].AsInt(),0);
+  CheckDlgButton(wnd, IDC_WAVPEAKINFO, params["peakchunck"].AsBool());
+  return true;
 }
 
 bool WavOutput::getParamsFromGUI() {
@@ -105,9 +113,6 @@ void WavOutput::encodeLoop() {
     encodedSamples += sb->numSamples;
     this->updateSampleStats(encodedSamples, vi.num_audio_samples);
     sf_write_raw(sndfile, sb->getSamples(), vi.BytesFromAudioSamples(sb->numSamples));
-    delete sb;
-    if (input)
-      sb = input->GetNextBlock();
   } while (!sb->lastBlock && !exitThread);
 	if (sf_close(sndfile)) {
     MessageBox(NULL,"An encoder error occured while finalizing WAV output. Output file may not work","WAVE Encoder",MB_OK);
