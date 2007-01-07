@@ -39,9 +39,11 @@ FlacOutput::FlacOutput(PClip _child, IScriptEnvironment* _env) : SoundOutput(Con
 	ShowWindow(wnd,SW_NORMAL);
   SendDlgItemMessage(wnd, IDC_FLAC_COMPRESSIONLEVEL, TBM_SETTICFREQ, 1, 0);
   SendDlgItemMessage(wnd, IDC_FLAC_COMPRESSIONLEVEL, TBM_SETRANGE, TRUE, MAKELONG (1, 8));
-  SendDlgItemMessage(wnd, IDC_FLAC_COMPRESSIONLEVEL, TBM_SETPOS, TRUE, 5);
   params["outputFileFilter"] = new AVSValue("FLAC files\0*.flac\0All Files\0*.*\0\0");
   params["extension"] = AVSValue(".flac");
+  params["compressionlevel"] = AVSValue(6);
+
+  setParamsToGUI();
 }
 
 FlacOutput::~FlacOutput(void)
@@ -49,11 +51,24 @@ FlacOutput::~FlacOutput(void)
   exitThread = true;
 }
 
+bool FlacOutput::getParamsFromGUI() {
+  int c =(int)SendDlgItemMessage(wnd, IDC_FLAC_COMPRESSIONLEVEL, TBM_GETPOS, 0, 0);
+  params["compressionlevel"] = AVSValue(c);
+  return true;
+}
+
+bool FlacOutput::setParamsToGUI() {
+  SendDlgItemMessage(wnd, IDC_FLAC_COMPRESSIONLEVEL, TBM_SETPOS, TRUE, params["compressionlevel"].AsInt());
+  return true;
+}
+
+
+
 bool FlacOutput::initEncoder() {
   set_channels(vi.AudioChannels());
   set_bits_per_sample(vi.BytesPerChannelSample() == 4 ? 24 : vi.BytesPerChannelSample()*8);  
   set_sample_rate(vi.audio_samples_per_second);
-  set_compression_level((unsigned int)SendDlgItemMessage(wnd, IDC_FLAC_COMPRESSIONLEVEL, TBM_GETPOS, 0, 0));
+  set_compression_level(params["compressionlevel"].AsInt());
   set_total_samples_estimate(vi.num_audio_samples);
   init(outputFile);
   if (get_state() != FLAC__STREAM_ENCODER_INIT_STATUS_OK) {

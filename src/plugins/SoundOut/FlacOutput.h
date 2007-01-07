@@ -14,6 +14,8 @@ public:
   virtual ~FlacOutput(void);
   void encodeLoop();
   bool initEncoder();  // Called to Init the encoder, returns false if error occured.
+  virtual bool getParamsFromGUI();
+  virtual bool setParamsToGUI();
 };
 
 extern const char * const _FLAC__StreamEncoderStateString[];

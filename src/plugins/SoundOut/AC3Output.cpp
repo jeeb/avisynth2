@@ -213,20 +213,21 @@ void AC3Output::encodeLoop() {
       sb->numSamples -= A52_FRAME_SIZE - fwav_n;
       fwav_n = 0;
     }
-    if (sb->numSamples) {  // We still have some samples left
+    if (sb->numSamples && !exitThread) {  // We still have some samples left
       memcpy(&fwav[fwav_n*sampleSize], inSamples, sb->numSamples * sampleSize);
       fwav_n += sb->numSamples;
       sb->numSamples = 0;
     }
  } while (!sb->lastBlock && !exitThread);
 
-  if (fwav_n) {
+  if (fwav_n && !exitThread) {
     memset(&fwav[fwav_n*sampleSize], 0, (A52_FRAME_SIZE - fwav_n) * sampleSize);
     encodeBlock(fwav);
   }
 
 	aften_encode_close(&aften);
   fclose(f);
+  free(fwav);
   encodeThread = 0;
 }
 

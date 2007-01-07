@@ -118,6 +118,7 @@ void SoundOutput::startEncoding() {
   exitThread = false;
   encodeThread = CreateThread(NULL,NULL,StartEncoder,this, NULL,NULL);
   SetThreadPriority(encodeThread,THREAD_PRIORITY_BELOW_NORMAL);
+  encodingStartedTick = GetTickCount();
 }
 
 void SoundOutput::encodingFinished() {
@@ -146,15 +147,29 @@ void SoundOutput::updateSampleStats(__int64 processed,__int64 total) {
   if (GetTickCount() - lastUpdateTick < 50)
     return;
   char buf[800];
-  int percent = (int)(processed * 100 / total);
+  double percent = ((double)processed * 100.0 / (double)total);
+  int millis = GetTickCount() - encodingStartedTick;
+  int hours = millis / (1000*60*60);
+  int mins = (millis / (1000*60)) % 60;
+  int secs = (millis / 1000) %60;
+  int e_millis = (int)((double)millis * 100.0 / percent) - millis;
+  int e_hours = e_millis / (1000*60*60);
+  int e_mins = (e_millis / (1000*60)) % 60;
+  int e_secs = (e_millis / 1000) %60;
+
   if (total > 0xffffffff) {
-    sprintf_s(buf, 800, "Processed %d%u of %d%u samples (%d%%)\n",
-      (int)(processed>>32),(unsigned int)(processed&0xffffffff), 
-      (int)(total>>32),(unsigned int)(total&0xffffffff), percent);
+    sprintf_s(buf, 800, "Processed %d%u of %d%u samples (%d%%)\n"
+      "Time Elapsed: %02d:%02d:%02d. ETA: %02d:%02d:%02d.\n"
+      ,(int)(processed>>32),(unsigned int)(processed&0xffffffff),(int)(total>>32),(unsigned int)(total&0xffffffff), (int)percent,
+      hours,mins,secs, e_hours, e_mins, e_secs
+      );
   } else {
-    sprintf_s(buf, 800, "Processed %u of %u samples (%d%%)\n",
-      (unsigned int)(processed), 
-      (unsigned int)(total), percent);
+    sprintf_s(buf, 800, "Processed %u of %u samples (%d%%)\n"
+       "Time Elapsed: %02d:%02d:%02d. ETA: %02d:%02d:%02d.\n"
+       ,(unsigned int)(processed), 
+      (unsigned int)(total), (int)percent,
+      hours,mins,secs, e_hours, e_mins, e_secs
+      );
   }
   if (!exitThread) {
     SetDlgItemText(wnd,IDC_STC_CONVERTMSG,buf);

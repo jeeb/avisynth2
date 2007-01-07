@@ -11,6 +11,9 @@ public:
   ~MacOutput(void);
   void encodeLoop();
   bool initEncoder();  // Called to Init the encoder, returns false if error occured.
+  virtual bool getParamsFromGUI();
+  virtual bool setParamsToGUI();
+
 private:
   IAPECompress * pAPECompress;
 };

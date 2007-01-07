@@ -52,13 +52,25 @@ MacOutput::MacOutput(PClip _child, IScriptEnvironment* _env) : SoundOutput(Conve
 	ShowWindow(wnd,SW_NORMAL);
   SendDlgItemMessage(wnd, IDC_MAC_COMPRESSIONLEVEL, TBM_SETTICFREQ, 1, 0);
   SendDlgItemMessage(wnd, IDC_MAC_COMPRESSIONLEVEL, TBM_SETRANGE, TRUE, MAKELONG (1, 5));
-  SendDlgItemMessage(wnd, IDC_MAC_COMPRESSIONLEVEL, TBM_SETPOS, TRUE, 3);
   params["outputFileFilter"] = AVSValue("APE files (*.ape)\0*.ape\0All Files (*.*)\0*.*\0\0");
   params["extension"] = AVSValue(".ape");
+  params["compressionlevel"] = AVSValue(3);
+  setParamsToGUI();
 }
 
 MacOutput::~MacOutput(void)
 {
+}
+
+bool MacOutput::getParamsFromGUI() {
+  int c =(int)SendDlgItemMessage(wnd, IDC_MAC_COMPRESSIONLEVEL, TBM_GETPOS, 0, 0);
+  params["compressionlevel"] = AVSValue(c);
+  return true;
+}
+
+bool MacOutput::setParamsToGUI() {
+  SendDlgItemMessage(wnd, IDC_MAC_COMPRESSIONLEVEL, TBM_SETPOS, TRUE, params["compressionlevel"].AsInt());
+  return true;
 }
 
 bool MacOutput::initEncoder() {

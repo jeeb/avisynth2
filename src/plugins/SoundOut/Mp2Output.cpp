@@ -58,7 +58,7 @@ const int MP2_StereoVal[] = {
   -1, 0, 1, 2, 3 };
 
 const char * const MP2_PsymodelString[] = {
-  "-1 Fast & Dumb", "Low complexity", "ISO PAM 1", "ISO PAM 2", "PAM 1 Rewrite", "PAM 2 Rewrite" };
+  "Fast & Dumb", "Low complexity", "ISO PAM 1", "ISO PAM 2", "PAM 1 Rewrite", "PAM 2 Rewrite" };
 
 const int MP2_PsymodelVal[] = {
   -1, 0, 1, 2, 3 };
