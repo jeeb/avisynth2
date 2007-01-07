@@ -179,7 +179,7 @@ bool AC3Output::initEncoder() {
 
 void AC3Output::encodeBlock(unsigned char* in) {
   unsigned char frame[A52_MAX_CODED_FRAME_SIZE];
-  aften_remap_wav_to_a52(in,A52_FRAME_SIZE,aften.channels, aften.sample_format,aften.acmod);
+  //aften_remap_wav_to_a52(in,A52_FRAME_SIZE,aften.channels, aften.sample_format,aften.acmod);
   int out = aften_encode_frame(&aften, frame, in);
   if (out<0) {
     MessageBox(NULL,"Encoder error.","AC3 Encoder",MB_OK);
