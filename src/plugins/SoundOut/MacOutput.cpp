@@ -52,6 +52,7 @@ MacOutput::MacOutput(PClip _child, IScriptEnvironment* _env) : SoundOutput(Conve
 	ShowWindow(wnd,SW_NORMAL);
   SendDlgItemMessage(wnd, IDC_MAC_COMPRESSIONLEVEL, TBM_SETTICFREQ, 1, 0);
   SendDlgItemMessage(wnd, IDC_MAC_COMPRESSIONLEVEL, TBM_SETRANGE, TRUE, MAKELONG (1, 5));
+  params["filterID"] = AVSValue("macout");
   params["outputFileFilter"] = AVSValue("APE files (*.ape)\0*.ape\0All Files (*.*)\0*.*\0\0");
   params["extension"] = AVSValue(".ape");
   params["compressionlevel"] = AVSValue(3);

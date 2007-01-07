@@ -115,6 +115,7 @@ Mp2Output::Mp2Output(PClip _child, IScriptEnvironment* _env) : SoundOutput(Conve
 
   params["outputFileFilter"] = AVSValue("MP2 files (*.mp2;*.mpa;*.m2a)\0*.mp2;*.mpa;*.m2a\0All Files (*.*)\0*.*\0\0");
   params["extension"] = AVSValue(".mp2");
+  params["filterID"] = AVSValue("twolameout");
 
 }
 

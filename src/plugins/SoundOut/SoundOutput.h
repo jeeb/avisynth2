@@ -28,6 +28,7 @@ public:
   void encodingFinished();
   HANDLE encodeThread;
   bool exitThread;
+  bool autoCloseWindow;
   char* outputFile;
   void setError(const char* err);
   map<const char*, AVSValue,ltstr> params;

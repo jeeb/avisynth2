@@ -41,6 +41,7 @@ FlacOutput::FlacOutput(PClip _child, IScriptEnvironment* _env) : SoundOutput(Con
   SendDlgItemMessage(wnd, IDC_FLAC_COMPRESSIONLEVEL, TBM_SETRANGE, TRUE, MAKELONG (1, 8));
   params["outputFileFilter"] = new AVSValue("FLAC files\0*.flac\0All Files\0*.*\0\0");
   params["extension"] = AVSValue(".flac");
+  params["filterID"] = AVSValue("flacout");
   params["compressionlevel"] = AVSValue(6);
 
   setParamsToGUI();

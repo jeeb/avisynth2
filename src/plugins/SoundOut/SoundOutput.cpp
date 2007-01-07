@@ -231,6 +231,7 @@ SampleBlock* SampleFetcher::GetNextBlock() {
    SetEvent(evtProcessNextBlock);
    return s;
 }
+
 void SampleFetcher::FetchLoop() {
   VideoInfo vi = child->GetVideoInfo();
   __int64 currentPos = 0;

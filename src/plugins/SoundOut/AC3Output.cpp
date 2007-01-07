@@ -59,14 +59,18 @@ AC3Output::AC3Output(PClip _child, IScriptEnvironment* _env) : SoundOutput(_chil
 	ShowWindow(wnd,SW_NORMAL);
   params["outputFileFilter"] = AVSValue("AC3 files\0*.ac3\0All Files\0*.*\0\0");
   params["extension"] = AVSValue(".ac3");
+  params["filterID"] = AVSValue("aftenout");
   params["iscbr"] = AVSValue(true);
   params["cbrrate"] = AVSValue(384);
   params["vbrquality"] = AVSValue(220);
   params["blockswitch"] = AVSValue(false);
+  params["bandwidthfilter"] = AVSValue(false);
   params["lfelowpass"] = AVSValue(false);
   params["dchighpass"] = AVSValue(false);
   params["accuratealloc"] = AVSValue(true);
+  params["dolbysurround"] = AVSValue(false);
   params["drc"] = AVSValue(DYNRNG_PROFILE_NONE);
+  params["dialognormalization"] = AVSValue(31);
 
   for (int i = 0; AC3_CBRBitrateVal[i] !=-1; i++) {
     char buf[10];
@@ -75,6 +79,11 @@ AC3Output::AC3Output(PClip _child, IScriptEnvironment* _env) : SoundOutput(_chil
   }
   for (int i = 0; i< AC3_DRCSize; i++) {
     SendDlgItemMessage(wnd, IDC_AC3DRC, CB_ADDSTRING, 0, (LPARAM)AC3_DRCString[i]);
+  }
+  for (int i = 0; i<32; i++) {
+    char buf[10];
+    sprintf_s(buf,10,"%d", i);
+    SendDlgItemMessage(wnd, IDC_AC3DIALOG, CB_ADDSTRING, 0, (LPARAM)buf);
   }
 
   setParamsToGUI();
@@ -86,6 +95,7 @@ AC3Output::~AC3Output(void)
 
 bool AC3Output::getParamsFromGUI() {
   params["cbrrate"] = AVSValue(AC3_CBRBitrateVal[SendDlgItemMessage(wnd, IDC_AC3CBRRATE, CB_GETCURSEL,0,0)]);
+  params["dialognormalization"] = AVSValue((int)SendDlgItemMessage(wnd, IDC_AC3DIALOG, CB_GETCURSEL,0,0));
   char buf[100];
   int n;
   SendDlgItemMessage(wnd, IDC_AC3VBRRATE, EM_GETLINE,0,(LPARAM)buf);
@@ -96,11 +106,11 @@ bool AC3Output::getParamsFromGUI() {
   }
   params["vbrquality"] = AVSValue(n);
   params["iscbr"] = AVSValue(!!IsDlgButtonChecked(wnd, IDC_AC3CBRMODE));
-  params["blockswitch"] = AVSValue(!!IsDlgButtonChecked(wnd, IDC_AC3BLOCKSWITCH));
+  params["bandwidthfilter"] = AVSValue(!!IsDlgButtonChecked(wnd, IDC_AC3BANDWIDTH));
   params["lfelowpass"] = AVSValue(!!IsDlgButtonChecked(wnd, IDC_AC3LFELOWPASS));
   params["dchighpass"] = AVSValue(!!IsDlgButtonChecked(wnd, IDC_AC3DCHIGHPASS));
-  params["accuratealloc"] = AVSValue(!!IsDlgButtonChecked(wnd, IDC_AC3ACCURATEALLOC));
-  params["drc"] = AVSValue(AC3_DRCVal[SendDlgItemMessage(wnd, IDC_AC3DRC, CB_GETCURSEL,0,0)]);
+  params["dolbysurround"] = AVSValue(!!IsDlgButtonChecked(wnd, IDC_AC3DCHIGHPASS));
+  params["drc"] = AVSValue(AC3_DRCVal[SendDlgItemMessage(wnd, IDC_DSINPUT, CB_GETCURSEL,0,0)]);
   return true;
 }
 
@@ -118,6 +128,10 @@ bool AC3Output::setParamsToGUI() {
 	  EnableWindow(GetDlgItem(wnd, IDC_AC3VBRRATE), true);
 	  EnableWindow(GetDlgItem(wnd, IDC_VBRRATEUPDOWN), true);    
   }
+  CheckDlgButton(wnd, IDC_DSINPUT, params["dolbysurround"].AsBool());
+  EnableWindow(GetDlgItem(wnd, IDC_DSINPUT), vi.AudioChannels() == 2);
+  SendDlgItemMessage(wnd, IDC_AC3DIALOG,CB_SETCURSEL,params["dialognormalization"].AsInt(),0);
+
   sprintf_s(buf,sizeof(buf),"%u",params["vbrquality"].AsInt());
   SetDlgItemText(wnd,IDC_AC3VBRRATE,buf);
   SendDlgItemMessage(wnd, IDC_VBRRATEUPDOWN, UDM_SETRANGE, 0, MAKELONG (1023, 0));
@@ -133,15 +147,19 @@ bool AC3Output::setParamsToGUI() {
       SendDlgItemMessage(wnd, IDC_AC3DRC,CB_SETCURSEL,i,0);
   }
 
-  CheckDlgButton(wnd, IDC_AC3BLOCKSWITCH, params["blockswitch"].AsBool());
+  CheckDlgButton(wnd, IDC_AC3BANDWIDTH, params["bandwidthfilter"].AsBool());
+//  CheckDlgButton(wnd, IDC_AC3BLOCKSWITCH, params["blockswitch"].AsBool());
   CheckDlgButton(wnd, IDC_AC3LFELOWPASS, params["lfelowpass"].AsBool());
   CheckDlgButton(wnd, IDC_AC3DCHIGHPASS, params["dchighpass"].AsBool());
-  CheckDlgButton(wnd, IDC_AC3ACCURATEALLOC, params["accuratealloc"].AsBool());
+//  CheckDlgButton(wnd, IDC_AC3ACCURATEALLOC, params["accuratealloc"].AsBool());
 
   return true;
 }
 
 bool AC3Output::initEncoder() {
+  if (!params["iscbr"].AsBool())
+    MessageBox(NULL,"VBR Bitrate is not compatible with hardware players and most software players.","Warning",MB_OK);
+
   aften_set_defaults(&aften);
   aften.channels = vi.AudioChannels();
   aften.samplerate = vi.audio_samples_per_second;
@@ -162,13 +180,18 @@ bool AC3Output::initEncoder() {
   aften.params.quality = params["vbrquality"].AsInt();
   aften.params.encoding_mode = params["iscbr"].AsBool() ? AFTEN_ENC_MODE_CBR : AFTEN_ENC_MODE_VBR;
   aften.params.bitalloc_fast = !params["accuratealloc"].AsBool();
+  aften.params.use_bw_filter = params["bandwidthfilter"].AsBool();
   aften.params.use_lfe_filter = params["lfelowpass"].AsBool();
   aften.params.use_dc_filter = params["dchighpass"].AsBool();
   aften.params.use_block_switching = params["blockswitch"].AsBool();
+  aften.meta.dialnorm = params["dialognormalization"].AsInt();
   aften_plain_wav_to_acmod(vi.AudioChannels(), &aften.acmod, &aften.lfe);
 
+  if (vi.AudioChannels() == 2) 
+    aften.meta.dsurmod = params["dolbysurround"].AsBool()+1;
+
   if (aften_encode_init(&aften)) {
-     MessageBox(NULL,"Could not initialize encoder. Might be invalid input.","AC3 Encoder",MB_OK);
+     MessageBox(NULL,"Could not initialize encoder. Probably invalid input.","AC3 Encoder",MB_OK);
      try {
       aften_encode_close(&aften); 
      } catch (...) {}

@@ -373,6 +373,14 @@
 				>
 			</File>
 			<File
+				RelativePath=".\PipeOutput.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\PipeOutput.h"
+				>
+			</File>
+			<File
 				RelativePath=".\SoundOutput.cpp"
 				>
 			</File>
