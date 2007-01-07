@@ -40,7 +40,8 @@ FlacOutput::FlacOutput(PClip _child, IScriptEnvironment* _env) : SoundOutput(Con
   SendDlgItemMessage(wnd, IDC_FLAC_COMPRESSIONLEVEL, TBM_SETTICFREQ, 1, 0);
   SendDlgItemMessage(wnd, IDC_FLAC_COMPRESSIONLEVEL, TBM_SETRANGE, TRUE, MAKELONG (1, 8));
   SendDlgItemMessage(wnd, IDC_FLAC_COMPRESSIONLEVEL, TBM_SETPOS, TRUE, 5);
-  outputFileFilter = "FLAC files\0*.flac\0All Files\0*.*\0\0";
+  params["outputFileFilter"] = new AVSValue("FLAC files\0*.flac\0All Files\0*.*\0\0");
+  params["extension"] = AVSValue(".flac");
 }
 
 FlacOutput::~FlacOutput(void)
@@ -65,8 +66,9 @@ bool FlacOutput::initEncoder() {
 }
 
 void FlacOutput::encodeLoop() {
-  SampleBlock* sb = input->GetNextBlock();
-  while (!sb->lastBlock && !exitThread) {
+  SampleBlock* sb;
+  do {
+    sb = input->GetNextBlock();
     int totSmps = sb->numSamples*vi.AudioChannels();
     int* dataArray=new int[totSmps];
     if (vi.IsSampleType(SAMPLE_FLOAT)) { // FLAC has very stupid idea that all samples should be passed as ints.
@@ -87,9 +89,6 @@ void FlacOutput::encodeLoop() {
     }
     process_interleaved(dataArray, sb->numSamples);
     delete dataArray;
-    delete sb;
-    if (input)
-      sb = input->GetNextBlock();
 
     if (get_state() != FLAC__STREAM_ENCODER_OK) {
       sb->lastBlock = true;
@@ -97,7 +96,7 @@ void FlacOutput::encodeLoop() {
       sprintf_s(buf, 800, "FLAC Encoder error: %s", _FLAC__StreamEncoderStateString[get_state()]);
       MessageBox(NULL,buf,"FLAC Encoder",MB_OK);
     }      
-  }
+  } while (!sb->lastBlock && !exitThread);
   finish();
   encodeThread = 0;
 }
@@ -106,7 +105,6 @@ void 	FlacOutput::progress_callback (FLAC__uint64 bytes_written, FLAC__uint64 sa
   if (GetTickCount() - lastUpdateTick < 100)
     return;
 
-  lastUpdateTick = GetTickCount();
   int percent = (int)(samples_written * 100 / vi.num_audio_samples);
   int compression = (int)((vi.BytesFromAudioSamples(samples_written) - bytes_written ) * 100 / vi.BytesFromAudioSamples(samples_written));
   const char* tw_m;
@@ -121,6 +119,7 @@ void 	FlacOutput::progress_callback (FLAC__uint64 bytes_written, FLAC__uint64 sa
     SetDlgItemText(wnd,IDC_STC_CONVERTMSG,buf);
     this->updatePercent(percent);
   }
+  lastUpdateTick = GetTickCount();
 
 }
 

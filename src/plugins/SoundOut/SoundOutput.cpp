@@ -37,8 +37,12 @@ BOOL CALLBACK ConvertProgressProc(
 
 DWORD WINAPI StartEncoder(LPVOID p) {
   SoundOutput* t = (SoundOutput*)p;
-  t->encodeLoop();
-  t->encodingFinished();
+  try {
+    t->encodeLoop();
+    t->encodingFinished();
+  } catch (...) {
+    t->setError("Unhandled Exception in encoder main loop");
+  }
   return 0;
 }
 
@@ -68,10 +72,14 @@ SoundOutput::~SoundOutput(void)
     free(outputFile);
 
   outputFile = 0;
+  
 }
 
 void SoundOutput::startEncoding() {
-  char szFile[MAX_PATH];
+  if (!this->getParamsFromGUI()) {
+    return;
+  }
+  char szFile[MAX_PATH+1];
 	szFile[0] = 0;
 
   char CurrentDir[MAX_PATH];
@@ -82,7 +90,7 @@ void SoundOutput::startEncoding() {
   ofn.hInstance = g_hInst;
   ofn.lpstrTitle = "Select where to save file..";
   ofn.lStructSize = sizeof(ofn);
-  ofn.lpstrFilter = outputFileFilter;
+  ofn.lpstrFilter = params["outputFileFilter"].AsString("All Files (*.*)\0*.*\0\0");
 	ofn.lpstrInitialDir = CurrentDir;
   ofn.Flags = OFN_EXPLORER;
 	ofn.lpstrFile = szFile;
@@ -90,8 +98,15 @@ void SoundOutput::startEncoding() {
 
   if (!GetSaveFileName(&ofn))
     return;
+
+  char *p;  
+  p = strrchr(szFile, '.');
   
+  if (!p)
+    strcat_s(szFile,MAX_PATH+1,params["extension"].AsString());
+
   outputFile = _strdup(szFile);
+
   if (!initEncoder())
     return;
   DestroyWindow(wnd);
@@ -111,24 +126,41 @@ void SoundOutput::encodingFinished() {
   this->updatePercent(100);
   encodeThread = 0;
 }
+void SoundOutput::setError(const char* err) {
+  char buf[800];
+  sprintf_s(buf, 800, "An error occurred during conversion: %s\nThe output file is probably incomplete.", err);
+  SetDlgItemText(wnd,IDC_STC_CONVERTMSG,buf);
+  SetDlgItemText(wnd,IDC_BTN_CONVERTABORT,"Close");
+  this->updatePercent(0);
+  encodeThread = 0;
+}
 
 void SoundOutput::updatePercent(int p) {
   if (!exitThread)
     SendDlgItemMessage(wnd, IDC_PGB_CONVERTPROGRESS, PBM_SETPOS, p, 0);
+
+  lastUpdateTick = GetTickCount();
 }
 
 void SoundOutput::updateSampleStats(__int64 processed,__int64 total) {
+  if (GetTickCount() - lastUpdateTick < 50)
+    return;
   char buf[800];
   int percent = (int)(processed * 100 / total);
-  sprintf_s(buf, 800, "Processed %d%u of %d%u samples (%d%%)\n",
-    (int)(processed>>32),(unsigned int)(processed&0xffffffff), 
-    (int)(total>>32),(unsigned int)(total&0xffffffff), percent);
-
+  if (total > 0xffffffff) {
+    sprintf_s(buf, 800, "Processed %d%u of %d%u samples (%d%%)\n",
+      (int)(processed>>32),(unsigned int)(processed&0xffffffff), 
+      (int)(total>>32),(unsigned int)(total&0xffffffff), percent);
+  } else {
+    sprintf_s(buf, 800, "Processed %u of %u samples (%d%%)\n",
+      (unsigned int)(processed), 
+      (unsigned int)(total), percent);
+  }
   if (!exitThread) {
     SetDlgItemText(wnd,IDC_STC_CONVERTMSG,buf);
     this->updatePercent(percent);
   }
-
+  lastUpdateTick = GetTickCount();
 }
 
 /******************  SAMPLEFETCHER *******************/
@@ -145,9 +177,12 @@ SampleFetcher::SampleFetcher(PClip _child, IScriptEnvironment* _env) : child(_ch
   evtProcessNextBlock = ::CreateEvent (NULL, FALSE, FALSE, NULL);
   thread = CreateThread(NULL,NULL,StartFetcher,this, NULL,NULL);
   SetThreadPriority(thread,THREAD_PRIORITY_BELOW_NORMAL);
+  prev_sb = NULL;
 }
 
 SampleFetcher::~SampleFetcher() {
+  if (prev_sb)
+     delete prev_sb;
   if (!exitThread) {
     exitThread = true;
     SetEvent(evtProcessNextBlock);
@@ -159,10 +194,13 @@ SampleFetcher::~SampleFetcher() {
 
 SampleBlock* SampleFetcher::GetNextBlock() {
    HRESULT wait_result = WAIT_TIMEOUT;
+   if (prev_sb)
+     delete prev_sb;
    while (wait_result == WAIT_TIMEOUT && !exitThread) {
       wait_result = WaitForSingleObject(evtNextBlockReady, 1000);
    }
    SampleBlock* s = FinishedBlock;
+   prev_sb = s;
    SetEvent(evtProcessNextBlock);
    return s;
 }
@@ -176,8 +214,16 @@ void SampleFetcher::FetchLoop() {
       exitThread = true;
     }
     SampleBlock *s = new SampleBlock(&vi, getsamples);
-    child->GetAudio(s->getSamples(), currentPos, getsamples, env);
-    currentPos += getsamples;
+    try {
+      child->GetAudio(s->getSamples(), currentPos, getsamples, env);    
+      currentPos += getsamples;
+    } catch (...) {
+      if(IDNO == MessageBox(NULL,"An Error occured, while fetching samples.\nCurrent sampleblock will be skipped\nWould you like to abort conversion?","Abort?",MB_YESNO)) {
+        memset(s->getSamples(), 0, (size_t)vi.BytesFromAudioSamples(s->numSamples));
+      } else {
+        exitThread = true;
+      }
+    }
     if (exitThread)
       s->lastBlock = true;
     FinishedBlock = s;

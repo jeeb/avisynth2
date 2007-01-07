@@ -27,7 +27,6 @@ BOOL CALLBACK WavDialogProc(
           delete out;
           return true;
         case IDC_WAVSAVE:
-          out->outputFileFilter = WAV_ExtString[SendDlgItemMessage(hwndDlg, IDC_WAVTYPE, CB_GETCURSEL,0,0)];
           out->startEncoding();
           return true;
         case IDC_WAVCANCEL:
@@ -54,17 +53,25 @@ WavOutput::WavOutput(PClip _child, IScriptEnvironment* _env) : SoundOutput(Conve
      SendDlgItemMessage(wnd, IDC_WAVTYPE, CB_ADDSTRING, 0, (LPARAM)WAV_TypeString[i]);
   }
   SendDlgItemMessage(wnd, IDC_WAVTYPE,CB_SETCURSEL,0,0);  // TODO: Registry
+  params["extension"] = AVSValue(".wav");
 }
 
 WavOutput::~WavOutput(void)
 {
 }
 
+bool WavOutput::getParamsFromGUI() {
+  params["outputFileFilter"] = AVSValue(WAV_ExtString[SendDlgItemMessage(wnd, IDC_WAVTYPE, CB_GETCURSEL,0,0)]);
+  params["type"] = AVSValue((int)SendDlgItemMessage(wnd, IDC_WAVTYPE, CB_GETCURSEL,0,0));
+  params["peakchunck"] = AVSValue(!!IsDlgButtonChecked(wnd,IDC_WAVPEAKINFO));
+  return true;
+}
+
 bool WavOutput::initEncoder() {
   info.channels = vi.AudioChannels();
   info.frames = vi.num_audio_samples;
   info.samplerate = vi.audio_samples_per_second;
-  int format = WAV_TypeVal[SendDlgItemMessage(wnd, IDC_WAVTYPE, CB_GETCURSEL,0,0)];
+  int format = WAV_TypeVal[params["type"].AsInt()];
   if (vi.IsSampleType(SAMPLE_INT16))
     format |= SF_FORMAT_PCM_16;
   if (vi.IsSampleType(SAMPLE_INT24))
@@ -74,7 +81,7 @@ bool WavOutput::initEncoder() {
   if (vi.IsSampleType(SAMPLE_FLOAT))
     format |= SF_FORMAT_FLOAT;
 
-  info.format = format;
+  info.format = format;  
 
   if (!sf_format_check(&info)) {
     MessageBox(NULL,"An encoder error occured while initializing WAVE format.","WAVE Encoder",MB_OK);
@@ -85,20 +92,23 @@ bool WavOutput::initEncoder() {
     MessageBox(NULL,"Could not open file for writing.","WAV Encoder",MB_OK);
     return false;
   }
+  int cmd = params["peakchunck"].AsBool();
+  sf_command(sndfile, SFC_SET_ADD_PEAK_CHUNK, &cmd,1);
   return true;
 }
 
 void WavOutput::encodeLoop() {
-  SampleBlock* sb = input->GetNextBlock();
   __int64 encodedSamples = 0;
-  while (!sb->lastBlock && !exitThread) {
+  SampleBlock* sb;
+  do {
+    sb = input->GetNextBlock();
     encodedSamples += sb->numSamples;
     this->updateSampleStats(encodedSamples, vi.num_audio_samples);
     sf_write_raw(sndfile, sb->getSamples(), vi.BytesFromAudioSamples(sb->numSamples));
     delete sb;
     if (input)
       sb = input->GetNextBlock();
-  }
+  } while (!sb->lastBlock && !exitThread);
 	if (sf_close(sndfile)) {
     MessageBox(NULL,"An encoder error occured while finalizing WAV output. Output file may not work","WAVE Encoder",MB_OK);
 	}

@@ -113,7 +113,9 @@ Mp2Output::Mp2Output(PClip _child, IScriptEnvironment* _env) : SoundOutput(Conve
   }
   SendDlgItemMessage(wnd, IDC_MP2DEEMPHASIS, CB_SETCURSEL,0,0);  // TODO: Registry
 
-  outputFileFilter = "MP2 files (*.mp2;*.mpa;*.m2a)\0*.mp2;*.mpa;*.m2a\0All Files (*.*)\0*.*\0\0";
+  params["outputFileFilter"] = AVSValue("MP2 files (*.mp2;*.mpa;*.m2a)\0*.mp2;*.mpa;*.m2a\0All Files (*.*)\0*.*\0\0");
+  params["extension"] = AVSValue(".mp2");
+
 }
 
 Mp2Output::~Mp2Output(void)
@@ -216,13 +218,14 @@ bool Mp2Output::initEncoder() {
 }
 
 void Mp2Output::encodeLoop() {
-  SampleBlock* sb = input->GetNextBlock();
   FILE *f;
   fopen_s(&f, outputFile, "wbS");
   unsigned char *outbuffer = (unsigned char*)malloc(BLOCKSAMPLES);
   __int64 encodedBytes = 0;
   __int64 encodedSamples = 0;
-  while (!sb->lastBlock && !exitThread) {
+  SampleBlock* sb;
+  do {
+    sb = input->GetNextBlock();
     int bytesReady = 0;
     if (vi.IsSampleType(SAMPLE_INT16)) {
       bytesReady = twolame_encode_buffer_interleaved(encodeOptions, (short*)sb->getSamples(), sb->numSamples,outbuffer,BLOCKSAMPLES);
@@ -233,7 +236,7 @@ void Mp2Output::encodeLoop() {
     }
     if (bytesReady) {
       encodedBytes += bytesReady;
-      int written = fwrite(outbuffer, bytesReady, 1, f);
+      int written = (int)fwrite(outbuffer, bytesReady, 1, f);
       if (!written) {
          MessageBox(NULL,"A Disk write error occured.","MP2 Encoder",MB_OK);
         exitThread = true;
@@ -241,10 +244,8 @@ void Mp2Output::encodeLoop() {
     }
     encodedSamples += sb->numSamples;
     this->updateSampleStats(encodedSamples, vi.num_audio_samples);
-    delete sb;
-    if (input)
-      sb = input->GetNextBlock();
-  }
+  } while (!sb->lastBlock && !exitThread);
+
   int bytesReady = twolame_encode_flush(encodeOptions, outbuffer, BLOCKSAMPLES);
   fwrite(outbuffer, bytesReady, 1, f);
   fclose(f);

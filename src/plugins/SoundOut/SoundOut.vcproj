@@ -60,7 +60,8 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="Comdlg32.lib User32.lib lib\libFLAC++_static.lib lib\libFLAC_static.lib lib\libvorbis.lib lib\ogg_static.lib lib\twolame.lib lib\MAClib.lib lib\libsndfile-1.lib"
+				AdditionalDependencies="Comdlg32.lib User32.lib lib\libFLAC++_static.lib lib\libFLAC_static.lib lib\libvorbis.lib lib\ogg_static.lib lib\twolame.lib lib\MAClib.lib lib\libsndfile-1.lib lib\libaften.lib"
+				ShowProgress="0"
 				LinkIncremental="2"
 				GenerateDebugInformation="true"
 				SubSystem="2"
@@ -136,7 +137,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="Comdlg32.lib User32.lib lib\libFLAC++_static.lib lib\libFLAC_static.lib lib\libvorbis.lib lib\ogg_static.lib lib\twolame.lib lib\MAClib.lib lib\libsndfile-1.lib"
+				AdditionalDependencies="Comdlg32.lib User32.lib lib\libFLAC++_static.lib lib\libFLAC_static.lib lib\libvorbis.lib lib\ogg_static.lib lib\twolame.lib lib\MAClib.lib lib\libsndfile-1.lib lib\libaften.lib"
 				LinkIncremental="1"
 				GenerateManifest="true"
 				AdditionalManifestDependencies=""
@@ -184,11 +185,19 @@
 			UniqueIdentifier="{93995380-89BD-4b04-88EB-625FBE52EBFB}"
 			>
 			<File
+				RelativePath=".\h\aften.h"
+				>
+			</File>
+			<File
 				RelativePath=".\h\lame.h"
 				>
 			</File>
 			<File
 				RelativePath=".\rc\rsrc.inc"
+				>
+			</File>
+			<File
+				RelativePath=".\h\sndfile.h"
 				>
 			</File>
 			<File
@@ -260,6 +269,22 @@
 				</Filter>
 			</Filter>
 			<Filter
+				Name="MAC"
+				>
+				<File
+					RelativePath=".\h\MAC\All.h"
+					>
+				</File>
+				<File
+					RelativePath=".\h\MACLib.h"
+					>
+				</File>
+				<File
+					RelativePath=".\h\MAC\SmartPtr.h"
+					>
+				</File>
+			</Filter>
+			<Filter
 				Name="vorbis"
 				>
 				<File
@@ -280,22 +305,6 @@
 				</File>
 				<File
 					RelativePath=".\h\vorbis\vorbisfile.h"
-					>
-				</File>
-			</Filter>
-			<Filter
-				Name="MAC"
-				>
-				<File
-					RelativePath=".\h\MAC\All.h"
-					>
-				</File>
-				<File
-					RelativePath=".\h\MACLib.h"
-					>
-				</File>
-				<File
-					RelativePath=".\h\MAC\SmartPtr.h"
 					>
 				</File>
 			</Filter>
@@ -331,6 +340,14 @@
 		<Filter
 			Name="OutputModules"
 			>
+			<File
+				RelativePath=".\AC3Output.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\AC3Output.h"
+				>
+			</File>
 			<File
 				RelativePath=".\FlacOutput.cpp"
 				>

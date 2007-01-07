@@ -29,6 +29,7 @@
 #include "MacOutput.h"
 #include "Mp2Output.h"
 #include "WavOutput.h"
+#include "AC3Output.h"
 
 HINSTANCE g_hInst;
 SoundOut* so;
@@ -58,6 +59,9 @@ const char* t_GB="GB";
 
 
 SoundOut::SoundOut(PClip _child, IScriptEnvironment* _env) : GenericVideoFilter(_child), currentOut(0), env(_env) {
+  if (!vi.HasAudio())
+    env->ThrowError("SoundOut: No audio was found");
+
 	wnd=CreateDialog(g_hInst,MAKEINTRESOURCE(IDD_DLG_MAIN),0,MainDialogProc);
 	ShowWindow(wnd,SW_NORMAL);
   SendMessage(wnd,WM_SETICON,ICON_SMALL, (LPARAM)LoadImage( g_hInst, MAKEINTRESOURCE(ICO_AVISYNTH),IMAGE_ICON,0,0,0));
@@ -144,6 +148,9 @@ BOOL CALLBACK MainDialogProc(
           return true;
         case IDC_BTN_SAVEMP2:
           so->SetOutput(new Mp2Output(so->GetClip(),so->env));
+          return true;
+        case IDC_BTN_SAVEAC3:
+          so->SetOutput(new AC3Output(so->GetClip(),so->env));
           return true;
 			}
 			break;

@@ -11,6 +11,7 @@ public:
   virtual ~WavOutput(void);
   bool initEncoder();  // Called to Init the encoder, returns false if error occured.
   void encodeLoop();
+  virtual bool getParamsFromGUI();
 private:
   SNDFILE* sndfile;
   SF_INFO info;

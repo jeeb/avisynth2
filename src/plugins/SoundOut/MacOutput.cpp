@@ -53,7 +53,8 @@ MacOutput::MacOutput(PClip _child, IScriptEnvironment* _env) : SoundOutput(Conve
   SendDlgItemMessage(wnd, IDC_MAC_COMPRESSIONLEVEL, TBM_SETTICFREQ, 1, 0);
   SendDlgItemMessage(wnd, IDC_MAC_COMPRESSIONLEVEL, TBM_SETRANGE, TRUE, MAKELONG (1, 5));
   SendDlgItemMessage(wnd, IDC_MAC_COMPRESSIONLEVEL, TBM_SETPOS, TRUE, 3);
-  outputFileFilter = "APE files (*.ape)\0*.ape\0All Files (*.*)\0*.*\0\0";
+  params["outputFileFilter"] = AVSValue("APE files (*.ape)\0*.ape\0All Files (*.*)\0*.*\0\0");
+  params["extension"] = AVSValue(".ape");
 }
 
 MacOutput::~MacOutput(void)
@@ -68,7 +69,7 @@ bool MacOutput::initEncoder() {
 
   str_utf16 theFile[MAX_PATH+1];
   memset(theFile,0,sizeof(theFile));
-  MultiByteToWideChar(CP_ACP,0,outputFile,strlen(outputFile),theFile,MAX_PATH+1);
+  MultiByteToWideChar(CP_ACP,0,outputFile,(int)strlen(outputFile),theFile,MAX_PATH+1);
 
   int level = (unsigned int)SendDlgItemMessage(wnd, IDC_MAC_COMPRESSIONLEVEL, TBM_GETPOS, 0, 0)*1000;
 
@@ -90,18 +91,16 @@ bool MacOutput::initEncoder() {
 }
 
 void MacOutput::encodeLoop() {
-  SampleBlock* sb = input->GetNextBlock();
   __int64 encodedSamples = 0;
-  while (!sb->lastBlock && !exitThread) {
-    pAPECompress->AddData((unsigned char*)sb->getSamples(), vi.BytesFromAudioSamples(sb->numSamples));
+  SampleBlock* sb;
+  do {
+    sb = input->GetNextBlock();
+    pAPECompress->AddData((unsigned char*)sb->getSamples(), (int)vi.BytesFromAudioSamples(sb->numSamples));
 
     encodedSamples += sb->numSamples;
     this->updateSampleStats(encodedSamples, vi.num_audio_samples);
 
-    delete sb;
-    if (input)
-      sb = input->GetNextBlock();
-  }
+  } while (!sb->lastBlock && !exitThread);
 
 	if (pAPECompress->Finish(NULL, 0, 0) != 0) {
     MessageBox(NULL,"An encoder error occured while finalizing APE Compression. Output file may not work","Monkey Audio Encoder",MB_OK);
