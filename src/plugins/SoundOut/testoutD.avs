@@ -1,5 +1,7 @@
 loadplugin("debug/soundout.dll")
 colorbars()
-trim(0,50000)
+trim(0,5000)
+ssrc(44100)
+amplifydb(-10)
 convertaudioto16bit()
 soundout()

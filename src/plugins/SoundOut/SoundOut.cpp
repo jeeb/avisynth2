@@ -30,6 +30,7 @@
 #include "Mp2Output.h"
 #include "WavOutput.h"
 #include "AC3Output.h"
+#include "PipeOutput.h"
 
 HINSTANCE g_hInst;
 SoundOut* so;
@@ -151,6 +152,9 @@ BOOL CALLBACK MainDialogProc(
           return true;
         case IDC_BTN_SAVEAC3:
           so->SetOutput(new AC3Output(so->GetClip(),so->env));
+          return true;
+        case IDC_BTN_COMMANDOUT:
+          so->SetOutput(new PipeOutput(so->GetClip(),so->env));
           return true;
 			}
 			break;

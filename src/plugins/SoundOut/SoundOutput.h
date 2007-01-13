@@ -70,13 +70,13 @@ public:
   void FetchLoop();
   SampleBlock* GetNextBlock();
   bool exitThread;
+  IScriptEnvironment* env;
+  PClip child;
 protected:
   SampleBlock* FinishedBlock;
-  PClip child;
   HANDLE evtNextBlockReady;
   HANDLE evtProcessNextBlock;
   HANDLE thread;
-  IScriptEnvironment* env;
   SampleBlock* prev_sb;
 };
 

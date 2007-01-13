@@ -113,7 +113,7 @@ void SoundOutput::startEncoding() {
   so_out = this;
 	wnd=CreateDialog(g_hInst,MAKEINTRESOURCE(IDD_DLG_CONVERT),0,ConvertProgressProc);
   SendMessage(wnd,WM_SETICON,ICON_SMALL, (LPARAM)LoadImage( g_hInst, MAKEINTRESOURCE(ICO_AVISYNTH),IMAGE_ICON,0,0,0));
-  SetDlgItemText(wnd,IDC_STC_CONVERTMSG,"Initializing...");
+  SetDlgItemText(wnd,IDC_STC_CONVERTMSG,"Initialization successful, Beginning Conversion...");
 
   exitThread = false;
   encodeThread = CreateThread(NULL,NULL,StartEncoder,this, NULL,NULL);
@@ -208,8 +208,6 @@ SampleFetcher::SampleFetcher(PClip _child, IScriptEnvironment* _env) : child(_ch
 }
 
 SampleFetcher::~SampleFetcher() {
-  if (prev_sb)
-     delete prev_sb;
   if (!exitThread) {
     exitThread = true;
     SetEvent(evtProcessNextBlock);
@@ -217,12 +215,16 @@ SampleFetcher::~SampleFetcher() {
       Sleep(100);
     }
   }
+  if (prev_sb)
+     delete prev_sb;
 }
 
 SampleBlock* SampleFetcher::GetNextBlock() {
    HRESULT wait_result = WAIT_TIMEOUT;
    if (prev_sb)
      delete prev_sb;
+   prev_sb = NULL;
+
    while (wait_result == WAIT_TIMEOUT && !exitThread) {
       wait_result = WaitForSingleObject(evtNextBlockReady, 1000);
    }

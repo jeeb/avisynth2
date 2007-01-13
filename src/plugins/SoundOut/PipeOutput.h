@@ -1,6 +1,5 @@
 #pragma once
 #include "soundoutput.h"
-#include "h/sndfile.h"
 
 class PipeOutput :
   public SoundOutput
@@ -13,7 +12,14 @@ public:
   void encodeLoop();
   virtual bool getParamsFromGUI();
   virtual bool setParamsToGUI();
+  void fetchResults();
+  void writeSamples(const void *ptr, int count);
+
+HANDLE hChildStdinRd, hChildStdinWr,  
+   hChildStdoutRd, hChildStdoutWr, 
+   hChildStderrRd, hChildStderrWr; 
+
+   HWND hConsole;
 private:
-  SNDFILE* sndfile;
-  SF_INFO info;
+  HANDLE inputThread;
 };
