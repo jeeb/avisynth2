@@ -32,13 +32,15 @@ public:
   char* outputFile;
   void setError(const char* err);
   map<const char*, AVSValue,ltstr> params;
-protected:
-  virtual bool initEncoder() { return true;}   // Called to Init the encoder, returns false if error occured.
+  virtual void showGUI() = 0;
+  virtual bool setParamsToGUI() {return true;}
+  bool quietExit;
   virtual void setDefaults() {}
   virtual bool getParamsFromGUI() {return true;}
-  virtual bool setParamsToGUI() {return true;}
+protected:
+  virtual bool initEncoder() { return true;}   // Called to Init the encoder, returns false if error occured.
   void updatePercent(int p);
-  void updateSampleStats(__int64 processed,__int64 total);
+  void updateSampleStats(__int64 processed,__int64 total,bool force=false);
   HWND wnd;
   HWND statWnd;
   SampleFetcher *input;

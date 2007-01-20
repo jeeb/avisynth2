@@ -46,21 +46,23 @@ const char* FindExplanation(int ApeError) {
 }
 MacOutput::MacOutput(PClip _child, IScriptEnvironment* _env) : SoundOutput(ConvertAudio::Create(_child, SAMPLE_INT8|SAMPLE_INT16|SAMPLE_INT24,SAMPLE_INT24),_env)
 {
+  params["filterID"] = AVSValue("mac");
+  params["outputFileFilter"] = AVSValue("APE files (*.ape)\0*.ape\0All Files (*.*)\0*.*\0\0");
+  params["extension"] = AVSValue(".ape");
+  params["compressionlevel"] = AVSValue(3);
+}
+
+MacOutput::~MacOutput(void)
+{
+}
+
+void MacOutput::showGUI() {
   out = this;
 	wnd=CreateDialog(g_hInst,MAKEINTRESOURCE(IDD_MACSETTINGS),0,MacDialogProc);
   SendMessage(wnd,WM_SETICON,ICON_SMALL, (LPARAM)LoadImage( g_hInst, MAKEINTRESOURCE(ICO_AVISYNTH),IMAGE_ICON,0,0,0));
 	ShowWindow(wnd,SW_NORMAL);
   SendDlgItemMessage(wnd, IDC_MAC_COMPRESSIONLEVEL, TBM_SETTICFREQ, 1, 0);
   SendDlgItemMessage(wnd, IDC_MAC_COMPRESSIONLEVEL, TBM_SETRANGE, TRUE, MAKELONG (1, 5));
-  params["filterID"] = AVSValue("macout");
-  params["outputFileFilter"] = AVSValue("APE files (*.ape)\0*.ape\0All Files (*.*)\0*.*\0\0");
-  params["extension"] = AVSValue(".ape");
-  params["compressionlevel"] = AVSValue(3);
-  setParamsToGUI();
-}
-
-MacOutput::~MacOutput(void)
-{
 }
 
 bool MacOutput::getParamsFromGUI() {

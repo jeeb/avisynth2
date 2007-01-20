@@ -11,9 +11,11 @@ public:
 public:
   bool initEncoder();  // Called to Init the encoder, returns false if error occured.
   void encodeLoop();
-protected:
+  virtual void showGUI();
   virtual bool getParamsFromGUI();
   virtual bool setParamsToGUI();
+  bool GUI_ready;
+protected:
   AftenContext aften;
   void encodeBlock(unsigned char* in);
   FILE *f;

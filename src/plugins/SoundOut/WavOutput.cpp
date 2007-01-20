@@ -45,6 +45,18 @@ BOOL CALLBACK WavDialogProc(
 
 WavOutput::WavOutput(PClip _child, IScriptEnvironment* _env) : SoundOutput(ConvertAudio::Create(_child, SAMPLE_INT16|SAMPLE_INT24|SAMPLE_INT32|SAMPLE_FLOAT,SAMPLE_INT16),_env)
 {
+  params["type"] = AVSValue(0);
+  params["outputFileFilter"] = AVSValue("WAV files\0*.wav\0PCM files\0*.pcm\0All Files\0*.*\0\0");
+  params["extension"] = AVSValue(".wav");
+  params["peakchunck"] = AVSValue(false);
+  params["filterID"] = AVSValue("libsnd");
+}
+
+WavOutput::~WavOutput(void)
+{
+}
+
+void WavOutput::showGUI() {
   out = this;
 	wnd=CreateDialog(g_hInst,MAKEINTRESOURCE(IDD_WAVSETTINGS),0,WavDialogProc);
   SendMessage(wnd,WM_SETICON,ICON_SMALL, (LPARAM)LoadImage( g_hInst, MAKEINTRESOURCE(ICO_AVISYNTH),IMAGE_ICON,0,0,0));
@@ -52,15 +64,6 @@ WavOutput::WavOutput(PClip _child, IScriptEnvironment* _env) : SoundOutput(Conve
   for (int i = 0; i< 7; i++) {
      SendDlgItemMessage(wnd, IDC_WAVTYPE, CB_ADDSTRING, 0, (LPARAM)WAV_TypeString[i]);
   }
-  params["type"] = AVSValue(0);
-  params["extension"] = AVSValue(".wav");
-  params["peakchunck"] = AVSValue(false);
-  params["filterID"] = AVSValue("libsndout");
-  setParamsToGUI();
-}
-
-WavOutput::~WavOutput(void)
-{
 }
 
 bool WavOutput::setParamsToGUI() {
@@ -111,9 +114,9 @@ void WavOutput::encodeLoop() {
   SampleBlock* sb;
   do {
     sb = input->GetNextBlock();
+    sf_write_raw(sndfile, sb->getSamples(), vi.BytesFromAudioSamples(sb->numSamples));
     encodedSamples += sb->numSamples;
     this->updateSampleStats(encodedSamples, vi.num_audio_samples);
-    sf_write_raw(sndfile, sb->getSamples(), vi.BytesFromAudioSamples(sb->numSamples));
   } while (!sb->lastBlock && !exitThread);
 	if (sf_close(sndfile)) {
     MessageBox(NULL,"An encoder error occured while finalizing WAV output. Output file may not work","WAVE Encoder",MB_OK);

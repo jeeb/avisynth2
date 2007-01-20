@@ -13,6 +13,7 @@ public:
   bool initEncoder();  // Called to Init the encoder, returns false if error occured.
   virtual bool getParamsFromGUI();
   virtual bool setParamsToGUI();
+  virtual void showGUI();
 
 private:
   IAPECompress * pAPECompress;

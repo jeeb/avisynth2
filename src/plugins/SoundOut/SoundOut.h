@@ -25,11 +25,13 @@
 
 #pragma once
 
+#define _CRTDBG_MAP_ALLOC
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
 #include "..\..\core\avisynth.h"
 #include "rc/rsrc.inc"
+#include <crtdbg.h>
 
 extern HINSTANCE g_hInst;
 AVSValue __cdecl Create_SoundOut(AVSValue args, void* user_data, IScriptEnvironment* env);

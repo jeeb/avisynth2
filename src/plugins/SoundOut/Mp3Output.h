@@ -1,20 +1,20 @@
 #pragma once
 #include "soundoutput.h"
-#include "h/sndfile.h"
+#include "h\lame.h"
 
-class WavOutput :
+class Mp3Output :
   public SoundOutput
 {
 public:
-  WavOutput(PClip _child, IScriptEnvironment* _env);
+  Mp3Output(PClip _child, IScriptEnvironment* _env);
 public:
-  virtual ~WavOutput(void);
+  virtual ~Mp3Output(void);
   bool initEncoder();  // Called to Init the encoder, returns false if error occured.
   void encodeLoop();
+  virtual void showGUI();
   virtual bool getParamsFromGUI();
   virtual bool setParamsToGUI();
-  virtual void showGUI();
-private:
-  SNDFILE* sndfile;
-  SF_INFO info;
+  bool GUI_ready;
+protected:
+  lame_global_struct* lame;
 };

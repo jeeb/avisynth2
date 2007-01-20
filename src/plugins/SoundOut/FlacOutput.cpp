@@ -33,22 +33,23 @@ BOOL CALLBACK FlacDialogProc(
 
 FlacOutput::FlacOutput(PClip _child, IScriptEnvironment* _env) : SoundOutput(ConvertAudio::Create(_child, SAMPLE_INT8|SAMPLE_INT16|SAMPLE_FLOAT,SAMPLE_FLOAT),_env)
 {
-  out = this;
-	wnd=CreateDialog(g_hInst,MAKEINTRESOURCE(IDD_FLACSETTINGS),0,FlacDialogProc);
-  SendMessage(wnd,WM_SETICON,ICON_SMALL, (LPARAM)LoadImage( g_hInst, MAKEINTRESOURCE(ICO_AVISYNTH),IMAGE_ICON,0,0,0));
-	ShowWindow(wnd,SW_NORMAL);
-  SendDlgItemMessage(wnd, IDC_FLAC_COMPRESSIONLEVEL, TBM_SETTICFREQ, 1, 0);
-  SendDlgItemMessage(wnd, IDC_FLAC_COMPRESSIONLEVEL, TBM_SETRANGE, TRUE, MAKELONG (1, 8));
   params["outputFileFilter"] = new AVSValue("FLAC files\0*.flac\0All Files\0*.*\0\0");
   params["extension"] = AVSValue(".flac");
-  params["filterID"] = AVSValue("flacout");
+  params["filterID"] = AVSValue("flac");
   params["compressionlevel"] = AVSValue(6);
-
-  setParamsToGUI();
 }
 
 FlacOutput::~FlacOutput(void)
 {
+}
+
+void FlacOutput::showGUI() {
+  out = this;
+	wnd=CreateDialog(g_hInst,MAKEINTRESOURCE(IDD_FLACSETTINGS),0,FlacDialogProc);
+  SendMessage(wnd,WM_SETICON,ICON_SMALL, (LPARAM)LoadImage( g_hInst, MAKEINTRESOURCE(ICO_AVISYNTH),IMAGE_ICON,0,0,0));
+  SendDlgItemMessage(wnd, IDC_FLAC_COMPRESSIONLEVEL, TBM_SETTICFREQ, 1, 0);
+  SendDlgItemMessage(wnd, IDC_FLAC_COMPRESSIONLEVEL, TBM_SETRANGE, TRUE, MAKELONG (1, 8));
+	ShowWindow(wnd,SW_NORMAL);
   exitThread = true;
 }
 

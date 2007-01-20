@@ -24,19 +24,13 @@ BOOL CALLBACK AC3DialogProc(
           return true;
         case IDC_AC3CBRMODE:
         case IDC_AC3VBRMODE:
-          if (!!IsDlgButtonChecked(wnd, IDC_AC3CBRMODE)) {
-	          CheckDlgButton(wnd, IDC_AC3CBRMODE, BST_CHECKED);
-	          EnableWindow(GetDlgItem(wnd, IDC_AC3VBRRATE), false);
-	          EnableWindow(GetDlgItem(wnd, IDC_VBRRATEUPDOWN), false);    
-          } else {
-	          CheckDlgButton(wnd, IDC_AC3VBRMODE, BST_CHECKED);
-	          EnableWindow(GetDlgItem(wnd, IDC_AC3VBRRATE), true);
-	          EnableWindow(GetDlgItem(wnd, IDC_VBRRATEUPDOWN), true);    
+          if (out->GUI_ready) {
+            out->getParamsFromGUI();
+            out->setParamsToGUI();
           }
           return true;
-			}
+      }
 			break;
-
 		case WM_INITDIALOG:
 			return true;
 	}
@@ -53,13 +47,10 @@ const char * const AC3_DRCString[] = { "None", "Film Light", "Film Standard", "M
 
 AC3Output::AC3Output(PClip _child, IScriptEnvironment* _env) : SoundOutput(_child ,_env)
 {
-  out = this;
-	wnd=CreateDialog(g_hInst,MAKEINTRESOURCE(IDD_AC3SETTINGS),0,AC3DialogProc);
-  SendMessage(wnd,WM_SETICON,ICON_SMALL, (LPARAM)LoadImage( g_hInst, MAKEINTRESOURCE(ICO_AVISYNTH),IMAGE_ICON,0,0,0));
-	ShowWindow(wnd,SW_NORMAL);
+  GUI_ready = false;
   params["outputFileFilter"] = AVSValue("AC3 files\0*.ac3\0All Files\0*.*\0\0");
   params["extension"] = AVSValue(".ac3");
-  params["filterID"] = AVSValue("aftenout");
+  params["filterID"] = AVSValue("aften");
   params["iscbr"] = AVSValue(true);
   params["cbrrate"] = AVSValue(384);
   params["vbrquality"] = AVSValue(220);
@@ -71,7 +62,16 @@ AC3Output::AC3Output(PClip _child, IScriptEnvironment* _env) : SoundOutput(_chil
   params["dolbysurround"] = AVSValue(false);
   params["drc"] = AVSValue(DYNRNG_PROFILE_NONE);
   params["dialognormalization"] = AVSValue(31);
+}
 
+AC3Output::~AC3Output(void)
+{
+}
+void AC3Output::showGUI() {
+  out = this;
+	wnd=CreateDialog(g_hInst,MAKEINTRESOURCE(IDD_AC3SETTINGS),0,AC3DialogProc);
+  SendMessage(wnd,WM_SETICON,ICON_SMALL, (LPARAM)LoadImage( g_hInst, MAKEINTRESOURCE(ICO_AVISYNTH),IMAGE_ICON,0,0,0));
+	ShowWindow(wnd,SW_NORMAL);
   for (int i = 0; AC3_CBRBitrateVal[i] !=-1; i++) {
     char buf[10];
     sprintf_s(buf,10,"%d", AC3_CBRBitrateVal[i]);
@@ -85,23 +85,16 @@ AC3Output::AC3Output(PClip _child, IScriptEnvironment* _env) : SoundOutput(_chil
     sprintf_s(buf,10,"%d", i);
     SendDlgItemMessage(wnd, IDC_AC3DIALOG, CB_ADDSTRING, 0, (LPARAM)buf);
   }
-
-  setParamsToGUI();
-}
-
-AC3Output::~AC3Output(void)
-{
 }
 
 bool AC3Output::getParamsFromGUI() {
   params["cbrrate"] = AVSValue(AC3_CBRBitrateVal[SendDlgItemMessage(wnd, IDC_AC3CBRRATE, CB_GETCURSEL,0,0)]);
   params["dialognormalization"] = AVSValue((int)SendDlgItemMessage(wnd, IDC_AC3DIALOG, CB_GETCURSEL,0,0));
   char buf[100];
-  int n;
   SendDlgItemMessage(wnd, IDC_AC3VBRRATE, EM_GETLINE,0,(LPARAM)buf);
-  sscanf_s(buf,"%d",&n);
+  int n = atoi(buf);
   if (n<0 || n>1023) {
-    MessageBox(NULL,"VBR Bitrate must be between 0 and 1023","AC3 Encoder",MB_OK);
+    MessageBox(NULL,"VBR Quality must be between 0 and 1023","AC3 Encoder",MB_OK);
     return false;
   }
   params["vbrquality"] = AVSValue(n);
@@ -110,7 +103,7 @@ bool AC3Output::getParamsFromGUI() {
   params["lfelowpass"] = AVSValue(!!IsDlgButtonChecked(wnd, IDC_AC3LFELOWPASS));
   params["dchighpass"] = AVSValue(!!IsDlgButtonChecked(wnd, IDC_AC3DCHIGHPASS));
   params["dolbysurround"] = AVSValue(!!IsDlgButtonChecked(wnd, IDC_AC3DCHIGHPASS));
-  params["drc"] = AVSValue(AC3_DRCVal[SendDlgItemMessage(wnd, IDC_DSINPUT, CB_GETCURSEL,0,0)]);
+  params["drc"] = AVSValue(AC3_DRCVal[SendDlgItemMessage(wnd, IDC_AC3DRC, CB_GETCURSEL,0,0)]);
   return true;
 }
 
@@ -148,11 +141,10 @@ bool AC3Output::setParamsToGUI() {
   }
 
   CheckDlgButton(wnd, IDC_AC3BANDWIDTH, params["bandwidthfilter"].AsBool());
-//  CheckDlgButton(wnd, IDC_AC3BLOCKSWITCH, params["blockswitch"].AsBool());
   CheckDlgButton(wnd, IDC_AC3LFELOWPASS, params["lfelowpass"].AsBool());
   CheckDlgButton(wnd, IDC_AC3DCHIGHPASS, params["dchighpass"].AsBool());
-//  CheckDlgButton(wnd, IDC_AC3ACCURATEALLOC, params["accuratealloc"].AsBool());
 
+  GUI_ready = true;
   return true;
 }
 

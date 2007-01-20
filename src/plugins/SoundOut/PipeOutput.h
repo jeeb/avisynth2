@@ -14,6 +14,7 @@ public:
   virtual bool setParamsToGUI();
   void fetchResults();
   void writeSamples(const void *ptr, int count);
+  virtual void showGUI();
 
 HANDLE hChildStdinRd, hChildStdinWr,  
    hChildStdoutRd, hChildStdoutWr, 
@@ -22,4 +23,6 @@ HANDLE hChildStdinRd, hChildStdinWr,
    HWND hConsole;
 private:
   HANDLE inputThread;
+  HANDLE hProcess;
+  CHAR screenBuf[32000]; 
 };

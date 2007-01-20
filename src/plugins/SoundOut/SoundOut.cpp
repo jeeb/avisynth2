@@ -31,6 +31,8 @@
 #include "WavOutput.h"
 #include "AC3Output.h"
 #include "PipeOutput.h"
+#include "Mp3Output.h"
+#include "VorbisOutput.h"
 
 HINSTANCE g_hInst;
 SoundOut* so;
@@ -115,11 +117,14 @@ SoundOut::SoundOut(PClip _child, IScriptEnvironment* _env) : GenericVideoFilter(
 }
 
 SoundOut::~SoundOut() {
+  _CrtDumpMemoryLeaks();
   DestroyWindow(wnd);
 }
 
 void SoundOut::SetOutput(SoundOutput* newinput) {
   currentOut = newinput;
+  newinput->showGUI();
+  newinput->setParamsToGUI();
 }
 
 BOOL CALLBACK MainDialogProc(
@@ -155,6 +160,12 @@ BOOL CALLBACK MainDialogProc(
           return true;
         case IDC_BTN_COMMANDOUT:
           so->SetOutput(new PipeOutput(so->GetClip(),so->env));
+          return true;
+        case IDC_BTN_SAVEMP3:
+          so->SetOutput(new Mp3Output(so->GetClip(),so->env));
+          return true;
+        case IDC_BTN_SAVEOGG:
+          so->SetOutput(new VorbisOutput(so->GetClip(),so->env));
           return true;
 			}
 			break;

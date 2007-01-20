@@ -2,10 +2,11 @@
 #include <fcntl.h> 
 #include <io.h>
 #include <vfw.h>
+#include "Commdlg.h"
 PipeOutput* out;
 
 const char * const PIPE_TypeString[] = {
-  "Microsoft WAV", "MS WAVE with WAVEFORMATEX", "RAW PCM", "S.F. WAVE64" };
+  "Microsoft WAV", "WAV with WAVEFORMATEX", "RAW PCM", "S.F. WAVE64" };
 
 const char * const PIPE_FormatString[] = {
   "16 Bit", "24 Bit", "32 Bit", "Float"};
@@ -33,7 +34,28 @@ BOOL CALLBACK PipeDialogProc(
         case IDC_PIPECANCEL:
           delete out;
           return true;
-			}
+        case IDC_PIPEBROWSE: 
+          {
+            char szFile[MAX_PATH+1];
+	          szFile[0] = 0;
+            char CurrentDir[] = "";
+            OPENFILENAME ofn;
+            memset(&ofn, 0, sizeof(ofn));
+            ofn.hInstance = g_hInst;
+            ofn.lpstrTitle = "Select Executable..";
+            ofn.lStructSize = sizeof(ofn);
+            ofn.lpstrFilter = "Executable Files (*.EXE)\0*.EXE\0All Files (*.*)\0*.*\0\0";
+            ofn.lpstrInitialDir = CurrentDir;
+            ofn.Flags = OFN_EXPLORER;
+            ofn.lpstrFile = szFile;
+            ofn.nMaxFile = sizeof( szFile );
+
+            if (!GetOpenFileName(&ofn))
+              return true;
+            out->params["executable"] = AVSValue(szFile);
+            out->setParamsToGUI();
+          }
+      }
 			break;
 
 		case WM_INITDIALOG:
@@ -45,35 +67,19 @@ BOOL CALLBACK PipeDialogProc(
 
 PipeOutput::PipeOutput(PClip _child, IScriptEnvironment* _env) : SoundOutput(ConvertAudio::Create(_child, SAMPLE_INT16|SAMPLE_INT32|SAMPLE_FLOAT,SAMPLE_INT32),_env)
 {
-  out = this;
-  inputThread = 0;
-	wnd=CreateDialog(g_hInst,MAKEINTRESOURCE(IDD_PIPESETTINGS),0,PipeDialogProc);
-  SendMessage(wnd,WM_SETICON,ICON_SMALL, (LPARAM)LoadImage( g_hInst, MAKEINTRESOURCE(ICO_AVISYNTH),IMAGE_ICON,0,0,0));
-	ShowWindow(wnd,SW_NORMAL);
-  for (int i = 0; i< 4; i++) {
-     SendDlgItemMessage(wnd, IDC_PIPETYPE, CB_ADDSTRING, 0, (LPARAM)PIPE_TypeString[i]);
-  }
   params["type"] = AVSValue(0);
   params["peakchunck"] = AVSValue(false);
   params["filterID"] = AVSValue("pipeout");
   params["format"] = AVSValue(0);  // If 8 bit, propose 16 bit.
-  for (int i = 0; i< 4; i++) {
-     SendDlgItemMessage(wnd, IDC_PIPEFORMAT, CB_ADDSTRING, 0, (LPARAM)PIPE_FormatString[i]);
-     if (vi.IsSampleType(PIPE_FormatVal[i]))
-       params["format"] = AVSValue(i);
-  }
-/*  params["executable"] = AVSValue("lame.exe");
-  params["prefilename"] = AVSValue("--alt-preset standard -");
-  params["postfilename"] = AVSValue("");*/
   params["executable"] = AVSValue("aften.exe");
-  params["prefilename"] = AVSValue("-");
+  params["prefilename"] = AVSValue("-b 384 -");
   params["postfilename"] = AVSValue("");
   params["showoutput"] = AVSValue(true);
-  params["outputFileFilter"] = AVSValue("0All Files (*.*)\0*.*\0\0");
+  params["outputFileFilter"] = AVSValue("All Files (*.*)\0*.*\0\0");
   params["extension"] = AVSValue("");
-  params["filterID"] = AVSValue("twolameout");
+  params["filterID"] = AVSValue("pipe");
+  hProcess = 0;
 
-  setParamsToGUI();
 }
 
 PipeOutput::~PipeOutput(void)
@@ -81,6 +87,26 @@ PipeOutput::~PipeOutput(void)
   if (hConsole)
     DestroyWindow(hConsole);
   hConsole = 0;
+
+  if (hProcess)
+    CloseHandle(hProcess);
+  hProcess = 0;
+}
+
+void PipeOutput::showGUI() {
+  out = this;
+  inputThread = 0;
+	wnd=CreateDialog(g_hInst,MAKEINTRESOURCE(IDD_PIPESETTINGS),0,PipeDialogProc);
+  SendMessage(wnd,WM_SETICON,ICON_SMALL, (LPARAM)LoadImage( g_hInst, MAKEINTRESOURCE(ICO_AVISYNTH),IMAGE_ICON,0,0,0));
+  for (int i = 0; i< 4; i++) {
+     SendDlgItemMessage(wnd, IDC_PIPEFORMAT, CB_ADDSTRING, 0, (LPARAM)PIPE_FormatString[i]);
+     if (vi.IsSampleType(PIPE_FormatVal[i]))
+       params["format"] = AVSValue(i);
+  }
+  for (int i = 0; i< 4; i++) {
+     SendDlgItemMessage(wnd, IDC_PIPETYPE, CB_ADDSTRING, 0, (LPARAM)PIPE_TypeString[i]);
+  }
+	ShowWindow(wnd,SW_NORMAL);
 }
 
 bool PipeOutput::setParamsToGUI() {
@@ -117,8 +143,8 @@ DWORD WINAPI StartInputPiper(LPVOID p) {
 }
 
 bool PipeOutput::initEncoder() {
+  exitThread = false;
   int format = PIPE_FormatVal[params["format"].AsInt()];
-  //VideoInfo _vi;
   if (!vi.IsSampleType(format)) {
     IScriptEnvironment* env = input->env;
 
@@ -129,23 +155,43 @@ bool PipeOutput::initEncoder() {
     vi = input->child->GetVideoInfo();    
   }
 
-  HANDLE hInputFile = CreateFile(params["executable"].AsString(), GENERIC_READ, 0, NULL, 
-      OPEN_EXISTING, FILE_ATTRIBUTE_READONLY, NULL); 
+  HANDLE hInputFile = CreateFile(params["executable"].AsString(), GENERIC_READ, FILE_SHARE_READ, NULL, 
+      OPEN_EXISTING, 0, NULL); 
+  char* executable = 0;
 
-   if (hInputFile == INVALID_HANDLE_VALUE)  
-      ErrorExit("Could not find executable.\n");       
+  if (hInputFile == INVALID_HANDLE_VALUE)  {
+    // Try in plugindir/Soundout
+    try {
+      CloseHandle(hInputFile);
+      const char* plugin_dir = env->GetVar("$PluginDir$").AsString();
+      executable = (char*)malloc(5000);
+		  sprintf_s(executable, 5000, "%s\\SoundOut\\%s",plugin_dir, params["executable"].AsString());
+      hInputFile = CreateFile(executable, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL); 
+      if (hInputFile == INVALID_HANDLE_VALUE)  {
+        MessageBox(NULL,executable,"Couldn't Find Executable",MB_OK);
+        free(executable);
+        executable = 0;
+        return false;
+      }
+    } catch (...) {executable = 0;}
+
+  } else {
+    executable = _strdup(params["executable"].AsString());
+  }
+
+  if (!executable)
+    ErrorExit("Could not find executable.\n");
    
-
   CloseHandle(hInputFile);
 
   // Create pipe
-   SECURITY_ATTRIBUTES saAttr; 
- 
+  SECURITY_ATTRIBUTES saAttr; 
+
 // Set the bInheritHandle flag so pipe handles are inherited. 
  
-   saAttr.nLength = sizeof(SECURITY_ATTRIBUTES); 
-   saAttr.bInheritHandle = TRUE; 
-   saAttr.lpSecurityDescriptor = NULL; 
+  saAttr.nLength = sizeof(SECURITY_ATTRIBUTES); 
+  saAttr.bInheritHandle = TRUE; 
+  saAttr.lpSecurityDescriptor = NULL; 
 
  
 // Create a pipes for the child process's STDOUT and STDERR. 
@@ -187,9 +233,10 @@ bool PipeOutput::initEncoder() {
    siStartInfo.dwFlags |= STARTF_USESTDHANDLES;
    siStartInfo.dwFlags |= STARTF_USESHOWWINDOW;
 
+
 // Create the child process. 
    char szCmdline[32000];
-   sprintf_s(szCmdline, 32000, "\"%s\" %s \"%s\" %s", params["executable"].AsString(), 
+   sprintf_s(szCmdline, 32000, "\"%s\" %s \"%s\" %s", executable, 
      params["prefilename"].AsString(), outputFile, params["postfilename"].AsString());
    bFuncRetn = CreateProcess(NULL, 
       szCmdline,     // command line 
@@ -204,17 +251,19 @@ bool PipeOutput::initEncoder() {
    
    if (bFuncRetn == 0) 
       ErrorExit("CreateProcess failed\n");
-
-  CloseHandle(piProcInfo.hProcess);
+  sprintf_s(screenBuf, 32000, "Command Line:%s\r\n", szCmdline);
+  hProcess = piProcInfo.hProcess;
   CloseHandle(piProcInfo.hThread);
 
-	hConsole=CreateDialog(g_hInst,MAKEINTRESOURCE(IDD_COMMANDOUTPUT),0,PipeDialogProc);
-//  SendDlgItemMessage(hConsole, IDC_PIPETEXT, WM_SETFONT, 
+   if (params["showoutput"].AsBool()) {
+	  hConsole=CreateDialog(g_hInst,MAKEINTRESOURCE(IDD_COMMANDOUTPUT),0,PipeDialogProc);
+    SendMessage(hConsole,WM_SETICON,ICON_SMALL, (LPARAM)LoadImage( g_hInst, MAKEINTRESOURCE(ICO_AVISYNTH),IMAGE_ICON,0,0,0));
+   }
 
   inputThread = CreateThread(NULL,NULL,StartInputPiper,this, NULL,NULL);
   SetThreadPriority(inputThread,THREAD_PRIORITY_ABOVE_NORMAL);
 
-
+  free(executable);
   if (params["type"].AsInt() == 2)      // RAW mode - don't write header.
     return true;
 
@@ -314,45 +363,52 @@ bool PipeOutput::initEncoder() {
 
 void PipeOutput::fetchResults() {
   CHAR chBuf[128]; 
-  CHAR screenBuf[32000]; 
   // Read output from the child process
   DWORD nBytesRead;
-  screenBuf[0] = 0;
   while(TRUE)
   {
     if (!ReadFile(hChildStderrRd,chBuf,sizeof(chBuf)-1,
       &nBytesRead,NULL) || !nBytesRead)
     {
       if (GetLastError() == ERROR_BROKEN_PIPE) {
+        strcat_s(screenBuf, 32000, "\r\n>PIPE: Input pipe thread killed (EOF)\r\n");
         _RPT0(0,"Input pipe thread killed (EOF)\n");
         break; // pipe done - normal exit path.
       } else {
+        strcat_s(screenBuf, 32000, "\r\n>PIPE: Input pipe thread killed (Error)\r\n");
         _RPT0(0,"Input pipe thread killed (Error)\n");
         break;
       }
     }
     chBuf[nBytesRead] = 0;
     _RPT1(0,"%s", chBuf);
-    int cursor = strlen(screenBuf);  // This is the next char to be written.
-    char *p;
-    for (int i= 0; i< nBytesRead; i++) {
-      if (chBuf[i] == '\r' && chBuf[i+1] != '\n' && (cursor>1)) {
-        screenBuf[cursor] = 0;  // End the string
-        p = strrchr(screenBuf, '\n');
-        if (p) {
-          cursor = p - screenBuf + 1;
+    if (params["showoutput"].AsBool()) {
+      int cursor = (int)strlen(screenBuf);  // This is the next char to be written.
+      char *p;
+      for (int i= 0; i< (int)nBytesRead; i++) {
+        if (chBuf[i] == '\r' && chBuf[i+1] != '\n' && (cursor>1)) {
+          screenBuf[cursor] = 0;  // End the string
+          SetDlgItemText(hConsole,IDC_PIPETEXT,screenBuf);
+          p = strrchr(screenBuf, '\n');
+          if (p) {
+            cursor = (int)(p - screenBuf) + 1;
+          }
+        } else {
+          if (cursor >= 32000) {  // Truncate text
+            memmove(screenBuf,&screenBuf[1000], cursor - 1000);
+            cursor -= 1000;
+          }
+          screenBuf[cursor] = 0; // End string
+          if (chBuf[i] == '\n') {
+            SetDlgItemText(hConsole,IDC_PIPETEXT,screenBuf);
+          }
+          screenBuf[cursor++] = chBuf[i];
         }
-      } else {
-        if (cursor >= 32000) {  // Truncate text
-          memmove(screenBuf,&screenBuf[1000], cursor - 1000);
-          cursor -= 1000;
-        }
-        screenBuf[cursor++] = chBuf[i];
       }
+      screenBuf[cursor] = 0;  // End string
     }
-    screenBuf[cursor] = 0;  // End string
-    SetDlgItemText(hConsole,IDC_PIPETEXT,screenBuf);
   }
+  SetDlgItemText(hConsole,IDC_PIPETEXT,screenBuf);
 }
 
 void PipeOutput::encodeLoop() {
@@ -362,25 +418,35 @@ void PipeOutput::encodeLoop() {
     sb = input->GetNextBlock();
     writeSamples(sb->getSamples(), (int)vi.BytesFromAudioSamples(sb->numSamples));
     encodedSamples += sb->numSamples;
-    this->updateSampleStats(encodedSamples, vi.num_audio_samples);
+    this->updateSampleStats(encodedSamples, vi.num_audio_samples, true);
   } while (!sb->lastBlock && !exitThread);
 
 // Close the pipe handle so the child process stops reading. 
  
-   if (! CloseHandle(hChildStdinWr))
+   if (! CloseHandle(hChildStdinWr) && !quietExit)
+      MessageBox(NULL,"An encoder error occured while closing client output pipe. Output file may not work","Commandline PIPE Encoder",MB_OK);
+
+   if (! CloseHandle(hChildStdoutWr) && !quietExit) 
       MessageBox(NULL,"An encoder error occured while closing output pipe. Output file may not work","Commandline PIPE Encoder",MB_OK);
 
-   if (! CloseHandle(hChildStdoutWr)) 
-      MessageBox(NULL,"An encoder error occured while closing output pipe. Output file may not work","Commandline PIPE Encoder",MB_OK);
+   if (! CloseHandle(hChildStderrWr) && !quietExit) 
+      MessageBox(NULL,"An encoder error occured while closing error output pipe. Output file may not work","Commandline PIPE Encoder",MB_OK);
 
-   if (! CloseHandle(hChildStderrWr)) 
-      MessageBox(NULL,"An encoder error occured while closing output pipe. Output file may not work","Commandline PIPE Encoder",MB_OK);
-
+   if (!sb->lastBlock && !quietExit) 
+     this->setError("Encoding aborted before all samples were delivered (not last block).\n");
+   if (encodedSamples != vi.num_audio_samples && !quietExit) 
+     this->setError("Encoding aborted before all samples were delivered (mismatch).\n");
    encodeThread = 0;
 }
 
 void PipeOutput::writeSamples(const void *ptr, int count) {
   DWORD nBytesWrote;
+  DWORD exitCode;
+  GetExitCodeProcess(hProcess, &exitCode);
+  if (exitCode != STILL_ACTIVE || exitThread) {
+      exitThread = true; 
+      return;
+  }
   if (!WriteFile(hChildStdinWr,ptr,count,&nBytesWrote,NULL)) {
     if (GetLastError() == ERROR_NO_DATA)
       exitThread = true; // Pipe was closed (normal exit path).

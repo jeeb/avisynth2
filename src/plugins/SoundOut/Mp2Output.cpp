@@ -61,7 +61,7 @@ const char * const MP2_PsymodelString[] = {
   "Fast & Dumb", "Low complexity", "ISO PAM 1", "ISO PAM 2", "PAM 1 Rewrite", "PAM 2 Rewrite" };
 
 const int MP2_PsymodelVal[] = {
-  -1, 0, 1, 2, 3 };
+  -1, 0, 1, 2, 3, 4 };
 
 const char * const MP2_EmphString[] = {
   "No Emphasis", "50/15 ms", "CCIT J.17" };
@@ -121,6 +121,8 @@ Mp2Output::Mp2Output(PClip _child, IScriptEnvironment* _env) : SoundOutput(Conve
 
 Mp2Output::~Mp2Output(void)
 {
+}
+void Mp2Output::showGUI() {
 }
 
 bool Mp2Output::initEncoder() {

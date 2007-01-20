@@ -1,20 +1,17 @@
 #pragma once
 #include "soundoutput.h"
-#include "h/sndfile.h"
 
-class WavOutput :
+class VorbisOutput :
   public SoundOutput
 {
 public:
-  WavOutput(PClip _child, IScriptEnvironment* _env);
+  VorbisOutput(PClip _child, IScriptEnvironment* _env);
 public:
-  virtual ~WavOutput(void);
+  virtual ~VorbisOutput(void);
   bool initEncoder();  // Called to Init the encoder, returns false if error occured.
   void encodeLoop();
+  virtual void showGUI();
   virtual bool getParamsFromGUI();
   virtual bool setParamsToGUI();
-  virtual void showGUI();
-private:
-  SNDFILE* sndfile;
-  SF_INFO info;
+protected:
 };

@@ -15,12 +15,29 @@ BOOL CALLBACK ConvertProgressProc(
 		case WM_COMMAND:
 			switch(wParam) {
 				case IDCANCEL:
-          delete so_out;
-          return true;
+          if (so_out->encodeThread) {
+            if(IDNO == MessageBox(hwndDlg,"Are you sure you want to abort the conversion?","Abort?",MB_YESNO)) {
+              return true;
+            }
+            so_out->quietExit = true;
+            so_out->exitThread = true;
+            while (so_out->encodeThread) {
+              Sleep(100);
+            }
+            delete so_out;
+          } else {
+              delete so_out;
+          }
         case IDC_BTN_CONVERTABORT:
           if (so_out->encodeThread) {
             if(IDYES == MessageBox(hwndDlg,"Are you sure you want to abort the conversion?","Abort?",MB_YESNO)) {
               so_out->exitThread = true;
+/*
+              so_out->quietExit = true;
+              while (so_out->encodeThread) {
+                Sleep(100);
+              }
+              delete so_out;*/
             }
           } else {
               delete so_out;
@@ -51,6 +68,7 @@ SoundOutput::SoundOutput(PClip _child, IScriptEnvironment* _env) :
 {
   input = new SampleFetcher(child, env);
   lastUpdateTick = GetTickCount();
+  quietExit = false;
 }
 
 SoundOutput::~SoundOutput(void)
@@ -82,8 +100,9 @@ void SoundOutput::startEncoding() {
   char szFile[MAX_PATH+1];
 	szFile[0] = 0;
 
-  char CurrentDir[MAX_PATH];
-	GetCurrentDirectory( MAX_PATH, CurrentDir );
+  //char CurrentDir[MAX_PATH];
+	//GetCurrentDirectory( MAX_PATH, CurrentDir );
+  char CurrentDir[] = "";
 
   OPENFILENAME ofn;
   memset(&ofn, 0, sizeof(ofn));
@@ -122,29 +141,36 @@ void SoundOutput::startEncoding() {
 }
 
 void SoundOutput::encodingFinished() {
-  SetDlgItemText(wnd,IDC_STC_CONVERTMSG,"Finished!");
+  encodeThread = 0;
+  if (quietExit)
+    return;
   SetDlgItemText(wnd,IDC_BTN_CONVERTABORT,"Close");
   this->updatePercent(100);
-  encodeThread = 0;
 }
+
 void SoundOutput::setError(const char* err) {
+  if (quietExit)
+    return;
   char buf[800];
   sprintf_s(buf, 800, "An error occurred during conversion: %s\nThe output file is probably incomplete.", err);
   SetDlgItemText(wnd,IDC_STC_CONVERTMSG,buf);
   SetDlgItemText(wnd,IDC_BTN_CONVERTABORT,"Close");
   this->updatePercent(0);
-  encodeThread = 0;
 }
 
 void SoundOutput::updatePercent(int p) {
+  if (quietExit)
+    return;
   if (!exitThread)
     SendDlgItemMessage(wnd, IDC_PGB_CONVERTPROGRESS, PBM_SETPOS, p, 0);
 
   lastUpdateTick = GetTickCount();
 }
 
-void SoundOutput::updateSampleStats(__int64 processed,__int64 total) {
-  if (GetTickCount() - lastUpdateTick < 50)
+void SoundOutput::updateSampleStats(__int64 processed,__int64 total, bool force) {
+  if (quietExit)
+    return;
+  if (GetTickCount() - lastUpdateTick < 50 && !force)
     return;
   char buf[800];
   double percent = ((double)processed * 100.0 / (double)total);
@@ -194,7 +220,7 @@ void SoundOutput::updateSampleStats(__int64 processed,__int64 total) {
 
 DWORD WINAPI StartFetcher(LPVOID p) {
   SampleFetcher* t = (SampleFetcher*)p;
-  t->FetchLoop();
+  t->FetchLoop();  
   return 0;
 }
 
@@ -205,6 +231,7 @@ SampleFetcher::SampleFetcher(PClip _child, IScriptEnvironment* _env) : child(_ch
   thread = CreateThread(NULL,NULL,StartFetcher,this, NULL,NULL);
   SetThreadPriority(thread,THREAD_PRIORITY_BELOW_NORMAL);
   prev_sb = NULL;
+  FinishedBlock = NULL;
 }
 
 SampleFetcher::~SampleFetcher() {
@@ -221,27 +248,38 @@ SampleFetcher::~SampleFetcher() {
 
 SampleBlock* SampleFetcher::GetNextBlock() {
    HRESULT wait_result = WAIT_TIMEOUT;
-   if (prev_sb)
+   if (prev_sb && !exitThread)
      delete prev_sb;
    prev_sb = NULL;
 
    while (wait_result == WAIT_TIMEOUT && !exitThread) {
       wait_result = WaitForSingleObject(evtNextBlockReady, 1000);
    }
+   if (!FinishedBlock) {
+    VideoInfo vi = child->GetVideoInfo();
+    FinishedBlock = new SampleBlock(&vi, 0);
+    FinishedBlock->lastBlock = true;
+   }
+
    SampleBlock* s = FinishedBlock;
+   FinishedBlock = NULL;
+
    prev_sb = s;
    SetEvent(evtProcessNextBlock);
+
    return s;
 }
 
 void SampleFetcher::FetchLoop() {
   VideoInfo vi = child->GetVideoInfo();
   __int64 currentPos = 0;
+  bool cleanExit= false;
   while (!exitThread) {
     int getsamples = BLOCKSAMPLES;
-    if (currentPos + getsamples > vi.num_audio_samples) {
+    if (currentPos + getsamples >= vi.num_audio_samples) {
       getsamples = (int)(vi.num_audio_samples - currentPos);
       exitThread = true;
+      cleanExit = true;
     }
     SampleBlock *s = new SampleBlock(&vi, getsamples);
     try {
@@ -252,16 +290,24 @@ void SampleFetcher::FetchLoop() {
         memset(s->getSamples(), 0, (size_t)vi.BytesFromAudioSamples(s->numSamples));
       } else {
         exitThread = true;
+        cleanExit = true;
       }
     }
-    if (exitThread)
+    if (exitThread && cleanExit)
       s->lastBlock = true;
+    
     FinishedBlock = s;
     SetEvent(evtNextBlockReady);
-    HRESULT wait_result = WAIT_TIMEOUT;
-    while (wait_result == WAIT_TIMEOUT && !exitThread) {
-      wait_result = WaitForSingleObject(evtProcessNextBlock, 1000);
+    if (!s->lastBlock) {
+      HRESULT wait_result = WAIT_TIMEOUT;
+      while (wait_result == WAIT_TIMEOUT && !exitThread) {
+        wait_result = WaitForSingleObject(evtProcessNextBlock, 1000);
+      }
     }
+  }
+  if (!cleanExit) {    
+    delete FinishedBlock;
+    FinishedBlock = 0;
   }
   thread = 0;
 }

@@ -60,7 +60,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="Comdlg32.lib User32.lib lib\libFLAC++_static.lib lib\libFLAC_static.lib lib\libvorbis.lib lib\ogg_static.lib lib\twolame.lib lib\MAClib.lib lib\libsndfile-1.lib lib\libaften.lib"
+				AdditionalDependencies="Comdlg32.lib User32.lib lib\libFLAC++_static.lib lib\libFLAC_static.lib lib\libvorbis.lib lib\ogg_static.lib lib\twolame.lib lib\MAClib.lib lib\libsndfile-1.lib lib\libaften.lib lib\libmp3lame.lib lib\mpglib.lib"
 				ShowProgress="0"
 				LinkIncremental="2"
 				GenerateDebugInformation="true"
@@ -137,7 +137,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="Comdlg32.lib User32.lib lib\libFLAC++_static.lib lib\libFLAC_static.lib lib\libvorbis.lib lib\ogg_static.lib lib\twolame.lib lib\MAClib.lib lib\libsndfile-1.lib lib\libaften.lib"
+				AdditionalDependencies="Comdlg32.lib User32.lib lib\libFLAC++_static.lib lib\libFLAC_static.lib lib\libvorbis.lib lib\ogg_static.lib lib\twolame.lib lib\MAClib.lib lib\libsndfile-1.lib lib\libaften.lib lib\libmp3lame.lib lib\mpglib.lib"
 				LinkIncremental="1"
 				GenerateManifest="true"
 				AdditionalManifestDependencies=""
@@ -373,6 +373,14 @@
 				>
 			</File>
 			<File
+				RelativePath=".\Mp3Output.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\Mp3Output.h"
+				>
+			</File>
+			<File
 				RelativePath=".\PipeOutput.cpp"
 				>
 			</File>
@@ -386,6 +394,14 @@
 			</File>
 			<File
 				RelativePath=".\SoundOutput.h"
+				>
+			</File>
+			<File
+				RelativePath=".\VorbisOutput.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\VorbisOutput.h"
 				>
 			</File>
 			<File
