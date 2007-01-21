@@ -1,3 +1,28 @@
+// SoundOut Copyright Klaus Post 2006-2007
+// http://www.avisynth.org
+
+// This program is free software; you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation; either version 2 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program; if not, write to the Free Software
+// Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA, or visit
+// http://www.gnu.org/copyleft/gpl.html .
+//
+// Linking Avisynth statically or dynamically with other modules is making a
+// combined work based on Avisynth.  Thus, the terms and conditions of the GNU
+// General Public License cover the whole combination.
+//
+
+// SoundOut (c) 2006-2007 by Klaus Post
+
 #include "PipeOutput.h"
 #include <fcntl.h> 
 #include <io.h>
@@ -55,6 +80,11 @@ BOOL CALLBACK PipeDialogProc(
             out->params["executable"] = AVSValue(szFile);
             out->setParamsToGUI();
           }
+        case IDC_PIPENOFILENAME:
+          if (out->GUI_ready) {
+            out->getParamsFromGUI();
+            out->setParamsToGUI();
+          }
       }
 			break;
 
@@ -67,6 +97,7 @@ BOOL CALLBACK PipeDialogProc(
 
 PipeOutput::PipeOutput(PClip _child, IScriptEnvironment* _env) : SoundOutput(ConvertAudio::Create(_child, SAMPLE_INT16|SAMPLE_INT32|SAMPLE_FLOAT,SAMPLE_INT32),_env)
 {
+  GUI_ready = false;
   params["type"] = AVSValue(0);
   params["peakchunck"] = AVSValue(false);
   params["filterID"] = AVSValue("pipeout");
@@ -78,6 +109,7 @@ PipeOutput::PipeOutput(PClip _child, IScriptEnvironment* _env) : SoundOutput(Con
   params["outputFileFilter"] = AVSValue("All Files (*.*)\0*.*\0\0");
   params["extension"] = AVSValue("");
   params["filterID"] = AVSValue("pipe");
+  params["nofilename"] = AVSValue(false);
   hProcess = 0;
 
 }
@@ -114,8 +146,11 @@ bool PipeOutput::setParamsToGUI() {
   SetDlgItemText(wnd,IDC_PIPEPREFILE,params["prefilename"].AsString());
   SetDlgItemText(wnd,IDC_PIPEPOSTFILE,params["postfilename"].AsString());
   CheckDlgButton(wnd, IDC_PIPESHOWOUTPUT, params["showoutput"].AsBool());
+  CheckDlgButton(wnd, IDC_PIPENOFILENAME, params["nofilename"].AsBool());
   SendDlgItemMessage(wnd, IDC_PIPETYPE,CB_SETCURSEL,params["type"].AsInt(),0);
   SendDlgItemMessage(wnd, IDC_PIPEFORMAT,CB_SETCURSEL,params["format"].AsInt(),0);
+  EnableWindow(GetDlgItem(wnd, IDC_PIPEPOSTFILE), !params["nofilename"].AsBool());
+  GUI_ready = true;
   return true;
 }
 
@@ -128,6 +163,7 @@ bool PipeOutput::getParamsFromGUI() {
   SendDlgItemMessage(wnd, IDC_PIPEPOSTFILE, EM_GETLINE,0,(LPARAM)buf);
   params["postfilename"] = AVSValue(env->SaveString(buf));
   params["showoutput"] = AVSValue(!!IsDlgButtonChecked(wnd,IDC_PIPESHOWOUTPUT));
+  params["nofilename"] = AVSValue(!!IsDlgButtonChecked(wnd,IDC_PIPENOFILENAME));
   params["type"] = AVSValue((int)SendDlgItemMessage(wnd, IDC_PIPETYPE, CB_GETCURSEL,0,0));
   params["format"] = AVSValue((int)SendDlgItemMessage(wnd, IDC_PIPEFORMAT, CB_GETCURSEL,0,0));
 
@@ -154,8 +190,8 @@ bool PipeOutput::initEncoder() {
     input = new SampleFetcher(ConvertAudio::Create(child,format,format), env);
     vi = input->child->GetVideoInfo();    
   }
-
-  HANDLE hInputFile = CreateFile(params["executable"].AsString(), GENERIC_READ, FILE_SHARE_READ, NULL, 
+  const char* cmd = params["executable"].AsString();
+  HANDLE hInputFile = CreateFile(cmd, GENERIC_READ, FILE_SHARE_READ, NULL, 
       OPEN_EXISTING, 0, NULL); 
   char* executable = 0;
 
@@ -165,7 +201,7 @@ bool PipeOutput::initEncoder() {
       CloseHandle(hInputFile);
       const char* plugin_dir = env->GetVar("$PluginDir$").AsString();
       executable = (char*)malloc(5000);
-		  sprintf_s(executable, 5000, "%s\\SoundOut\\%s",plugin_dir, params["executable"].AsString());
+		  sprintf_s(executable, 5000, "%s\\SoundOut\\%s",plugin_dir, cmd);
       hInputFile = CreateFile(executable, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL); 
       if (hInputFile == INVALID_HANDLE_VALUE)  {
         MessageBox(NULL,executable,"Couldn't Find Executable",MB_OK);
@@ -236,8 +272,14 @@ bool PipeOutput::initEncoder() {
 
 // Create the child process. 
    char szCmdline[32000];
-   sprintf_s(szCmdline, 32000, "\"%s\" %s \"%s\" %s", executable, 
-     params["prefilename"].AsString(), outputFile, params["postfilename"].AsString());
+   if (!params["nofilename"].AsBool()) {
+    sprintf_s(szCmdline, 32000, "\"%s\" %s \"%s\" %s", executable, 
+       params["prefilename"].AsString(), outputFile, params["postfilename"].AsString());
+   } else {
+    sprintf_s(szCmdline, 32000, "\"%s\" %s", executable, 
+     params["prefilename"].AsString());
+   }
+
    bFuncRetn = CreateProcess(NULL, 
       szCmdline,     // command line 
       NULL,          // process security attributes 
@@ -367,6 +409,12 @@ void PipeOutput::fetchResults() {
   DWORD nBytesRead;
   while(TRUE)
   {
+    DWORD exitCode;
+    GetExitCodeProcess(hProcess, &exitCode);
+    if (exitCode != STILL_ACTIVE || exitThread) {
+      exitThread = true; 
+      break;;
+    }
     if (!ReadFile(hChildStderrRd,chBuf,sizeof(chBuf)-1,
       &nBytesRead,NULL) || !nBytesRead)
     {

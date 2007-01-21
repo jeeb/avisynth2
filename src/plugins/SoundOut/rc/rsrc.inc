@@ -61,8 +61,8 @@
 #define IDC_WAVSAVE             1005
 #define IDC_WAVPEAKINFO         6001
 #define IDD_AC3SETTINGS         7000
-#define IDC_AC3GROUP            1002
 #define IDC_AC3CBRMODE          1001
+#define IDC_AC3GROUP            1002
 #define IDC_AC3VBRMODE          1003
 #define IDC_AC3CBRRATE          1004
 #define IDC_AC3VBRRATE          1005
@@ -105,6 +105,7 @@
 #define IDC_PIPEFORMAT          1002
 #define IDC_PIPESHOWOUTPUT      1013
 #define IDC_STC20               1015
+#define IDC_PIPENOFILENAME      1701
 #define IDD_COMMANDOUTPUT       2200
 #define IDC_PIPETEXT            1001
 #define IDD_MP3SETTINGS         2100

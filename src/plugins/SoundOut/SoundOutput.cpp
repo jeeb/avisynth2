@@ -1,3 +1,28 @@
+// SoundOut Copyright Klaus Post 2006-2007
+// http://www.avisynth.org
+
+// This program is free software; you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation; either version 2 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program; if not, write to the Free Software
+// Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA, or visit
+// http://www.gnu.org/copyleft/gpl.html .
+//
+// Linking Avisynth statically or dynamically with other modules is making a
+// combined work based on Avisynth.  Thus, the terms and conditions of the GNU
+// General Public License cover the whole combination.
+//
+
+// SoundOut (c) 2006-2007 by Klaus Post
+
 #include "SoundOutput.h"
 #include "Commdlg.h"
 
@@ -21,8 +46,13 @@ BOOL CALLBACK ConvertProgressProc(
             }
             so_out->quietExit = true;
             so_out->exitThread = true;
+            int timeout = 100;  // 10 seconds
             while (so_out->encodeThread) {
               Sleep(100);
+              if (!timeout--) {
+                TerminateThread(so_out->encodeThread,0);
+                so_out->encodeThread = 0;
+              }
             }
             delete so_out;
           } else {
@@ -66,6 +96,7 @@ DWORD WINAPI StartEncoder(LPVOID p) {
 SoundOutput::SoundOutput(PClip _child, IScriptEnvironment* _env) : 
   GenericVideoFilter(_child), wnd(0), env(_env), encodeThread(0), outputFile(0)
 {
+  params["nofilename"] = AVSValue(false);  // Setting this will disable prompt when Save is selected.
   input = new SampleFetcher(child, env);
   lastUpdateTick = GetTickCount();
   quietExit = false;
@@ -78,8 +109,13 @@ SoundOutput::~SoundOutput(void)
   input = NULL;
 
   exitThread = true;
+  int timeout = 100;  // 10 seconds
   while (encodeThread) {  // Wait for thread to exit.
     Sleep(100);
+    if (!timeout--) {
+      TerminateThread(encodeThread,0);
+      encodeThread = 0;
+    }
   }
 
   if (wnd)
@@ -97,35 +133,35 @@ void SoundOutput::startEncoding() {
   if (!this->getParamsFromGUI()) {
     return;
   }
-  char szFile[MAX_PATH+1];
-	szFile[0] = 0;
 
   //char CurrentDir[MAX_PATH];
 	//GetCurrentDirectory( MAX_PATH, CurrentDir );
   char CurrentDir[] = "";
+  if (!params["nofilename"].AsBool()) {
+    char szFile[MAX_PATH+1];
+    szFile[0] = 0;
+    OPENFILENAME ofn;
+    memset(&ofn, 0, sizeof(ofn));
+    ofn.hInstance = g_hInst;
+    ofn.lpstrTitle = "Select where to save file..";
+    ofn.lStructSize = sizeof(ofn);
+    ofn.lpstrFilter = params["outputFileFilter"].AsString("All Files (*.*)\0*.*\0\0");
+    ofn.lpstrInitialDir = CurrentDir;
+    ofn.Flags = OFN_EXPLORER;
+    ofn.lpstrFile = szFile;
+    ofn.nMaxFile = sizeof( szFile );
 
-  OPENFILENAME ofn;
-  memset(&ofn, 0, sizeof(ofn));
-  ofn.hInstance = g_hInst;
-  ofn.lpstrTitle = "Select where to save file..";
-  ofn.lStructSize = sizeof(ofn);
-  ofn.lpstrFilter = params["outputFileFilter"].AsString("All Files (*.*)\0*.*\0\0");
-	ofn.lpstrInitialDir = CurrentDir;
-  ofn.Flags = OFN_EXPLORER;
-	ofn.lpstrFile = szFile;
-	ofn.nMaxFile = sizeof( szFile );
+    if (!GetSaveFileName(&ofn))
+      return;
 
-  if (!GetSaveFileName(&ofn))
-    return;
+    char *p;  
+    p = strrchr(szFile, '.');
 
-  char *p;  
-  p = strrchr(szFile, '.');
-  
-  if (!p)
-    strcat_s(szFile,MAX_PATH+1,params["extension"].AsString());
+    if (!p)
+      strcat_s(szFile,MAX_PATH+1,params["extension"].AsString());
 
-  outputFile = _strdup(szFile);
-
+    outputFile = _strdup(szFile);
+  }
   if (!initEncoder())
     return;
   DestroyWindow(wnd);
@@ -224,7 +260,7 @@ DWORD WINAPI StartFetcher(LPVOID p) {
   return 0;
 }
 
-SampleFetcher::SampleFetcher(PClip _child, IScriptEnvironment* _env) : child(_child), env(_env) {
+SampleFetcher::SampleFetcher(PClip _child, IScriptEnvironment* _env, int _maxSamples) : child(_child), env(_env), maxSamples(_maxSamples) {
   exitThread = false;
   evtNextBlockReady = ::CreateEvent (NULL, FALSE, FALSE, NULL);
   evtProcessNextBlock = ::CreateEvent (NULL, FALSE, FALSE, NULL);
@@ -275,7 +311,7 @@ void SampleFetcher::FetchLoop() {
   __int64 currentPos = 0;
   bool cleanExit= false;
   while (!exitThread) {
-    int getsamples = BLOCKSAMPLES;
+    int getsamples = maxSamples;
     if (currentPos + getsamples >= vi.num_audio_samples) {
       getsamples = (int)(vi.num_audio_samples - currentPos);
       exitThread = true;

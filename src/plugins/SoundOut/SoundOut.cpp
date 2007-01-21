@@ -1,4 +1,4 @@
-// SoundOut Copyright Klaus Post 2006
+// SoundOut Copyright Klaus Post 2006-2007
 // http://www.avisynth.org
 
 // This program is free software; you can redistribute it and/or modify
@@ -21,7 +21,7 @@
 // General Public License cover the whole combination.
 //
 
-// SoundOut (c) 2006 by Klaus Post
+// SoundOut (c) 2006-2007 by Klaus Post
 
 #include "SoundOut.h"
 #include <stdio.h>
@@ -63,7 +63,7 @@ const char* t_GB="GB";
 
 SoundOut::SoundOut(PClip _child, IScriptEnvironment* _env) : GenericVideoFilter(_child), currentOut(0), env(_env) {
   if (!vi.HasAudio())
-    env->ThrowError("SoundOut: No audio was found");
+    MessageBox(NULL,"No audio found in clip. I will just go away!","SoundOut",MB_OK);
 
 	wnd=CreateDialog(g_hInst,MAKEINTRESOURCE(IDD_DLG_MAIN),0,MainDialogProc);
 	ShowWindow(wnd,SW_NORMAL);

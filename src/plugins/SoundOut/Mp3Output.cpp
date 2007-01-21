@@ -1,3 +1,28 @@
+// SoundOut Copyright Klaus Post 2006-2007
+// http://www.avisynth.org
+
+// This program is free software; you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation; either version 2 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program; if not, write to the Free Software
+// Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA, or visit
+// http://www.gnu.org/copyleft/gpl.html .
+//
+// Linking Avisynth statically or dynamically with other modules is making a
+// combined work based on Avisynth.  Thus, the terms and conditions of the GNU
+// General Public License cover the whole combination.
+//
+
+// SoundOut (c) 2006-2007 by Klaus Post
+
 #include "Mp3Output.h"
 
 Mp3Output* out;
@@ -50,7 +75,6 @@ const preset_mode MP3_VBRPresetVal[] = { MEDIUM_FAST, MEDIUM, STANDARD_FAST,STAN
 
 Mp3Output::Mp3Output(PClip _child, IScriptEnvironment* _env) : SoundOutput(ConvertAudio::Create(_child, SAMPLE_FLOAT|SAMPLE_INT16,SAMPLE_FLOAT) ,_env)
 {
-  GUI_ready = false;
   params["outputFileFilter"] = AVSValue("MP3 files\0*.mp3\0All Files\0*.*\0\0");
   params["extension"] = AVSValue(".mp3");
   params["filterID"] = AVSValue("lame");
@@ -243,7 +267,7 @@ bool Mp3Output::initEncoder() {
 
   int ret_code = lame_init_params(lame);
   if (ret_code) {
-    MessageBox(NULL,"An encoder error occured encoding parameters","MP3 Encoder",MB_OK);
+    MessageBox(NULL,"An encoder error occured while initializing encoder","MP3 Encoder",MB_OK);
   }
   return true;
 }

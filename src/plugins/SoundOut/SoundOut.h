@@ -1,4 +1,4 @@
-// SoundOut Copyright Klaus Post 2006
+// SoundOut Copyright Klaus Post 2006-2007
 // http://www.avisynth.org
 
 // This program is free software; you can redistribute it and/or modify
@@ -21,7 +21,7 @@
 // General Public License cover the whole combination.
 //
 
-// SoundOut (c) 2006 by Klaus Post
+// SoundOut (c) 2006-2007 by Klaus Post
 
 #pragma once
 
