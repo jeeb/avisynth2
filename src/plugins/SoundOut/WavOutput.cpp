@@ -24,6 +24,7 @@
 // SoundOut (c) 2006-2007 by Klaus Post
 
 #include "WavOutput.h"
+#include "RegistryIO.h"
 
 WavOutput* out;
 
@@ -75,6 +76,7 @@ WavOutput::WavOutput(PClip _child, IScriptEnvironment* _env) : SoundOutput(Conve
   params["extension"] = AVSValue(".wav");
   params["peakchunck"] = AVSValue(false);
   params["filterID"] = AVSValue("libsnd");
+  RegistryIO::RetrieveSettings(params, env);
 }
 
 WavOutput::~WavOutput(void)

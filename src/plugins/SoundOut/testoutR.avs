@@ -1,6 +1,6 @@
 loadplugin("release/soundout.dll")
 NicAC3Source("C:\temp\2006\lemans2006 T01 2_0ch 384Kbps DELAY 0ms.ac3")
 #amplifydb(-6,0)
-#audiodub(colorbars(),last)
+audiodub(colorbars(),last)
 #convertaudioto16bit()
 soundout()

@@ -24,6 +24,7 @@
 // SoundOut (c) 2006-2007 by Klaus Post
 
 #include "AC3Output.h"
+#include "RegistryIO.h"
 
 AC3Output* out;
 
@@ -87,6 +88,7 @@ AC3Output::AC3Output(PClip _child, IScriptEnvironment* _env) : SoundOutput(_chil
   params["dolbysurround"] = AVSValue(false);
   params["drc"] = AVSValue(DYNRNG_PROFILE_NONE);
   params["dialognormalization"] = AVSValue(31);
+  RegistryIO::RetrieveSettings(params, env);
 }
 
 AC3Output::~AC3Output(void)

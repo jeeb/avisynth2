@@ -29,7 +29,6 @@
 #include "windows.h"
 #include <stdio.h>
 #include <map>
-
 using namespace std;
 
 class SampleFetcher;
@@ -41,6 +40,9 @@ struct ltstr
     return _stricmp(s1, s2) < 0;
   }
 };
+
+//typedef map<const char*, AVSValue> Param;
+typedef map<const char*, AVSValue,ltstr> Param;
 
 class SoundOutput: public GenericVideoFilter
 {
@@ -56,7 +58,7 @@ public:
   bool autoCloseWindow;
   char* outputFile;
   void setError(const char* err);
-  map<const char*, AVSValue,ltstr> params;
+  Param params;
   virtual void showGUI() = 0;
   virtual bool setParamsToGUI() {return true;}
   bool quietExit;
@@ -75,7 +77,7 @@ protected:
   DWORD lastSPSTick;
 };
 
-#define BLOCKSAMPLES 200 * 1024
+#define BLOCKSAMPLES 256 * 1024
 
 class SampleBlock {
 public:

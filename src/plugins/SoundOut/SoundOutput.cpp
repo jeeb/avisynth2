@@ -25,6 +25,7 @@
 
 #include "SoundOutput.h"
 #include "Commdlg.h"
+#include "RegistryIO.h"
 
 SoundOutput* so_out;
 
@@ -104,6 +105,8 @@ SoundOutput::SoundOutput(PClip _child, IScriptEnvironment* _env) :
 
 SoundOutput::~SoundOutput(void)
 {
+  RegistryIO::StoreSettings(params);
+
   if (input)
     delete input;
   input = NULL;
@@ -162,8 +165,10 @@ void SoundOutput::startEncoding() {
 
     outputFile = _strdup(szFile);
   }
+
   if (!initEncoder())
     return;
+
   DestroyWindow(wnd);
   so_out = this;
 	wnd=CreateDialog(g_hInst,MAKEINTRESOURCE(IDD_DLG_CONVERT),0,ConvertProgressProc);

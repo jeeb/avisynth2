@@ -24,6 +24,7 @@
 // SoundOut (c) 2006-2007 by Klaus Post
 
 #include "Mp2Output.h"
+#include "RegistryIO.h"
 
 Mp2Output* out;
 

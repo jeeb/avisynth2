@@ -28,6 +28,8 @@
 #include <io.h>
 #include <vfw.h>
 #include "Commdlg.h"
+#include "RegistryIO.h"
+
 PipeOutput* out;
 
 const char * const PIPE_TypeString[] = {
@@ -111,7 +113,7 @@ PipeOutput::PipeOutput(PClip _child, IScriptEnvironment* _env) : SoundOutput(Con
   params["filterID"] = AVSValue("pipe");
   params["nofilename"] = AVSValue(false);
   hProcess = 0;
-
+  RegistryIO::RetrieveSettings(params, env);
 }
 
 PipeOutput::~PipeOutput(void)
