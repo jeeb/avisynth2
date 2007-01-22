@@ -326,8 +326,8 @@ BEGIN
   CONTROL "Encode as CBR",IDC_VORBISCBR,"Button",0x50010003,10,42,98,11
 END
 IDR_VERSION VERSIONINFO
-FILEVERSION 0,9,3,0
-PRODUCTVERSION 0,9,3,0
+FILEVERSION 0,9,4,0
+PRODUCTVERSION 0,9,4,0
 FILEOS 0x00000004
 FILETYPE 0x00000000
 BEGIN
@@ -335,8 +335,8 @@ BEGIN
   BEGIN
     BLOCK "FFFF0000"
     BEGIN
-      VALUE "FileVersion", "0.9.3.0\0"
-      VALUE "ProductVersion", "0.9.3.0\0"
+      VALUE "FileVersion", "0.9.4.0\0"
+      VALUE "ProductVersion", "0.9.4.0\0"
       VALUE "CompanyName", "AviSynth.org\0"
       VALUE "FileDescription", "SoundOut plugin for AviSynth 2.5 and later.\0"
       VALUE "LegalCopyright", "(c) Klaus Post 2007 - Released under GPL\0"
