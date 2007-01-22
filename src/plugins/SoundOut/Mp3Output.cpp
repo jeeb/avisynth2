@@ -208,10 +208,10 @@ bool Mp3Output::getParamsFromGUI() {
       params["cbrrate"] = AVSValue(MP3_HighBitrateVal[SendDlgItemMessage(wnd, IDC_MP3CBRBITRATE, CB_GETCURSEL,0,0)]);
       break;
     case 16000: case 24000: case 22050:
-      params["cbrrate"] = AVSValue(MP3_HighBitrateVal[SendDlgItemMessage(wnd, IDC_MP3CBRBITRATE, CB_GETCURSEL,0,0)]);
+      params["cbrrate"] = AVSValue(MP3_MediumBitrateVal[SendDlgItemMessage(wnd, IDC_MP3CBRBITRATE, CB_GETCURSEL,0,0)]);
       break;
     case 8000: case 12000: case 11025:
-      params["cbrrate"] = AVSValue(MP3_HighBitrateVal[SendDlgItemMessage(wnd, IDC_MP3CBRBITRATE, CB_GETCURSEL,0,0)]);
+      params["cbrrate"] = AVSValue(MP3_LowBitrateVal[SendDlgItemMessage(wnd, IDC_MP3CBRBITRATE, CB_GETCURSEL,0,0)]);
       break;
     default:
       MessageBox(NULL,"Notice: Unsupported Samplerate.","MP3 Encoder",MB_OK);
