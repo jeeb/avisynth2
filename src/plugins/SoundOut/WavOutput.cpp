@@ -25,17 +25,18 @@
 
 #include "WavOutput.h"
 #include "RegistryIO.h"
+#include <time.h>
 
 WavOutput* out;
 
 const char * const WAV_TypeString[] = {
-  "Microsoft WAV", "MS WAVE with WAVEFORMATEX", "Apple/SGI AIFF", "Sun/NeXT AU", "RAW PCM", "S.F. WAVE64", "Core Audio File" };
+  "Microsoft WAV", "MS WAVE with WAVEFORMATEX", "Apple/SGI AIFF", "Sun/NeXT AU", "RAW PCM", "S.F. WAVE64", "Core Audio File", "Broadcast Wave" };
 
 const int WAV_TypeVal[] = {
-  SF_FORMAT_WAV,    SF_FORMAT_WAVEX,             SF_FORMAT_AIFF,  SF_FORMAT_AU, SF_FORMAT_RAW,SF_FORMAT_W64,SF_FORMAT_CAF };
+  SF_FORMAT_WAV,    SF_FORMAT_WAVEX,             SF_FORMAT_AIFF,  SF_FORMAT_AU, SF_FORMAT_RAW,SF_FORMAT_W64,SF_FORMAT_CAF, SF_FORMAT_WAV };
 
 const char * const WAV_ExtString[] = {
-  "Microsoft WAV (*.wav)\0*.wav\0All Files (*.*)\0*.*\0\0", "Microsoft WAV (*.wav))\0*.wav\0All Files (*.*)\0*.*\0\0",    "Apple/SGI AIFF (*.aif))\0*.aif;*.aiff\0All Files (*.*)\0*.*\0\0", "Sun/NeXT AU (*.au))\0*.au\0All Files (*.*)\0*.*\0\0", "RAW PCM (*.pcm))\0*.pcm;*.raw\0All Files (*.*)\0*.*\0\0", "S.F. WAVE64 (*.W64))\0*.w64\0All Files (*.*)\0*.*\0\0", "Core Audio File (*.caf))\0*.caf\0All Files (*.*)\0*.*\0\0" };
+  "Microsoft WAV (*.wav)\0*.wav\0All Files (*.*)\0*.*\0\0", "Microsoft WAV (*.wav))\0*.wav\0All Files (*.*)\0*.*\0\0",    "Apple/SGI AIFF (*.aif))\0*.aif;*.aiff\0All Files (*.*)\0*.*\0\0", "Sun/NeXT AU (*.au))\0*.au\0All Files (*.*)\0*.*\0\0", "RAW PCM (*.pcm))\0*.pcm;*.raw\0All Files (*.*)\0*.*\0\0", "S.F. WAVE64 (*.W64))\0*.w64\0All Files (*.*)\0*.*\0\0", "Core Audio File (*.caf))\0*.caf\0All Files (*.*)\0*.*\0\0","Broacast (*.bwf)\0*.bwf\0All Files (*.*)\0*.*\0\0" };
 
 
 BOOL CALLBACK WavDialogProc(
@@ -88,7 +89,7 @@ void WavOutput::showGUI() {
 	wnd=CreateDialog(g_hInst,MAKEINTRESOURCE(IDD_WAVSETTINGS),0,WavDialogProc);
   SendMessage(wnd,WM_SETICON,ICON_SMALL, (LPARAM)LoadImage( g_hInst, MAKEINTRESOURCE(ICO_AVISYNTH),IMAGE_ICON,0,0,0));
 	ShowWindow(wnd,SW_NORMAL);
-  for (int i = 0; i< 7; i++) {
+  for (int i = 0; i< 8; i++) {
      SendDlgItemMessage(wnd, IDC_WAVTYPE, CB_ADDSTRING, 0, (LPARAM)WAV_TypeString[i]);
   }
 }
@@ -133,6 +134,31 @@ bool WavOutput::initEncoder() {
   }
   int cmd = params["peakchunck"].AsBool();
   sf_command(sndfile, SFC_SET_ADD_PEAK_CHUNK, &cmd,1);
+  if (params["type"].AsInt() == 7) {  // BWF   
+    memset(&bi, 0, sizeof(bi));
+    char name[32];
+    DWORD len = 32;
+    GetUserName(name, &len);
+    memcpy(bi.originator, name, 32);
+    memcpy(bi.originator_reference, name, 32);
+	  time_t lt_t;
+	  struct tm * lt;
+	  time(&lt_t);
+	  lt = localtime (&lt_t);
+    char buf[10];
+    strftime(bi.origination_date,10+1,"%Y-%m-%d",lt);
+    strftime(bi.origination_time,8+1,"%H-%M-%S",lt);
+    const char *desc = "Export from SoundOut for AviSynth";
+    memcpy(&bi.description, desc, strlen(desc)+1);
+    bi.version = 1;
+    srand(GetTickCount());
+
+    for (int i = 0; i<sizeof(bi.umid); i++) {
+      bi.umid[i] = rand()%0xff;
+    }
+
+    sf_command(sndfile, SFC_SET_BROADCAST_INFO, &bi,1);
+  }
   return true;
 }
 

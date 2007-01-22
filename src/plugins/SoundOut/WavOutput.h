@@ -42,4 +42,5 @@ public:
 private:
   SNDFILE* sndfile;
   SF_INFO info;
+  SF_BROADCAST_INFO bi;
 };
