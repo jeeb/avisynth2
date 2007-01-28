@@ -145,7 +145,6 @@ bool WavOutput::initEncoder() {
 	  struct tm * lt;
 	  time(&lt_t);
 	  lt = localtime (&lt_t);
-    char buf[10];
     strftime(bi.origination_date,10+1,"%Y-%m-%d",lt);
     strftime(bi.origination_time,8+1,"%H-%M-%S",lt);
     const char *desc = "Export from SoundOut for AviSynth";
@@ -174,5 +173,6 @@ void WavOutput::encodeLoop() {
 	if (sf_close(sndfile)) {
     MessageBox(NULL,"An encoder error occured while finalizing WAV output. Output file may not work","WAVE Encoder",MB_OK);
 	}
-  encodeThread = 0;
+ this->updateSampleStats(encodedSamples, vi.num_audio_samples);
+ encodeThread = 0;
 }

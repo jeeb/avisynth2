@@ -38,6 +38,8 @@ public:
   void encodeLoop();
   virtual void showGUI();
   bool GUI_ready;
+  virtual bool getParamsFromGUI();
+  virtual bool setParamsToGUI();
 private:
   twolame_options* encodeOptions;
 

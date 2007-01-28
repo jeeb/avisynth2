@@ -60,7 +60,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="Advapi32.lib Comdlg32.lib User32.lib lib\libFLAC++_static.lib lib\libFLAC_static.lib lib\vorbis_staticD.lib lib\ogg_static.lib lib\twolame.lib lib\MAClib.lib lib\libsndfile-1.lib lib\libaftenD.lib lib\libmp3lame.lib lib\mpglib.lib lib\vorbisenc_staticD.lib"
+				AdditionalDependencies="Advapi32.lib Comdlg32.lib User32.lib lib\libFLAC++_static.lib lib\libFLAC_static.lib lib\vorbis_static_d.lib lib\ogg_static_d.lib lib\twolame.lib lib\MAClib.lib lib\libsndfile-1.lib lib\libaftenD.lib lib\libmp3lame.lib lib\mpglib.lib lib\vorbisenc_static_d.lib"
 				ShowProgress="0"
 				LinkIncremental="2"
 				GenerateDebugInformation="true"
@@ -117,6 +117,7 @@
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
+				Optimization="3"
 				FavorSizeOrSpeed="1"
 				AdditionalIncludeDirectories="h/"
 				PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_USRDLL;SOUNDOUT_EXPORTS;"

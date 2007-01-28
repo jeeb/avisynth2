@@ -157,11 +157,14 @@ bool PipeOutput::setParamsToGUI() {
 }
 
 bool PipeOutput::getParamsFromGUI() {
-  char buf[1000];
+  char buf[10000];
+  ((short*)buf)[0] = 10000;
   SendDlgItemMessage(wnd, IDC_PIPEEXECUTABLE, EM_GETLINE,0,(LPARAM)buf);
   params["executable"] = AVSValue(env->SaveString(buf));
+  ((short*)buf)[0] = 10000;
   SendDlgItemMessage(wnd, IDC_PIPEPREFILE, EM_GETLINE,0,(LPARAM)buf);
   params["prefilename"] = AVSValue(env->SaveString(buf));
+  ((short*)buf)[0] = 10000;
   SendDlgItemMessage(wnd, IDC_PIPEPOSTFILE, EM_GETLINE,0,(LPARAM)buf);
   params["postfilename"] = AVSValue(env->SaveString(buf));
   params["showoutput"] = AVSValue(!!IsDlgButtonChecked(wnd,IDC_PIPESHOWOUTPUT));
@@ -486,7 +489,8 @@ void PipeOutput::encodeLoop() {
      this->setError("Encoding aborted before all samples were delivered (not last block).\n");
    if (encodedSamples != vi.num_audio_samples && !quietExit) 
      this->setError("Encoding aborted before all samples were delivered (mismatch).\n");
-   encodeThread = 0;
+  this->updateSampleStats(encodedSamples, vi.num_audio_samples);
+  encodeThread = 0;
 }
 
 void PipeOutput::writeSamples(const void *ptr, int count) {

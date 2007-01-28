@@ -186,6 +186,7 @@ void SoundOutput::encodingFinished() {
   if (quietExit)
     return;
   SetDlgItemText(wnd,IDC_BTN_CONVERTABORT,"Close");
+//  SendMessage(wnd, WM_COMMAND, IDC_BTN_CONVERTABORT, 0);
   this->updatePercent(100);
 }
 
@@ -197,6 +198,7 @@ void SoundOutput::setError(const char* err) {
   SetDlgItemText(wnd,IDC_STC_CONVERTMSG,buf);
   SetDlgItemText(wnd,IDC_BTN_CONVERTABORT,"Close");
   this->updatePercent(0);
+  exitThread = true;
 }
 
 void SoundOutput::updatePercent(int p) {

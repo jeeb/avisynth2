@@ -88,7 +88,7 @@ AC3Output::AC3Output(PClip _child, IScriptEnvironment* _env) : SoundOutput(_chil
   params["dolbysurround"] = AVSValue(false);
   params["drc"] = AVSValue(DYNRNG_PROFILE_NONE);
   params["dialognormalization"] = AVSValue(31);
-  RegistryIO::RetrieveSettings(params, env);
+
 }
 
 AC3Output::~AC3Output(void)
@@ -118,6 +118,7 @@ bool AC3Output::getParamsFromGUI() {
   params["cbrrate"] = AVSValue(AC3_CBRBitrateVal[SendDlgItemMessage(wnd, IDC_AC3CBRRATE, CB_GETCURSEL,0,0)]);
   params["dialognormalization"] = AVSValue((int)SendDlgItemMessage(wnd, IDC_AC3DIALOG, CB_GETCURSEL,0,0));
   char buf[100];
+  ((short*)buf)[0] = 100;
   SendDlgItemMessage(wnd, IDC_AC3VBRRATE, EM_GETLINE,0,(LPARAM)buf);
   int n = atoi(buf);
   if (n<0 || n>1023) {

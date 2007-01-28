@@ -98,57 +98,142 @@ const char * const MP2_EmphString[] = {
 Mp2Output::Mp2Output(PClip _child, IScriptEnvironment* _env) : SoundOutput(ConvertAudio::Create(_child, SAMPLE_INT16,SAMPLE_INT16),_env)
 {
   out = this;
-	wnd=CreateDialog(g_hInst,MAKEINTRESOURCE(IDD_MP2SETTINGS),0,Mp2DialogProc);
-  SendMessage(wnd,WM_SETICON,ICON_SMALL, (LPARAM)LoadImage( g_hInst, MAKEINTRESOURCE(ICO_AVISYNTH),IMAGE_ICON,0,0,0));
-	ShowWindow(wnd,SW_NORMAL);
-  for (int i = 0; i< 14; i++) {
-    if (vi.audio_samples_per_second >= 32000) 
-      SendDlgItemMessage(wnd, IDC_MP2BITRATE, CB_ADDSTRING, 0, (LPARAM)MP2_HighBitrateString[i]);
-    else
-      SendDlgItemMessage(wnd, IDC_MP2BITRATE, CB_ADDSTRING, 0, (LPARAM)MP2_LowBitrateString[i]);
-  }
-  SendDlgItemMessage(wnd, IDC_MP2BITRATE,CB_SETCURSEL,9,0);  // TODO: Registry
-
-  if (vi.AudioChannels() == 1) {
-	  EnableWindow(GetDlgItem(wnd, IDC_MP2CHANNELS), false);
-    SendDlgItemMessage(wnd, IDC_MP2CHANNELS, CB_ADDSTRING, 0, (LPARAM)"Mono");
-  } else if (vi.AudioChannels() == 2){
-    for (int i = 0; i< 5; i++) {
-      SendDlgItemMessage(wnd, IDC_MP2CHANNELS, CB_ADDSTRING, 0, (LPARAM)MP2_StereoString[i]);
-    }
-  } else {
-    MessageBox(NULL,"You have too many channels.","MP2 Encoder",MB_OK);
-    return;
-  }
-  SendDlgItemMessage(wnd, IDC_MP2CHANNELS, CB_SETCURSEL,0,0);  // TODO: Registry
-
-  for (int i = 0; i< 6; i++) {
-    SendDlgItemMessage(wnd, IDC_MP2PSYMODEL, CB_ADDSTRING, 0, (LPARAM)MP2_PsymodelString[i]);
-  }
-  SendDlgItemMessage(wnd, IDC_MP2PSYMODEL, CB_SETCURSEL,4,0);  // TODO: Registry
-
-  for (int i = -10; i< 12; i+=2) {
-    char buf[20];
-    sprintf_s(buf,20,"%d",i);
-    SendDlgItemMessage(wnd, IDC_MP2VBRQUALITY, CB_ADDSTRING, 0, (LPARAM)buf);
-  }
-  SendDlgItemMessage(wnd, IDC_MP2VBRQUALITY, CB_SETCURSEL,5,0);  // TODO: Registry
-
-  for (int i = 0; i< 3; i++) {
-    SendDlgItemMessage(wnd, IDC_MP2DEEMPHASIS, CB_ADDSTRING, 0, (LPARAM)MP2_EmphString[i]);
-  }
-  SendDlgItemMessage(wnd, IDC_MP2DEEMPHASIS, CB_SETCURSEL,0,0);  // TODO: Registry
 
   params["outputFileFilter"] = AVSValue("MP2 files (*.mp2;*.mpa;*.m2a)\0*.mp2;*.mpa;*.m2a\0All Files (*.*)\0*.*\0\0");
   params["extension"] = AVSValue(".mp2");
   params["filterID"] = AVSValue("twolameout");
-
+  params["stereomode"] = AVSValue(-1);
+  params["psymodel"] = AVSValue(3);
+  params["bitrate"] = AVSValue(192);
+  params["vbrquality"] = AVSValue(0.0f);
+  params["padding"] = AVSValue(false);
+  params["vbr"] = AVSValue(false);
+  params["quick"] = AVSValue(false);
+  params["dab"] = AVSValue(false);
+  params["crc"] = AVSValue(false);
+  params["original"] = AVSValue(false);
+  params["copyright"] = AVSValue(false);
+  params["private"] = AVSValue(false);
+  params["emphasis"] = AVSValue(TWOLAME_EMPHASIS_N);
+  RegistryIO::RetrieveSettings(params, env);
 }
 
 Mp2Output::~Mp2Output(void)
 {
 }
 void Mp2Output::showGUI() {
+	wnd=CreateDialog(g_hInst,MAKEINTRESOURCE(IDD_MP2SETTINGS),0,Mp2DialogProc);
+  SendMessage(wnd,WM_SETICON,ICON_SMALL, (LPARAM)LoadImage( g_hInst, MAKEINTRESOURCE(ICO_AVISYNTH),IMAGE_ICON,0,0,0));
+	ShowWindow(wnd,SW_NORMAL);
+  int bitrate = params["bitrate"].AsInt();
+  for (int i = 0; i< 14; i++) {
+    if (vi.audio_samples_per_second >= 32000) {
+      SendDlgItemMessage(wnd, IDC_MP2BITRATE, CB_ADDSTRING, 0, (LPARAM)MP2_HighBitrateString[i]);
+      if (bitrate == MP2_HighBitrateVal[i])
+        SendDlgItemMessage(wnd, IDC_MP2BITRATE,CB_SETCURSEL,i,0);
+    } else {
+      SendDlgItemMessage(wnd, IDC_MP2BITRATE, CB_ADDSTRING, 0, (LPARAM)MP2_LowBitrateString[i]);
+      if (bitrate == MP2_LowBitrateVal[i])
+        SendDlgItemMessage(wnd, IDC_MP2BITRATE,CB_SETCURSEL,i,0);
+    }
+  }
+
+  if (vi.AudioChannels() == 1) {
+	  EnableWindow(GetDlgItem(wnd, IDC_MP2CHANNELS), false);
+    SendDlgItemMessage(wnd, IDC_MP2CHANNELS, CB_ADDSTRING, 0, (LPARAM)"Mono");
+    SendDlgItemMessage(wnd, IDC_MP2CHANNELS, CB_SETCURSEL,0,0);
+  } else if (vi.AudioChannels() == 2){
+    for (int i = 0; i< 5; i++) {
+      SendDlgItemMessage(wnd, IDC_MP2CHANNELS, CB_ADDSTRING, 0, (LPARAM)MP2_StereoString[i]);
+      if (params["stereomode"].AsInt() == MP2_StereoVal[i])
+        SendDlgItemMessage(wnd, IDC_MP2CHANNELS, CB_SETCURSEL,i,0);
+    }    
+  } else {
+    MessageBox(NULL,"You have too many channels.","MP2 Encoder",MB_OK);
+    return;
+  }
+
+  for (int i = 0; i< 6; i++) {
+    SendDlgItemMessage(wnd, IDC_MP2PSYMODEL, CB_ADDSTRING, 0, (LPARAM)MP2_PsymodelString[i]);
+  }
+
+  for (int i = -10; i< 12; i+=2) {
+    char buf[20];
+    sprintf_s(buf,20,"%d",i);
+    SendDlgItemMessage(wnd, IDC_MP2VBRQUALITY, CB_ADDSTRING, 0, (LPARAM)buf);
+  }
+
+  for (int i = 0; i< 3; i++) {
+    SendDlgItemMessage(wnd, IDC_MP2DEEMPHASIS, CB_ADDSTRING, 0, (LPARAM)MP2_EmphString[i]);
+  }
+}
+
+bool Mp2Output::setParamsToGUI() {
+  int bitrate = params["bitrate"].AsInt();
+  for (int i = 0; i< 14; i++) {
+    if (vi.audio_samples_per_second >= 32000) {
+      if (bitrate == MP2_HighBitrateVal[i])
+        SendDlgItemMessage(wnd, IDC_MP2BITRATE,CB_SETCURSEL,i,0);
+    } else {
+      if (bitrate == MP2_LowBitrateVal[i])
+        SendDlgItemMessage(wnd, IDC_MP2BITRATE,CB_SETCURSEL,i,0);
+    }
+  }
+  if (vi.AudioChannels() == 1) {
+    SendDlgItemMessage(wnd, IDC_MP2CHANNELS, CB_SETCURSEL,0,0);
+  } else if (vi.AudioChannels() == 2){
+    for (int i = 0; i< 5; i++) {
+      if (params["stereomode"].AsInt() == MP2_StereoVal[i])
+        SendDlgItemMessage(wnd, IDC_MP2CHANNELS, CB_SETCURSEL,i,0);
+    }    
+  } else {
+    return false;
+  }
+  for (int i = 0; i< 6; i++) {
+    if (params["psymodel"].AsInt() == MP2_PsymodelVal[i]) 
+      SendDlgItemMessage(wnd, IDC_MP2PSYMODEL, CB_SETCURSEL,i,0);
+  }
+
+  int q = (params["vbrquality"].AsFloat() + 10.01f) / 2.0f;
+    SendDlgItemMessage(wnd, IDC_MP2VBRQUALITY, CB_SETCURSEL,q,0);
+
+  for (int i = 0; i< 3; i++) {
+    if (params["emphasis"].AsInt() == MP2_EmphVal[i])
+      SendDlgItemMessage(wnd, IDC_MP2DEEMPHASIS, CB_SETCURSEL,i,0);
+  }
+  CheckDlgButton(wnd, IDC_MP2ADDPADDING, params["padding"].AsBool());
+  CheckDlgButton(wnd, IDC_MP2VBR, params["vbr"].AsBool());
+  CheckDlgButton(wnd, IDC_MP2QUICK, params["quick"].AsBool());
+  CheckDlgButton(wnd, IDC_MP2DABEXTENSIONS, params["dab"].AsBool());
+  CheckDlgButton(wnd, IDC_MP2ADDCRC, params["crc"].AsBool());
+  CheckDlgButton(wnd, IDC_MP2ORIGINAL, params["original"].AsBool());
+  CheckDlgButton(wnd, IDC_MP2VBR, params["copyright"].AsBool());
+  CheckDlgButton(wnd, IDC_MP2PRIVATE, params["private"].AsBool());
+  EnableWindow(GetDlgItem(wnd, IDC_MP2VBRQUALITY), !!IsDlgButtonChecked(wnd, IDC_MP2VBR));
+  return true;
+}
+
+bool Mp2Output::getParamsFromGUI() {
+  params["padding"] = AVSValue(!!IsDlgButtonChecked(wnd, IDC_MP2ADDPADDING)); 
+  params["vbr"] = AVSValue(!!IsDlgButtonChecked(wnd, IDC_MP2VBR));
+  params["quick"] = AVSValue(!!IsDlgButtonChecked(wnd, IDC_MP2QUICK));
+  params["dab"] = AVSValue(!!IsDlgButtonChecked(wnd, IDC_MP2DABEXTENSIONS));
+  params["crc"] = AVSValue(!!IsDlgButtonChecked(wnd, IDC_MP2ADDCRC));
+  params["original"] = AVSValue(!!IsDlgButtonChecked(wnd, IDC_MP2ORIGINAL));
+  params["copyright"] = AVSValue(!!IsDlgButtonChecked(wnd, IDC_MP2VBR));
+  params["private"] = AVSValue(!!IsDlgButtonChecked(wnd, IDC_MP2PRIVATE));
+  params["stereomode"] = AVSValue(MP2_StereoVal[SendDlgItemMessage(wnd, IDC_MP2CHANNELS, CB_GETCURSEL,0,0)]);
+  params["psymodel"] = AVSValue(MP2_PsymodelVal[SendDlgItemMessage(wnd, IDC_MP2PSYMODEL, CB_GETCURSEL,0,0)]);
+  params["vbrquality"] = AVSValue((float)SendDlgItemMessage(wnd, IDC_MP2VBRQUALITY, CB_GETCURSEL,0,0)*2.0f - 10.0f);
+  params["emphasis"] = AVSValue(MP2_EmphVal[SendDlgItemMessage(wnd, IDC_MP2DEEMPHASIS, CB_GETCURSEL,0,0)]);
+  int bitrate = 0;
+  if (vi.audio_samples_per_second >= 32000) {
+    bitrate = MP2_HighBitrateVal[SendDlgItemMessage(wnd, IDC_MP2BITRATE, CB_GETCURSEL,0,0)];
+  } else {
+    bitrate = MP2_LowBitrateVal[SendDlgItemMessage(wnd, IDC_MP2BITRATE, CB_GETCURSEL,0,0)];
+  }
+  params["bitrate"] = AVSValue(bitrate);
+  return true;
 }
 
 bool Mp2Output::initEncoder() {
@@ -166,75 +251,71 @@ bool Mp2Output::initEncoder() {
     return false;
   }
   if (vi.AudioChannels() == 2) {
-    int mode = MP2_StereoVal[SendDlgItemMessage(wnd, IDC_MP2CHANNELS, CB_GETCURSEL,0,0)];
-    if(twolame_set_mode(encodeOptions,(TWOLAME_MPEG_mode)mode)) {
+    if(twolame_set_mode(encodeOptions,(TWOLAME_MPEG_mode)params["stereomode"].AsInt())) {
       MessageBox(NULL,"An encoder error occured while setting 'twolame_set_mode'","MP2 Encoder",MB_OK);
       return false;
     }  
   }
-  int bitrate = 0;
-  if (vi.audio_samples_per_second >= 32000) {
-    bitrate = MP2_HighBitrateVal[SendDlgItemMessage(wnd, IDC_MP2BITRATE, CB_GETCURSEL,0,0)];
-  } else {
-    bitrate = MP2_LowBitrateVal[SendDlgItemMessage(wnd, IDC_MP2BITRATE, CB_GETCURSEL,0,0)];
-  }
-  if(twolame_set_bitrate(encodeOptions, bitrate)) {
+  if(twolame_set_bitrate(encodeOptions, params["bitrate"].AsInt())) {
     MessageBox(NULL,"An encoder error occured while setting 'twolame_set_bitrate'","MP2 Encoder",MB_OK);
     return false;
   }
-  if(twolame_set_VBR_max_bitrate_kbps(encodeOptions, bitrate)) {
+  if(twolame_set_VBR_max_bitrate_kbps(encodeOptions, params["bitrate"].AsInt())) {
     MessageBox(NULL,"An encoder error occured while setting 'twolame_set_VBR_max_bitrate_kbps'","MP2 Encoder",MB_OK);
     return false;
   }
 
-  int model = MP2_PsymodelVal[SendDlgItemMessage(wnd, IDC_MP2PSYMODEL, CB_GETCURSEL,0,0)];
-  if(twolame_set_psymodel(encodeOptions, model)) {
+  if(twolame_set_psymodel(encodeOptions, params["psymodel"].AsInt())) {
     MessageBox(NULL,"An encoder error occured while setting 'twolame_set_psymodel'","MP2 Encoder",MB_OK);
     return false;
   }
 
-  if(twolame_set_padding(encodeOptions, !!IsDlgButtonChecked(wnd, IDC_MP2VBR) ? TWOLAME_PAD_ALL : TWOLAME_PAD_NO )) {
-    MessageBox(NULL,"An encoder error occured while setting 'twolame_set_padding'","MP2 Encoder",MB_OK);
-    return false;
-  }
-
-  if(twolame_set_emphasis(encodeOptions, MP2_EmphVal[SendDlgItemMessage(wnd, IDC_MP2DEEMPHASIS, CB_GETCURSEL,0,0)])) {
+  if(twolame_set_emphasis(encodeOptions, (TWOLAME_Emphasis)params["emphasis"].AsInt())) {
     MessageBox(NULL,"An encoder error occured while setting 'twolame_set_emphasis'","MP2 Encoder",MB_OK);
     return false;
   }
 
-  if(twolame_set_error_protection(encodeOptions, !!IsDlgButtonChecked(wnd, IDC_MP2ADDCRC))) {
+  if(twolame_set_error_protection(encodeOptions, params["crc"].AsBool())) {
     MessageBox(NULL,"An encoder error occured while setting 'twolame_set_error_protection'","MP2 Encoder",MB_OK);
     return false;
   }
 
-  if(twolame_set_copyright(encodeOptions, !!IsDlgButtonChecked(wnd, IDC_MP2COPYRIGHT))) {
+  if(twolame_set_copyright(encodeOptions, params["copyright"].AsBool())) {
     MessageBox(NULL,"An encoder error occured while setting 'twolame_set_copyright'","MP2 Encoder",MB_OK);
     return false;
   }
 
-  if(twolame_set_original(encodeOptions, !!IsDlgButtonChecked(wnd, IDC_MP2ORIGINAL))) {
+  if(twolame_set_original(encodeOptions, params["original"].AsBool())) {
     MessageBox(NULL,"An encoder error occured while setting 'twolame_set_original'","MP2 Encoder",MB_OK);
     return false;
   }
 
-  if(twolame_set_VBR(encodeOptions, !!IsDlgButtonChecked(wnd, IDC_MP2VBR))) {
+/*  if(twolame_set_private(encodeOptions, (TWOLAME_Padding)params["private"].AsBool())) {
+    MessageBox(NULL,"An encoder error occured while setting 'twolame_set_private'","MP2 Encoder",MB_OK);
+    return false;
+  }
+*/
+  if(twolame_set_padding(encodeOptions, (TWOLAME_Padding)params["padding"].AsBool())) {
+    MessageBox(NULL,"An encoder error occured while setting 'twolame_set_padding'","MP2 Encoder",MB_OK);
+    return false;
+  }
+
+  if(twolame_set_VBR(encodeOptions, params["vbr"].AsBool())) {
     MessageBox(NULL,"An encoder error occured while setting 'twolame_set_VBR'","MP2 Encoder",MB_OK);
     return false;
   }
 
-  if(twolame_set_quick_mode(encodeOptions, !!IsDlgButtonChecked(wnd, IDC_MP2QUICK))) {
+  if(twolame_set_quick_mode(encodeOptions, params["quick"].AsBool())) {
     MessageBox(NULL,"An encoder error occured while setting 'twolame_set_quick_mode'","MP2 Encoder",MB_OK);
     return false;
   }
 
-  if(twolame_set_DAB(encodeOptions, !!IsDlgButtonChecked(wnd, IDC_MP2DABEXTENSIONS))) {
+  if(twolame_set_DAB(encodeOptions, params["dab"].AsBool())) {
     MessageBox(NULL,"An encoder error occured while setting 'twolame_set_DAB'","MP2 Encoder",MB_OK);
     return false;
   }
 
-  float vbrlev = (float)SendDlgItemMessage(wnd, IDC_MP2VBRQUALITY, CB_GETCURSEL,0,0)*2.0f - 10.0f;
-  if(twolame_set_VBR_level(encodeOptions, vbrlev)) {
+  if(twolame_set_VBR_level(encodeOptions, params["vbrquality"].AsFloat())) {
     MessageBox(NULL,"An encoder error occured while setting 'twolame_set_VBR_level'","MP2 Encoder",MB_OK);
     return false;
   }
@@ -274,6 +355,7 @@ void Mp2Output::encodeLoop() {
     encodedSamples += sb->numSamples;
     this->updateSampleStats(encodedSamples, vi.num_audio_samples);
   } while (!sb->lastBlock && !exitThread);
+  this->updateSampleStats(encodedSamples, vi.num_audio_samples);
 
   int bytesReady = twolame_encode_flush(encodeOptions, outbuffer, BLOCKSAMPLES);
   fwrite(outbuffer, bytesReady, 1, f);

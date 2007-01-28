@@ -90,9 +90,14 @@ bool VorbisOutput::setParamsToGUI() {
 
 bool VorbisOutput::getParamsFromGUI() {
   char buf[100];
+  ((short*)buf)[0] = 100;
   SendDlgItemMessage(wnd, IDC_VORBISBITRATE, EM_GETLINE,0,(LPARAM)buf);
   int n = atoi(buf);
-  params["vbrbitrate"] = AVSValue(n);
+  if (n<16) {
+    MessageBox(NULL,"Bitrate must be 16kbit or more per second.","Vorbis Encoder",MB_OK);
+    return false;
+  }
+  params["vbrbitrate"] = AVSValue(n);  
   params["cbr"] = AVSValue(!!IsDlgButtonChecked(wnd,IDC_VORBISCBR));
   return true;
 }
@@ -101,14 +106,15 @@ bool VorbisOutput::initEncoder() {
   int br = params["vbrbitrate"].AsInt()*1000;
   int min_max = params["cbr"].AsBool() ? br : -1;
   if (vorbis_encode_init(&vorbis,vi.AudioChannels(),vi.audio_samples_per_second, min_max, br, min_max)) {
-    MessageBox(NULL,"An encoder error occured while initializing encoder","MP3 Encoder",MB_OK);
+    MessageBox(NULL,"An encoder error occured while initializing encoder","Vorbis Encoder",MB_OK);
+    return false;
   }
   return true;
 }
 
 void VorbisOutput::encodeLoop() {
   FILE *f;
-  fopen_s(&f, outputFile, "wb+S");
+  fopen_s(&f, outputFile, "wbS");
   ogg_stream_state os; /* take physical pages, weld into a logical
                        stream of packets */
   ogg_page         og; /* one Ogg bitstream page.  Vorbis packets are inside */
@@ -125,14 +131,18 @@ void VorbisOutput::encodeLoop() {
   memset(&op,0, sizeof(op));
 
   /* set up the analysis state and auxiliary encoding storage */
-  vorbis_analysis_init(&vd,&vorbis);
-  vorbis_block_init(&vd,&vb);
+  if (vorbis_analysis_init(&vd,&vorbis)) 
+    setError("An encoder error occured while initializing analysis for encoder");
+  
+  if (vorbis_block_init(&vd,&vb))
+    setError("An encoder error occured while initializing block storage for encoder");
 
   /* set up our packet->stream encoder */
   /* pick a random serial number; that way we can more likely build
   chained streams just by concatenation */
   srand(GetTickCount());
-  ogg_stream_init(&os,rand());
+  if (ogg_stream_init(&os,rand())) 
+    setError("An encoder error occured while initializing stream for encoder");
 
   /* Vorbis streams begin with three headers; the initial header (with
   most of the codec setup parameters) which is mandated by the Ogg
@@ -145,15 +155,16 @@ void VorbisOutput::encodeLoop() {
   ogg_packet header_comm;
   ogg_packet header_code;
 
-  vorbis_analysis_headerout(&vd,&vc,&header,&header_comm,&header_code);
-  ogg_stream_packetin(&os,&header); /* automatically placed in its own
-                                    page */
+  if (vorbis_analysis_headerout(&vd,&vc,&header,&header_comm,&header_code))
+    setError("An encoder error occured while initializing header for encoder");
+
+  ogg_stream_packetin(&os,&header); /* automatically placed in its own page */
   ogg_stream_packetin(&os,&header_comm);
   ogg_stream_packetin(&os,&header_code);
 
   while(!exitThread){
     int result=ogg_stream_flush(&os,&og);
-    if(result==0)break;
+    if(result==0) break;
     fwrite(og.header,1,og.header_len,f);
     fwrite(og.body,1,og.body_len,f);
   }
@@ -177,7 +188,8 @@ void VorbisOutput::encodeLoop() {
     }
 
     /* tell the library how much we actually submitted */
-    vorbis_analysis_wrote(&vd,sb->numSamples);
+    if (vorbis_analysis_wrote(&vd,sb->numSamples))
+        setError("An encoder error occured while writing analyzing data");
 
     if (sb->lastBlock)  
       vorbis_analysis_wrote(&vd,0);
@@ -187,23 +199,34 @@ void VorbisOutput::encodeLoop() {
     block for encoding now */
     while(vorbis_analysis_blockout(&vd,&vb)==1){
 
-      /* analysis */
-      vorbis_analysis(&vb,&op);
+      /* analysis, assume we want to use bitrate management */
+      if (vorbis_analysis(&vb,NULL))
+        setError("An encoder error occured while analyzing data");
 
-      /* weld the packet into the bitstream */
-      ogg_stream_packetin(&os,&op);
+      if(vorbis_bitrate_addblock(&vb)) {
+        setError("An encoder error occured while adding data block");
+      }
+      while(vorbis_bitrate_flushpacket(&vd,&op)){
 
-      /* write out pages (if any) */
-      while(true){
-        int result=ogg_stream_pageout(&os,&og);
-        if(result==0)break;
-        fwrite(og.header,1,og.header_len,f);
-        fwrite(og.body,1,og.body_len,f);
+        /* weld the packet into the bitstream */
+        if (ogg_stream_packetin(&os,&op))
+          setError("An encoder error occured while weliding data into the bitstream");
+
+        /* write out pages (if any) */
+        while(ogg_stream_pageout(&os,&og)){        
+          fwrite(og.header,1,og.header_len,f);
+          fwrite(og.body,1,og.body_len,f);
+          if(ogg_page_eos(&og)) {
+//          exitThread = true;
+            break;
+          }
+        }
       }
     }
     encodedSamples += sb->numSamples;
     this->updateSampleStats(encodedSamples, vi.num_audio_samples);
   } while (!sb->lastBlock && !exitThread);
+  this->updateSampleStats(encodedSamples, vi.num_audio_samples);
 
   /* clean up and exit.  vorbis_info_clear() must be called last */
   
@@ -211,5 +234,6 @@ void VorbisOutput::encodeLoop() {
   vorbis_block_clear(&vb);
   vorbis_dsp_clear(&vd);
   vorbis_info_clear(&vorbis);
+  vorbis_comment_clear(&vc);
   fclose(f);
 }

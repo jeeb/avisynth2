@@ -195,6 +195,7 @@ bool Mp3Output::getParamsFromGUI() {
   mode = !!IsDlgButtonChecked(wnd, IDC_MP3CBR) ? 2 : mode;
   params["mode"] = AVSValue(mode);
   char buf[100];
+  ((short*)buf)[0] = 100;
   SendDlgItemMessage(wnd, IDC_AC3VBRRATE, EM_GETLINE,0,(LPARAM)buf);
   int n = atoi(buf);
   if (n<8 || n>320 && mode == 1) {
@@ -320,6 +321,7 @@ void Mp3Output::encodeLoop() {
     encodedSamples += sb->numSamples;
     this->updateSampleStats(encodedSamples, vi.num_audio_samples, true);
   } while (!sb->lastBlock && !exitThread);
+  this->updateSampleStats(encodedSamples, vi.num_audio_samples);
 
   int bytesReady = lame_encode_flush(lame, outbuffer, BLOCKSAMPLES);
   fwrite(outbuffer, bytesReady, 1, f);
