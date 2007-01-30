@@ -24,7 +24,6 @@
 // SoundOut (c) 2006-2007 by Klaus Post
 
 #include "MacOutput.h"
-#include "RegistryIO.h"
 MacOutput* out;
 
 BOOL CALLBACK MacDialogProc(
@@ -76,7 +75,6 @@ MacOutput::MacOutput(PClip _child, IScriptEnvironment* _env) : SoundOutput(Conve
   params["outputFileFilter"] = AVSValue("APE files (*.ape)\0*.ape\0All Files (*.*)\0*.*\0\0");
   params["extension"] = AVSValue(".ape");
   params["compressionlevel"] = AVSValue(3);
-  RegistryIO::RetrieveSettings(params, env);
 }
 
 MacOutput::~MacOutput(void)

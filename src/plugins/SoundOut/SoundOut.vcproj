@@ -190,7 +190,15 @@
 				>
 			</File>
 			<File
+				RelativePath=".\DummyClip.h"
+				>
+			</File>
+			<File
 				RelativePath=".\h\lame.h"
+				>
+			</File>
+			<File
+				RelativePath=".\ParamDef.h"
 				>
 			</File>
 			<File

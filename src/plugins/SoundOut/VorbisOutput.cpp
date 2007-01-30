@@ -24,7 +24,6 @@
 // SoundOut (c) 2006-2007 by Klaus Post
 
 #include "VorbisOutput.h"
-#include "RegistryIO.h"
 VorbisOutput* out;
 
 BOOL CALLBACK VorbisDialogProc(
@@ -65,7 +64,6 @@ VorbisOutput::VorbisOutput(PClip _child, IScriptEnvironment* _env) : SoundOutput
   params["cbr"] = AVSValue(false);
   delete input;
   input = new SampleFetcher(child, env, 51234);
-  RegistryIO::RetrieveSettings(params, env);
 }
 
 VorbisOutput::~VorbisOutput(void)

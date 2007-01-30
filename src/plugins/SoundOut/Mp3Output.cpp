@@ -24,7 +24,6 @@
 // SoundOut (c) 2006-2007 by Klaus Post
 
 #include "Mp3Output.h"
-#include "RegistryIO.h"
 
 Mp3Output* out;
 
@@ -81,10 +80,8 @@ Mp3Output::Mp3Output(PClip _child, IScriptEnvironment* _env) : SoundOutput(Conve
   params["filterID"] = AVSValue("lame");
   params["abrrate"] = AVSValue(128);
   params["cbrrate"] = AVSValue(128);
-  params["abrrate"] = AVSValue(128);
   params["vbrpreset"] = AVSValue((int)STANDARD);
   params["mode"] = AVSValue(0);  // 0 = VBR, 1 = ABR, 2 = CBR
-  RegistryIO::RetrieveSettings(params, env);
 }
 
 Mp3Output::~Mp3Output(void)

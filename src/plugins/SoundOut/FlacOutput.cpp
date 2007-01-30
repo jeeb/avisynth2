@@ -24,7 +24,6 @@
 // SoundOut (c) 2006-2007 by Klaus Post
 
 #include "FlacOutput.h"
-#include "RegistryIO.h"
 
 FlacOutput* out;
 
@@ -63,7 +62,6 @@ FlacOutput::FlacOutput(PClip _child, IScriptEnvironment* _env) : SoundOutput(Con
   params["extension"] = AVSValue(".flac");
   params["filterID"] = AVSValue("flac");
   params["compressionlevel"] = AVSValue(6);
-  RegistryIO::RetrieveSettings(params, env);
 }
 
 FlacOutput::~FlacOutput(void)

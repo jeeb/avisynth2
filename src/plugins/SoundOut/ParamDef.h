@@ -22,44 +22,20 @@
 //
 
 // SoundOut (c) 2006-2007 by Klaus Post
-
 #pragma once
 
-#define _CRTDBG_MAP_ALLOC
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
+#include <map>
+using namespace std;
 
-#include "..\..\core\avisynth.h"
-#include "rc/rsrc.inc"
-#include "ParamDef.h"
+class SampleFetcher;
 
-
-
-extern HINSTANCE g_hInst;
-AVSValue __cdecl Create_SoundOut(AVSValue args, void* user_data, IScriptEnvironment* env);
-
-class SoundOutput;
-
-class SoundOut  : public GenericVideoFilter {
-public:
-  SoundOut(AVSValue args, IScriptEnvironment* env);
-  ~SoundOut();
-  void SetOutput(SoundOutput* newOutput);
-  PClip GetClip() {return child;}
-  IScriptEnvironment* env;
-  HWND wnd;
-private: 
-  Param xferParams;
-  void passSettings(SoundOutput *s);
-  HANDLE guiThread;
-  void openGUI();
-  SoundOutput* currentOut;
+struct ltstr
+{
+  bool operator()(const char* s1, const char* s2) const
+  {
+    return _stricmp(s1, s2) < 0;
+  }
 };
 
-BOOL CALLBACK MainDialogProc(
-  HWND hwndDlg,  // handle to dialog box
-  UINT uMsg,     // message
-  WPARAM wParam, // first message parameter
-  LPARAM lParam  // second message parameter
-  );
-
+//typedef map<const char*, AVSValue> Param;
+typedef map<const char*, AVSValue,ltstr> Param;

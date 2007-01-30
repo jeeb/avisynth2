@@ -41,6 +41,8 @@ BOOL CALLBACK ConvertProgressProc(
 		case WM_COMMAND:
 			switch(wParam) {
 				case IDCANCEL:
+          if (!so_out)
+            return 0;
           if (so_out->encodeThread) {
             if(IDNO == MessageBox(hwndDlg,"Are you sure you want to abort the conversion?","Abort?",MB_YESNO)) {
               return true;
@@ -60,6 +62,8 @@ BOOL CALLBACK ConvertProgressProc(
               delete so_out;
           }
         case IDC_BTN_CONVERTABORT:
+          if (!so_out)
+            return 0;
           if (so_out->encodeThread) {
             if(IDYES == MessageBox(hwndDlg,"Are you sure you want to abort the conversion?","Abort?",MB_YESNO)) {
               so_out->exitThread = true;
@@ -94,10 +98,26 @@ DWORD WINAPI StartEncoder(LPVOID p) {
   return 0;
 }
 
+DWORD WINAPI StartExitTimer(LPVOID p) {
+  SoundOutput* t = (SoundOutput*)p;
+  char buf[20];
+  HWND wnd = t->wnd;
+  for (int i = 5; i>0; i--) {
+    sprintf_s(buf, 20, "Close [%d]", i);
+    SetDlgItemText(wnd,IDC_BTN_CONVERTABORT, buf);
+    Sleep(1000);
+  }
+  SendMessage(wnd, WM_COMMAND, IDC_BTN_CONVERTABORT, 0);  
+  return 0;
+}
 SoundOutput::SoundOutput(PClip _child, IScriptEnvironment* _env) : 
-  GenericVideoFilter(_child), wnd(0), env(_env), encodeThread(0), outputFile(0)
+  GenericVideoFilter(_child), wnd(0), env(_env), encodeThread(0), outputFile(0), autoCloseThread(0)
 {
   params["nofilename"] = AVSValue(false);  // Setting this will disable prompt when Save is selected.
+  params["useFilename"] = AVSValue("");  // Setting this will disable prompt when Save is selected, and use this filename instead.
+  params["showProgress"] = AVSValue(true);  // Setting this will disable output progress window
+  params["overwriteFile"] = AVSValue("Always");  // Overwrite setting "Always", "Never", "Ask", "Newer"
+  params["autoCloseWindow"] = AVSValue(false);
   input = new SampleFetcher(child, env);
   lastUpdateTick = GetTickCount();
   quietExit = false;
@@ -105,7 +125,7 @@ SoundOutput::SoundOutput(PClip _child, IScriptEnvironment* _env) :
 
 SoundOutput::~SoundOutput(void)
 {
-  RegistryIO::StoreSettings(params);
+  so_out = NULL;
 
   if (input)
     delete input;
@@ -117,6 +137,7 @@ SoundOutput::~SoundOutput(void)
     Sleep(100);
     if (!timeout--) {
       TerminateThread(encodeThread,0);
+      CloseHandle(encodeThread);
       encodeThread = 0;
     }
   }
@@ -127,14 +148,18 @@ SoundOutput::~SoundOutput(void)
 
   if (outputFile)
     free(outputFile);
-
   outputFile = 0;
-  
+
+  if (autoCloseThread)
+    CloseHandle(autoCloseThread);
+  autoCloseThread = 0;
 }
 
 void SoundOutput::startEncoding() {
-  if (!this->getParamsFromGUI()) {
-    return;
+  if (wnd) {
+    if (!this->getParamsFromGUI()) {
+      return;
+    }
   }
 
   //char CurrentDir[MAX_PATH];
@@ -142,21 +167,26 @@ void SoundOutput::startEncoding() {
   char CurrentDir[] = "";
   if (!params["nofilename"].AsBool()) {
     char szFile[MAX_PATH+1];
-    szFile[0] = 0;
-    OPENFILENAME ofn;
-    memset(&ofn, 0, sizeof(ofn));
-    ofn.hInstance = g_hInst;
-    ofn.lpstrTitle = "Select where to save file..";
-    ofn.lStructSize = sizeof(ofn);
-    ofn.lpstrFilter = params["outputFileFilter"].AsString("All Files (*.*)\0*.*\0\0");
-    ofn.lpstrInitialDir = CurrentDir;
-    ofn.Flags = OFN_EXPLORER;
-    ofn.lpstrFile = szFile;
-    ofn.nMaxFile = sizeof( szFile );
+    if (!strlen("useFilename")) {
+      szFile[0] = 0;
+      OPENFILENAME ofn;
+      memset(&ofn, 0, sizeof(ofn));
+      ofn.hInstance = g_hInst;
+      ofn.lpstrTitle = "Select where to save file..";
+      ofn.lStructSize = sizeof(ofn);
+      ofn.lpstrFilter = params["outputFileFilter"].AsString("All Files (*.*)\0*.*\0\0");
+      ofn.lpstrInitialDir = CurrentDir;
+      ofn.Flags = OFN_EXPLORER;
+      ofn.lpstrFile = szFile;
+      ofn.nMaxFile = sizeof( szFile );
 
-    if (!GetSaveFileName(&ofn))
-      return;
+      if (!GetSaveFileName(&ofn))
+        return;
 
+    } else {  // We have filename override.
+      const char* fileN = params["useFilename"].AsString();
+      memcpy(szFile, fileN, strlen(fileN)+1);
+    }
     char *p;  
     p = strrchr(szFile, '.');
 
@@ -168,12 +198,17 @@ void SoundOutput::startEncoding() {
 
   if (!initEncoder())
     return;
+  if (wnd) {
+    RegistryIO::StoreSettings(params);
+    DestroyWindow(wnd);
+  }
 
-  DestroyWindow(wnd);
-  so_out = this;
-	wnd=CreateDialog(g_hInst,MAKEINTRESOURCE(IDD_DLG_CONVERT),0,ConvertProgressProc);
-  SendMessage(wnd,WM_SETICON,ICON_SMALL, (LPARAM)LoadImage( g_hInst, MAKEINTRESOURCE(ICO_AVISYNTH),IMAGE_ICON,0,0,0));
-  SetDlgItemText(wnd,IDC_STC_CONVERTMSG,"Initialization successful, Beginning Conversion...");
+  if (params["showProgress"].AsBool()) {
+    so_out = this;  
+	  wnd=CreateDialog(g_hInst,MAKEINTRESOURCE(IDD_DLG_CONVERT),0,ConvertProgressProc);
+    SendMessage(wnd,WM_SETICON,ICON_SMALL, (LPARAM)LoadImage( g_hInst, MAKEINTRESOURCE(ICO_AVISYNTH),IMAGE_ICON,0,0,0));
+    SetDlgItemText(wnd,IDC_STC_CONVERTMSG,"Initialization successful, Beginning Conversion...");
+  }
 
   exitThread = false;
   encodeThread = CreateThread(NULL,NULL,StartEncoder,this, NULL,NULL);
@@ -188,10 +223,13 @@ void SoundOutput::encodingFinished() {
   SetDlgItemText(wnd,IDC_BTN_CONVERTABORT,"Close");
 //  SendMessage(wnd, WM_COMMAND, IDC_BTN_CONVERTABORT, 0);
   this->updatePercent(100);
+  if (params["autoCloseWindow"].AsBool()) {
+    autoCloseThread = CreateThread(NULL,NULL,StartExitTimer,this, NULL,NULL);
+  }
 }
 
 void SoundOutput::setError(const char* err) {
-  if (quietExit)
+  if (quietExit|| !wnd)
     return;
   char buf[800];
   sprintf_s(buf, 800, "An error occurred during conversion: %s\nThe output file is probably incomplete.", err);
@@ -202,7 +240,7 @@ void SoundOutput::setError(const char* err) {
 }
 
 void SoundOutput::updatePercent(int p) {
-  if (quietExit)
+  if (quietExit|| !wnd)
     return;
   if (!exitThread)
     SendDlgItemMessage(wnd, IDC_PGB_CONVERTPROGRESS, PBM_SETPOS, p, 0);
@@ -211,7 +249,7 @@ void SoundOutput::updatePercent(int p) {
 }
 
 void SoundOutput::updateSampleStats(__int64 processed,__int64 total, bool force) {
-  if (quietExit)
+  if (quietExit || !wnd)
     return;
   if (GetTickCount() - lastUpdateTick < 50 && !force)
     return;

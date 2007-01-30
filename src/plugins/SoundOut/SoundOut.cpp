@@ -33,18 +33,109 @@
 #include "PipeOutput.h"
 #include "Mp3Output.h"
 #include "VorbisOutput.h"
+#include "RegistryIO.h"
+#include "DummyClip.h"
+#include <vector>
 
 HINSTANCE g_hInst;
 SoundOut* so;
+char buf[4096];
+Param p;
+int base_params;
 
 extern "C" __declspec(dllexport) const char* __stdcall AvisynthPluginInit2(IScriptEnvironment* env)
 {
-    env->AddFunction("SoundOut", "c", Create_SoundOut, 0);
-    return "SoundOut";
+  p.clear();
+  SoundOutput *out;
+  AVSValue v = DummyClip::Create(NULL, NULL, env);
+  PClip clip = v.AsClip();
+
+  Param::iterator i;
+  out = new WavOutput(clip,env);  
+  for (i = out->params.begin(); i != out->params.end(); i++)
+    p.insert(*i);
+  delete out;
+
+  out = new MacOutput(clip,env);
+  for (i = out->params.begin(); i != out->params.end(); i++)
+    p.insert(*i);
+  delete out;
+
+  out = new FlacOutput(clip,env);
+  for (i = out->params.begin(); i != out->params.end(); i++)
+    p.insert(*i);
+  delete out;
+
+  out = new Mp2Output(clip,env);
+  for (i = out->params.begin(); i != out->params.end(); i++)
+    p.insert(*i);
+  delete out;
+
+  out = new AC3Output(clip,env);
+  for (i = out->params.begin(); i != out->params.end(); i++)
+    p.insert(*i);
+  delete out;
+
+  out = new PipeOutput(clip,env);
+  for (i = out->params.begin(); i != out->params.end(); i++)
+    p.insert(*i);
+  delete out;
+
+  out = new Mp3Output(clip,env);
+  for (i = out->params.begin(); i != out->params.end(); i++)
+    p.insert(*i);
+  delete out;
+
+  out = new VorbisOutput(clip,env);
+  for (i = out->params.begin(); i != out->params.end(); i++)
+    p.insert(*i);
+  delete out;
+
+  p.erase("filterID");
+  p.erase("outputFileFilter");
+  p.erase("extension");
+  p.erase("nofilename");
+  p.erase("useFilename");
+  p.erase("showProgress");
+  p.erase("overwriteFile");
+
+  memset(buf,0,sizeof(buf));
+  strcat_s(buf,4096,"c[output]s[filename]s[showprogress]b[autoclose]b");
+  base_params = 5;  // How many arguments are defined above?
+  for ( i = p.begin(); i != p.end(); i++) {
+    AVSValue v = (*i).second;
+    strcat_s(buf,4096,"[");
+    strcat_s(buf,4096,(*i).first);
+    if (v.IsString()) {
+      strcat_s(buf,4096,"]s");
+    } else if (v.IsInt()) {
+      strcat_s(buf,4096,"]i");
+    } else if (v.IsBool()) {
+      strcat_s(buf,4096,"]b");
+    } else if (v.IsFloat()) {
+      strcat_s(buf,4096,"]f");
+    }
+  }
+  env->AddFunction("SoundOut", buf, Create_SoundOut, 0);
+  return "SoundOut";
+}
+
+
+DWORD WINAPI StartGUIThread(LPVOID p) {
+  SoundOut* t = (SoundOut*)p;
+  try {
+    MSG msg;
+    while (GetMessage(&msg, NULL, 0, 0)) {
+      TranslateMessage(&msg);
+      DispatchMessage(&msg);
+    }
+  } catch (...) {
+  }
+  return 0;
 }
 
 AVSValue __cdecl Create_SoundOut(AVSValue args, void* user_data, IScriptEnvironment* env) {
-  so = new SoundOut(args[0].AsClip(), env);
+  so = new SoundOut(args, env);
   return so;
 }
 
@@ -61,13 +152,85 @@ const char* t_MB="MB";
 const char* t_GB="GB";
 
 
-SoundOut::SoundOut(PClip _child, IScriptEnvironment* _env) : GenericVideoFilter(_child), currentOut(0), env(_env) {
-  if (!vi.HasAudio())
+SoundOut::SoundOut(AVSValue args, IScriptEnvironment* _env) : GenericVideoFilter(args[0].AsClip()), currentOut(0), env(_env) {
+  if (!vi.HasAudio()) {
     MessageBox(NULL,"No audio found in clip. I will just go away!","SoundOut",MB_OK);
+    return;
+  }
+  guiThread = 0;
+  wnd = 0;
 
+  if (args[2].Defined()) {
+    xferParams["useFilename"] = args[2];
+  }
+  if (args[3].Defined()) {
+    xferParams["showProgress"] = args[3];
+  }
+  if (args[4].Defined()) {
+    xferParams["autoCloseWindow"] = args[4];
+  }
+  /*if (args[5].Defined()) {
+    xferParams["overwriteFile"] = args[5];
+  }*/
+  int n = base_params;  // Offset in arg array
+  for (Param::iterator i = p.begin(); i != p.end(); i++) {
+    if (args[n].Defined()) {
+      const char* name = (*i).first;
+      xferParams[name] = args[n];
+    }
+    n++;  // Next param
+  }
+  if (args[1].Defined()) {  // Direct output.
+    SoundOutput *out = 0;
+    const char* type = args[1].AsString();
+    if (!_stricmp(type,"wav"))
+      out = new WavOutput(child,env);  
+    if (!_stricmp(type,"mac"))
+      out = new MacOutput(child,env);
+    if (!_stricmp(type,"flac"))
+      out = new FlacOutput(child,env);
+    if (!_stricmp(type,"mp2"))
+      out = new Mp2Output(child,env);
+    if (!_stricmp(type,"ac3"))
+      out = new AC3Output(child,env);
+    if (!_stricmp(type,"cmd"))
+      out = new PipeOutput(child,env);
+    if (!_stricmp(type,"mp3"))
+      out = new Mp3Output(child,env);
+    if (!_stricmp(type,"ogg"))
+      out = new VorbisOutput(child,env);
+
+    if (!out)
+      env->ThrowError("SoundOut: Output type not recognized.");
+    passSettings(out);
+    out->startEncoding();
+  } else {
+    openGUI();
+  }
+  guiThread = CreateThread(NULL,NULL,StartGUIThread,this, NULL,NULL);
+  SetThreadPriority(guiThread,THREAD_PRIORITY_BELOW_NORMAL);
+}
+
+SoundOut::~SoundOut() {
+  _CrtDumpMemoryLeaks();
+  if (wnd)
+    DestroyWindow(wnd);
+  if (guiThread)
+   TerminateThread(guiThread,0);
+}
+
+void SoundOut::passSettings(SoundOutput *s) {
+  for (Param::iterator i = xferParams.begin(); i != xferParams.end(); i++) {
+    s->params[(*i).first] = (*i).second;
+  }  
+}
+
+void SoundOut::openGUI() {
 	wnd=CreateDialog(g_hInst,MAKEINTRESOURCE(IDD_DLG_MAIN),0,MainDialogProc);
 	ShowWindow(wnd,SW_NORMAL);
   SendMessage(wnd,WM_SETICON,ICON_SMALL, (LPARAM)LoadImage( g_hInst, MAKEINTRESOURCE(ICO_AVISYNTH),IMAGE_ICON,0,0,0));
+
+
   // Mostly copy/paste from info()
   const char* s_type = NULL;
   if (vi.SampleType()==SAMPLE_INT8) s_type=t_INT8;
@@ -113,16 +276,11 @@ SoundOut::SoundOut(PClip _child, IScriptEnvironment* _env) : GenericVideoFilter(
       ,(aLenInMsecs/(60*60*1000)), (aLenInMsecs/(60*1000)) % 60, (aLenInMsecs/1000) % 60, aLenInMsecs % 1000
     );
   SetDlgItemText(wnd,IDC_STC_INFOTEXT,text);
-
 }
-
-SoundOut::~SoundOut() {
-  _CrtDumpMemoryLeaks();
-  DestroyWindow(wnd);
-}
-
 void SoundOut::SetOutput(SoundOutput* newinput) {
   currentOut = newinput;
+  RegistryIO::RetrieveSettings(newinput->params, env);
+  passSettings(newinput);
   newinput->showGUI();
   newinput->setParamsToGUI();
 }

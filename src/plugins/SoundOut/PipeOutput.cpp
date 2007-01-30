@@ -28,7 +28,6 @@
 #include <io.h>
 #include <vfw.h>
 #include "Commdlg.h"
-#include "RegistryIO.h"
 
 PipeOutput* out;
 
@@ -103,7 +102,6 @@ PipeOutput::PipeOutput(PClip _child, IScriptEnvironment* _env) : SoundOutput(Con
   params["type"] = AVSValue(0);
   params["peakchunck"] = AVSValue(false);
   params["filterID"] = AVSValue("pipeout");
-  params["format"] = AVSValue(0);  // If 8 bit, propose 16 bit.
   params["executable"] = AVSValue("aften.exe");
   params["prefilename"] = AVSValue("-b 384 -");
   params["postfilename"] = AVSValue("");
@@ -112,8 +110,12 @@ PipeOutput::PipeOutput(PClip _child, IScriptEnvironment* _env) : SoundOutput(Con
   params["extension"] = AVSValue("");
   params["filterID"] = AVSValue("pipe");
   params["nofilename"] = AVSValue(false);
+
+  for (int i = 0; i< 4; i++) {
+     if (vi.IsSampleType(PIPE_FormatVal[i]))
+       params["format"] = AVSValue(i);
+  }
   hProcess = 0;
-  RegistryIO::RetrieveSettings(params, env);
 }
 
 PipeOutput::~PipeOutput(void)

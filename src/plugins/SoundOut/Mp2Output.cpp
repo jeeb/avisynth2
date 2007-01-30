@@ -24,7 +24,6 @@
 // SoundOut (c) 2006-2007 by Klaus Post
 
 #include "Mp2Output.h"
-#include "RegistryIO.h"
 
 Mp2Output* out;
 
@@ -115,7 +114,6 @@ Mp2Output::Mp2Output(PClip _child, IScriptEnvironment* _env) : SoundOutput(Conve
   params["copyright"] = AVSValue(false);
   params["private"] = AVSValue(false);
   params["emphasis"] = AVSValue(TWOLAME_EMPHASIS_N);
-  RegistryIO::RetrieveSettings(params, env);
 }
 
 Mp2Output::~Mp2Output(void)

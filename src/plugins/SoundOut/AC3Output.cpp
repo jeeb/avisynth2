@@ -24,7 +24,6 @@
 // SoundOut (c) 2006-2007 by Klaus Post
 
 #include "AC3Output.h"
-#include "RegistryIO.h"
 
 AC3Output* out;
 

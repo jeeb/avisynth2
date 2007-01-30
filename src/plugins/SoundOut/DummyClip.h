@@ -25,41 +25,28 @@
 
 #pragma once
 
-#define _CRTDBG_MAP_ALLOC
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-
-#include "..\..\core\avisynth.h"
-#include "rc/rsrc.inc"
-#include "ParamDef.h"
-
-
-
-extern HINSTANCE g_hInst;
-AVSValue __cdecl Create_SoundOut(AVSValue args, void* user_data, IScriptEnvironment* env);
-
-class SoundOutput;
-
-class SoundOut  : public GenericVideoFilter {
+class DummyClip : public IClip {
+  VideoInfo vi;
 public:
-  SoundOut(AVSValue args, IScriptEnvironment* env);
-  ~SoundOut();
-  void SetOutput(SoundOutput* newOutput);
-  PClip GetClip() {return child;}
-  IScriptEnvironment* env;
-  HWND wnd;
-private: 
-  Param xferParams;
-  void passSettings(SoundOutput *s);
-  HANDLE guiThread;
-  void openGUI();
-  SoundOutput* currentOut;
+
+  DummyClip() {
+    memset(&vi, 0, sizeof(VideoInfo));
+  }
+
+
+  static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env) {
+	try {	// HIDE DAMN SEH COMPILER BUG!!!
+	    return new DummyClip();
+	}
+	catch (...) { throw; }
+  }
+
+  void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) {}
+  PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env) { return NULL; }
+  const VideoInfo& __stdcall GetVideoInfo() { return vi; }
+  bool __stdcall GetParity(int n) { return false; }
+  void __stdcall SetCacheHints(int cachehints,int frame_range) { };
+
 };
 
-BOOL CALLBACK MainDialogProc(
-  HWND hwndDlg,  // handle to dialog box
-  UINT uMsg,     // message
-  WPARAM wParam, // first message parameter
-  LPARAM lParam  // second message parameter
-  );
 

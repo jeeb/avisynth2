@@ -1,5 +1,5 @@
 // SoundOut Copyright Klaus Post 2006-2007
-// http://www.avisynth.org
+// http://www.avisynth.org 
 
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -24,7 +24,6 @@
 // SoundOut (c) 2006-2007 by Klaus Post
 
 #include "WavOutput.h"
-#include "RegistryIO.h"
 #include <time.h>
 
 WavOutput* out;
@@ -77,7 +76,6 @@ WavOutput::WavOutput(PClip _child, IScriptEnvironment* _env) : SoundOutput(Conve
   params["extension"] = AVSValue(".wav");
   params["peakchunck"] = AVSValue(false);
   params["filterID"] = AVSValue("libsnd");
-  RegistryIO::RetrieveSettings(params, env);
 }
 
 WavOutput::~WavOutput(void)

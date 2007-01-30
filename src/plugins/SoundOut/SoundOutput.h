@@ -24,25 +24,12 @@
 // SoundOut (c) 2006-2007 by Klaus Post
 
 #pragma once
+
 #include "soundout.h"
 #include "commctrl.h"
 #include "windows.h"
 #include <stdio.h>
-#include <map>
-using namespace std;
-
-class SampleFetcher;
-
-struct ltstr
-{
-  bool operator()(const char* s1, const char* s2) const
-  {
-    return _stricmp(s1, s2) < 0;
-  }
-};
-
-//typedef map<const char*, AVSValue> Param;
-typedef map<const char*, AVSValue,ltstr> Param;
+#include "ParamDef.h"
 
 class SoundOutput: public GenericVideoFilter
 {
@@ -54,8 +41,8 @@ public:
   virtual void encodeLoop() = 0;  // Called as loop for encoding.
   void encodingFinished();
   HANDLE encodeThread;
+  HANDLE autoCloseThread;
   bool exitThread;
-  bool autoCloseWindow;
   char* outputFile;
   void setError(const char* err);
   Param params;
@@ -64,11 +51,11 @@ public:
   bool quietExit;
   virtual void setDefaults() {}
   virtual bool getParamsFromGUI() {return true;}
+  HWND wnd;
 protected:
   virtual bool initEncoder() { return true;}   // Called to Init the encoder, returns false if error occured.
   void updatePercent(int p);
   void updateSampleStats(__int64 processed,__int64 total,bool force=false);
-  HWND wnd;
   HWND statWnd;
   SampleFetcher *input;
   IScriptEnvironment* env;
