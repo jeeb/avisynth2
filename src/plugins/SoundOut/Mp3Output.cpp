@@ -318,7 +318,7 @@ void Mp3Output::encodeLoop() {
     encodedSamples += sb->numSamples;
     this->updateSampleStats(encodedSamples, vi.num_audio_samples, true);
   } while (!sb->lastBlock && !exitThread);
-  this->updateSampleStats(encodedSamples, vi.num_audio_samples);
+  this->updateSampleStats(encodedSamples, vi.num_audio_samples, true);
 
   int bytesReady = lame_encode_flush(lame, outbuffer, BLOCKSAMPLES);
   fwrite(outbuffer, bytesReady, 1, f);

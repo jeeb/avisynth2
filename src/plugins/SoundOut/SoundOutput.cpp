@@ -49,7 +49,7 @@ BOOL CALLBACK ConvertProgressProc(
             }
             so_out->quietExit = true;
             so_out->exitThread = true;
-            int timeout = 100;  // 10 seconds
+            int timeout = 50;  // 5 seconds
             while (so_out->encodeThread) {
               Sleep(100);
               if (!timeout--) {
@@ -132,7 +132,7 @@ SoundOutput::~SoundOutput(void)
   input = NULL;
 
   exitThread = true;
-  int timeout = 100;  // 10 seconds
+  int timeout = 50;  // 50 seconds
   while (encodeThread) {  // Wait for thread to exit.
     Sleep(100);
     if (!timeout--) {
@@ -167,7 +167,7 @@ void SoundOutput::startEncoding() {
   char CurrentDir[] = "";
   if (!params["nofilename"].AsBool()) {
     char szFile[MAX_PATH+1];
-    if (!strlen("useFilename")) {
+    if (!strlen(params["useFilename"].AsString())) {
       szFile[0] = 0;
       OPENFILENAME ofn;
       memset(&ofn, 0, sizeof(ofn));
@@ -301,18 +301,19 @@ void SoundOutput::updateSampleStats(__int64 processed,__int64 total, bool force)
 
 DWORD WINAPI StartFetcher(LPVOID p) {
   SampleFetcher* t = (SampleFetcher*)p;
+  Sleep(100);
   t->FetchLoop();  
   return 0;
 }
 
 SampleFetcher::SampleFetcher(PClip _child, IScriptEnvironment* _env, int _maxSamples) : child(_child), env(_env), maxSamples(_maxSamples) {
   exitThread = false;
+  prev_sb = NULL;
+  FinishedBlock = NULL;
   evtNextBlockReady = ::CreateEvent (NULL, FALSE, FALSE, NULL);
   evtProcessNextBlock = ::CreateEvent (NULL, FALSE, FALSE, NULL);
   thread = CreateThread(NULL,NULL,StartFetcher,this, NULL,NULL);
   SetThreadPriority(thread,THREAD_PRIORITY_BELOW_NORMAL);
-  prev_sb = NULL;
-  FinishedBlock = NULL;
 }
 
 SampleFetcher::~SampleFetcher() {
@@ -359,7 +360,6 @@ void SampleFetcher::FetchLoop() {
     int getsamples = maxSamples;
     if (currentPos + getsamples >= vi.num_audio_samples) {
       getsamples = (int)(vi.num_audio_samples - currentPos);
-      exitThread = true;
       cleanExit = true;
     }
     SampleBlock *s = new SampleBlock(&vi, getsamples);
@@ -370,14 +370,17 @@ void SampleFetcher::FetchLoop() {
       if(IDNO == MessageBox(NULL,"An Error occured, while fetching samples.\nCurrent sampleblock will be skipped\nWould you like to abort conversion?","Abort?",MB_YESNO)) {
         memset(s->getSamples(), 0, (size_t)vi.BytesFromAudioSamples(s->numSamples));
       } else {
-        exitThread = true;
         cleanExit = true;
       }
     }
-    if (exitThread && cleanExit)
+    
+    if (exitThread || cleanExit)
       s->lastBlock = true;
     
     FinishedBlock = s;
+    if (cleanExit)
+      exitThread = true;
+
     SetEvent(evtNextBlockReady);
     if (!s->lastBlock) {
       HRESULT wait_result = WAIT_TIMEOUT;

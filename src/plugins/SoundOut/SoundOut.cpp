@@ -123,6 +123,7 @@ extern "C" __declspec(dllexport) const char* __stdcall AvisynthPluginInit2(IScri
 
 DWORD WINAPI StartGUIThread(LPVOID p) {
   SoundOut* t = (SoundOut*)p;
+  t->startUp();
   try {
     MSG msg;
     while (GetMessage(&msg, NULL, 0, 0)) {
@@ -153,12 +154,12 @@ const char* t_GB="GB";
 
 
 SoundOut::SoundOut(AVSValue args, IScriptEnvironment* _env) : GenericVideoFilter(args[0].AsClip()), currentOut(0), env(_env) {
+  guiThread = 0;
+  wnd = 0;
   if (!vi.HasAudio()) {
     MessageBox(NULL,"No audio found in clip. I will just go away!","SoundOut",MB_OK);
     return;
   }
-  guiThread = 0;
-  wnd = 0;
 
   if (args[2].Defined()) {
     xferParams["useFilename"] = args[2];
@@ -180,9 +181,26 @@ SoundOut::SoundOut(AVSValue args, IScriptEnvironment* _env) : GenericVideoFilter
     }
     n++;  // Next param
   }
+  forceOut = 0;
   if (args[1].Defined()) {  // Direct output.
+    forceOut = args[1].AsString();
+  }
+
+  guiThread = CreateThread(NULL,NULL,StartGUIThread,this, NULL,NULL);
+  SetThreadPriority(guiThread,THREAD_PRIORITY_ABOVE_NORMAL);
+}
+
+SoundOut::~SoundOut() {
+  _CrtDumpMemoryLeaks();
+  if (wnd)
+    DestroyWindow(wnd);
+  if (guiThread)
+   TerminateThread(guiThread,0);
+}
+void SoundOut::startUp() {
+  if (forceOut) {  // Direct output.
     SoundOutput *out = 0;
-    const char* type = args[1].AsString();
+    const char* type = forceOut;
     if (!_stricmp(type,"wav"))
       out = new WavOutput(child,env);  
     if (!_stricmp(type,"mac"))
@@ -207,16 +225,6 @@ SoundOut::SoundOut(AVSValue args, IScriptEnvironment* _env) : GenericVideoFilter
   } else {
     openGUI();
   }
-  guiThread = CreateThread(NULL,NULL,StartGUIThread,this, NULL,NULL);
-  SetThreadPriority(guiThread,THREAD_PRIORITY_BELOW_NORMAL);
-}
-
-SoundOut::~SoundOut() {
-  _CrtDumpMemoryLeaks();
-  if (wnd)
-    DestroyWindow(wnd);
-  if (guiThread)
-   TerminateThread(guiThread,0);
 }
 
 void SoundOut::passSettings(SoundOutput *s) {

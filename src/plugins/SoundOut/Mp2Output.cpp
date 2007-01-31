@@ -112,7 +112,6 @@ Mp2Output::Mp2Output(PClip _child, IScriptEnvironment* _env) : SoundOutput(Conve
   params["crc"] = AVSValue(false);
   params["original"] = AVSValue(false);
   params["copyright"] = AVSValue(false);
-  params["private"] = AVSValue(false);
   params["emphasis"] = AVSValue(TWOLAME_EMPHASIS_N);
 }
 
@@ -202,11 +201,10 @@ bool Mp2Output::setParamsToGUI() {
   CheckDlgButton(wnd, IDC_MP2ADDPADDING, params["padding"].AsBool());
   CheckDlgButton(wnd, IDC_MP2VBR, params["vbr"].AsBool());
   CheckDlgButton(wnd, IDC_MP2QUICK, params["quick"].AsBool());
-  CheckDlgButton(wnd, IDC_MP2DABEXTENSIONS, params["dab"].AsBool());
+  //CheckDlgButton(wnd, IDC_MP2DABEXTENSIONS, params["dab"].AsBool());
   CheckDlgButton(wnd, IDC_MP2ADDCRC, params["crc"].AsBool());
   CheckDlgButton(wnd, IDC_MP2ORIGINAL, params["original"].AsBool());
   CheckDlgButton(wnd, IDC_MP2VBR, params["copyright"].AsBool());
-  CheckDlgButton(wnd, IDC_MP2PRIVATE, params["private"].AsBool());
   EnableWindow(GetDlgItem(wnd, IDC_MP2VBRQUALITY), !!IsDlgButtonChecked(wnd, IDC_MP2VBR));
   return true;
 }
@@ -215,11 +213,10 @@ bool Mp2Output::getParamsFromGUI() {
   params["padding"] = AVSValue(!!IsDlgButtonChecked(wnd, IDC_MP2ADDPADDING)); 
   params["vbr"] = AVSValue(!!IsDlgButtonChecked(wnd, IDC_MP2VBR));
   params["quick"] = AVSValue(!!IsDlgButtonChecked(wnd, IDC_MP2QUICK));
-  params["dab"] = AVSValue(!!IsDlgButtonChecked(wnd, IDC_MP2DABEXTENSIONS));
+  //params["dab"] = AVSValue(!!IsDlgButtonChecked(wnd, IDC_MP2DABEXTENSIONS));
   params["crc"] = AVSValue(!!IsDlgButtonChecked(wnd, IDC_MP2ADDCRC));
   params["original"] = AVSValue(!!IsDlgButtonChecked(wnd, IDC_MP2ORIGINAL));
   params["copyright"] = AVSValue(!!IsDlgButtonChecked(wnd, IDC_MP2VBR));
-  params["private"] = AVSValue(!!IsDlgButtonChecked(wnd, IDC_MP2PRIVATE));
   params["stereomode"] = AVSValue(MP2_StereoVal[SendDlgItemMessage(wnd, IDC_MP2CHANNELS, CB_GETCURSEL,0,0)]);
   params["psymodel"] = AVSValue(MP2_PsymodelVal[SendDlgItemMessage(wnd, IDC_MP2PSYMODEL, CB_GETCURSEL,0,0)]);
   params["vbrquality"] = AVSValue((float)SendDlgItemMessage(wnd, IDC_MP2VBRQUALITY, CB_GETCURSEL,0,0)*2.0f - 10.0f);
@@ -288,11 +285,6 @@ bool Mp2Output::initEncoder() {
     return false;
   }
 
-/*  if(twolame_set_private(encodeOptions, (TWOLAME_Padding)params["private"].AsBool())) {
-    MessageBox(NULL,"An encoder error occured while setting 'twolame_set_private'","MP2 Encoder",MB_OK);
-    return false;
-  }
-*/
   if(twolame_set_padding(encodeOptions, (TWOLAME_Padding)params["padding"].AsBool())) {
     MessageBox(NULL,"An encoder error occured while setting 'twolame_set_padding'","MP2 Encoder",MB_OK);
     return false;
@@ -353,7 +345,7 @@ void Mp2Output::encodeLoop() {
     encodedSamples += sb->numSamples;
     this->updateSampleStats(encodedSamples, vi.num_audio_samples);
   } while (!sb->lastBlock && !exitThread);
-  this->updateSampleStats(encodedSamples, vi.num_audio_samples);
+  this->updateSampleStats(encodedSamples, vi.num_audio_samples, true);
 
   int bytesReady = twolame_encode_flush(encodeOptions, outbuffer, BLOCKSAMPLES);
   fwrite(outbuffer, bytesReady, 1, f);

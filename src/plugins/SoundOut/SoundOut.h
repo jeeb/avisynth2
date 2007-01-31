@@ -44,6 +44,7 @@ class SoundOut  : public GenericVideoFilter {
 public:
   SoundOut(AVSValue args, IScriptEnvironment* env);
   ~SoundOut();
+  void startUp();
   void SetOutput(SoundOutput* newOutput);
   PClip GetClip() {return child;}
   IScriptEnvironment* env;
@@ -54,6 +55,7 @@ private:
   HANDLE guiThread;
   void openGUI();
   SoundOutput* currentOut;
+  const char* forceOut;
 };
 
 BOOL CALLBACK MainDialogProc(

@@ -70,6 +70,13 @@ const int AC3_DRCVal[] = {DYNRNG_PROFILE_NONE,DYNRNG_PROFILE_FILM_LIGHT,DYNRNG_P
 const char * const AC3_DRCString[] = { "None", "Film Light", "Film Standard", "Music Light", 
 "Music Standard","Speech" };
 
+const int AC3_ChannelSize = 9;
+const int AC3_ChannelVal[] = {-1, 0, 1, 2, 3, 4 ,5 ,6, 7};
+const int AC3_ChannelNum[] = {-1, 2, 1, 2, 3, 3 ,4 ,4, 5};
+
+const char * const AC3_ChannelString[] = { "Auto", "1+1 (Ch1,Ch2)", "1/0 (C)", 
+"2/0 (L,R)", "3/0 (L,R,C)","2/1 (L,R,S)",  "3/1 (L,R,C,S)", "2/2 (L,R,SL,SR)", "3/2 (L,R,C,SL,SR)"};
+
 AC3Output::AC3Output(PClip _child, IScriptEnvironment* _env) : SoundOutput(_child ,_env)
 {
   GUI_ready = false;
@@ -77,6 +84,7 @@ AC3Output::AC3Output(PClip _child, IScriptEnvironment* _env) : SoundOutput(_chil
   params["extension"] = AVSValue(".ac3");
   params["filterID"] = AVSValue("aften");
   params["iscbr"] = AVSValue(true);
+  params["acmod"] = AVSValue(-1);
   params["cbrrate"] = AVSValue(384);
   params["vbrquality"] = AVSValue(220);
   params["blockswitch"] = AVSValue(false);
@@ -85,6 +93,7 @@ AC3Output::AC3Output(PClip _child, IScriptEnvironment* _env) : SoundOutput(_chil
   params["dchighpass"] = AVSValue(false);
   params["accuratealloc"] = AVSValue(true);
   params["dolbysurround"] = AVSValue(false);
+  params["islfe"] = AVSValue(true);
   params["drc"] = AVSValue(DYNRNG_PROFILE_NONE);
   params["dialognormalization"] = AVSValue(31);
 
@@ -111,11 +120,15 @@ void AC3Output::showGUI() {
     sprintf_s(buf,10,"%d", i);
     SendDlgItemMessage(wnd, IDC_AC3DIALOG, CB_ADDSTRING, 0, (LPARAM)buf);
   }
+  for (int i = 0; i<AC3_ChannelSize; i++) {
+    SendDlgItemMessage(wnd, IDC_AC3CHANNELMAPPING, CB_ADDSTRING, 0, (LPARAM)AC3_ChannelString[i]);
+  }
 }
 
 bool AC3Output::getParamsFromGUI() {
   params["cbrrate"] = AVSValue(AC3_CBRBitrateVal[SendDlgItemMessage(wnd, IDC_AC3CBRRATE, CB_GETCURSEL,0,0)]);
   params["dialognormalization"] = AVSValue((int)SendDlgItemMessage(wnd, IDC_AC3DIALOG, CB_GETCURSEL,0,0));
+  params["acmod"] = AVSValue(AC3_ChannelVal[SendDlgItemMessage(wnd, IDC_AC3CHANNELMAPPING, CB_GETCURSEL,0,0)]);
   char buf[100];
   ((short*)buf)[0] = 100;
   SendDlgItemMessage(wnd, IDC_AC3VBRRATE, EM_GETLINE,0,(LPARAM)buf);
@@ -130,6 +143,7 @@ bool AC3Output::getParamsFromGUI() {
   params["lfelowpass"] = AVSValue(!!IsDlgButtonChecked(wnd, IDC_AC3LFELOWPASS));
   params["dchighpass"] = AVSValue(!!IsDlgButtonChecked(wnd, IDC_AC3DCHIGHPASS));
   params["dolbysurround"] = AVSValue(!!IsDlgButtonChecked(wnd, IDC_AC3DCHIGHPASS));
+  params["islfe"] = AVSValue(!!IsDlgButtonChecked(wnd, IDC_AC3LFE));
   params["drc"] = AVSValue(AC3_DRCVal[SendDlgItemMessage(wnd, IDC_AC3DRC, CB_GETCURSEL,0,0)]);
   return true;
 }
@@ -167,9 +181,16 @@ bool AC3Output::setParamsToGUI() {
       SendDlgItemMessage(wnd, IDC_AC3DRC,CB_SETCURSEL,i,0);
   }
 
+  n = params["acmod"].AsInt();
+  for (int i = 0; i<AC3_ChannelSize; i++) {
+    if (AC3_ChannelVal[i] == n) 
+      SendDlgItemMessage(wnd, IDC_AC3CHANNELMAPPING,CB_SETCURSEL,i,0);
+  }
+
   CheckDlgButton(wnd, IDC_AC3BANDWIDTH, params["bandwidthfilter"].AsBool());
   CheckDlgButton(wnd, IDC_AC3LFELOWPASS, params["lfelowpass"].AsBool());
   CheckDlgButton(wnd, IDC_AC3DCHIGHPASS, params["dchighpass"].AsBool());
+  CheckDlgButton(wnd, IDC_AC3LFE, params["islfe"].AsBool());
 
   GUI_ready = true;
   return true;
@@ -204,7 +225,22 @@ bool AC3Output::initEncoder() {
   aften.params.use_dc_filter = params["dchighpass"].AsBool();
   aften.params.use_block_switching = params["blockswitch"].AsBool();
   aften.meta.dialnorm = params["dialognormalization"].AsInt();
-  aften_plain_wav_to_acmod(vi.AudioChannels(), &aften.acmod, &aften.lfe);
+  aften.lfe = params["islfe"].AsBool();
+
+  if (params["acmod"].AsInt() == -1) {
+    aften_plain_wav_to_acmod(vi.AudioChannels(), &aften.acmod, &aften.lfe);
+  } else {
+    aften.acmod = params["acmod"].AsInt();
+    for (int i = 0; i<AC3_ChannelSize; i++) {
+      if (AC3_ChannelVal[i] == aften.acmod) 
+        if (AC3_ChannelNum[i] != (vi.AudioChannels() - aften.lfe))
+          aften.acmod = -1;
+    }
+    if (aften.acmod == -1) {
+      MessageBox(NULL,"Channel number does not match selected channel mapping.","AC3 Encoder",MB_OK);
+      return false;
+    }
+  }
 
   if (vi.AudioChannels() == 2) 
     aften.meta.dsurmod = params["dolbysurround"].AsBool()+1;
@@ -221,7 +257,7 @@ bool AC3Output::initEncoder() {
 
 void AC3Output::encodeBlock(unsigned char* in) {
   unsigned char frame[A52_MAX_CODED_FRAME_SIZE];
-  //aften_remap_wav_to_a52(in,A52_FRAME_SIZE,aften.channels, aften.sample_format,aften.acmod);
+  aften_remap_wav_to_a52(in,A52_FRAME_SIZE,aften.channels, aften.sample_format,aften.acmod);
   int out = aften_encode_frame(&aften, frame, in);
   if (out<0) {
     MessageBox(NULL,"Encoder error.","AC3 Encoder",MB_OK);
@@ -243,13 +279,13 @@ void AC3Output::encodeLoop() {
   unsigned char* fwav = (unsigned char*)malloc(A52_FRAME_SIZE * sampleSize);  // Block sent to encoder
   int fwav_n = 0;
   SampleBlock* sb;
-  
   do {
     sb = input->GetNextBlock();
     char* inSamples = (char*)sb->getSamples();
     while (sb->numSamples > A52_FRAME_SIZE - fwav_n && !exitThread) {  // We have enough to fill a frame
       int cpBytes = (A52_FRAME_SIZE - fwav_n) * sampleSize;
       memcpy(&fwav[fwav_n*sampleSize], inSamples, cpBytes);
+
       encodeBlock(fwav);
       inSamples += cpBytes;
       sb->numSamples -= A52_FRAME_SIZE - fwav_n;
@@ -261,6 +297,7 @@ void AC3Output::encodeLoop() {
       sb->numSamples = 0;
     }
  } while (!sb->lastBlock && !exitThread);
+  this->updateSampleStats(encodedSamples, vi.num_audio_samples, true);
 
   if (fwav_n && !exitThread) {
     memset(&fwav[fwav_n*sampleSize], 0, (A52_FRAME_SIZE - fwav_n) * sampleSize);

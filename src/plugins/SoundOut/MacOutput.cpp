@@ -141,7 +141,7 @@ void MacOutput::encodeLoop() {
     this->updateSampleStats(encodedSamples, vi.num_audio_samples);
 
   } while (!sb->lastBlock && !exitThread);
-  this->updateSampleStats(encodedSamples, vi.num_audio_samples);
+  this->updateSampleStats(encodedSamples, vi.num_audio_samples, true);
 
 	if (pAPECompress->Finish(NULL, 0, 0) != 0) {
     MessageBox(NULL,"An encoder error occured while finalizing APE Compression. Output file may not work","Monkey Audio Encoder",MB_OK);

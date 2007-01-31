@@ -110,6 +110,7 @@ PipeOutput::PipeOutput(PClip _child, IScriptEnvironment* _env) : SoundOutput(Con
   params["extension"] = AVSValue("");
   params["filterID"] = AVSValue("pipe");
   params["nofilename"] = AVSValue(false);
+  params["format"] = AVSValue(0);
 
   for (int i = 0; i< 4; i++) {
      if (vi.IsSampleType(PIPE_FormatVal[i]))
@@ -332,7 +333,6 @@ bool PipeOutput::initEncoder() {
 	if (UseWaveExtensible) {  // Use WAVE_FORMAT_EXTENSIBLE audio output format 
 	  const GUID KSDATAFORMAT_SUBTYPE_PCM       = {0x00000001, 0x0000, 0x0010, {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71}};
 	  const GUID KSDATAFORMAT_SUBTYPE_IEEE_FLOAT= {0x00000003, 0x0000, 0x0010, {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71}};
-	  WAVEFORMATEXTENSIBLE wfxt;
 
 	  memset(&wfxt, 0, sizeof(wfxt));
 	  wfxt.Format.wFormatTag = WAVE_FORMAT_EXTENSIBLE;
@@ -373,7 +373,11 @@ bool PipeOutput::initEncoder() {
 		dwHeader[14] = audioFmtLen + 24;
 		dwHeader[15] = 0;
     writeSamples(dwHeader, 64);
-    (UseWaveExtensible) ? writeSamples(&wfxt, audioFmtLen) : writeSamples(&wfx, audioFmtLen);
+
+    if (UseWaveExtensible) 
+      writeSamples(&wfxt, audioFmtLen);
+    else
+      writeSamples(&wfx, audioFmtLen);
 
 
 		if (dwHeader[14] & 7) {
@@ -396,7 +400,11 @@ bool PipeOutput::initEncoder() {
 	  dwHeader[3] = mmioFOURCC('f', 'm', 't', ' ');
 	  dwHeader[4] = audioFmtLen;
     writeSamples(dwHeader, 20);
-    (UseWaveExtensible) ? writeSamples(&wfxt, audioFmtLen) : writeSamples(&wfx, audioFmtLen);
+
+    if (UseWaveExtensible) 
+      writeSamples(&wfxt, audioFmtLen);
+    else
+      writeSamples(&wfx, audioFmtLen);
 
     int zero = 0;
 		if (audioFmtLen & 1)
@@ -491,7 +499,7 @@ void PipeOutput::encodeLoop() {
      this->setError("Encoding aborted before all samples were delivered (not last block).\n");
    if (encodedSamples != vi.num_audio_samples && !quietExit) 
      this->setError("Encoding aborted before all samples were delivered (mismatch).\n");
-  this->updateSampleStats(encodedSamples, vi.num_audio_samples);
+  this->updateSampleStats(encodedSamples, vi.num_audio_samples, true);
   encodeThread = 0;
 }
 
@@ -507,7 +515,7 @@ void PipeOutput::writeSamples(const void *ptr, int count) {
     if (GetLastError() == ERROR_NO_DATA)
       exitThread = true; // Pipe was closed (normal exit path).
     else {
-      //MessageBox(NULL,"Pipe Write Failed","Commandline PIPE Encoder",MB_OK);
+      MessageBox(NULL,"Pipe Write Failed","Commandline PIPE Encoder",MB_OK);
       exitThread = true; 
     }
   }

@@ -171,6 +171,9 @@ void WavOutput::encodeLoop() {
 	if (sf_close(sndfile)) {
     MessageBox(NULL,"An encoder error occured while finalizing WAV output. Output file may not work","WAVE Encoder",MB_OK);
 	}
- this->updateSampleStats(encodedSamples, vi.num_audio_samples);
+  if(encodedSamples != vi.num_audio_samples) {
+    MessageBox(NULL,"An encoder error occured while finalizing WAV output. Output file may not work","WAVE Encoder",MB_OK);
+  }
+ this->updateSampleStats(encodedSamples, vi.num_audio_samples, true);
  encodeThread = 0;
 }

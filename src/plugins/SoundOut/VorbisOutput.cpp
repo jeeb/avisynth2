@@ -224,7 +224,7 @@ void VorbisOutput::encodeLoop() {
     encodedSamples += sb->numSamples;
     this->updateSampleStats(encodedSamples, vi.num_audio_samples);
   } while (!sb->lastBlock && !exitThread);
-  this->updateSampleStats(encodedSamples, vi.num_audio_samples);
+  this->updateSampleStats(encodedSamples, vi.num_audio_samples, true);
 
   /* clean up and exit.  vorbis_info_clear() must be called last */
   
