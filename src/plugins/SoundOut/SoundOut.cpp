@@ -33,6 +33,7 @@
 #include "PipeOutput.h"
 #include "Mp3Output.h"
 #include "VorbisOutput.h"
+#include "AnalyzeSound.h"
 #include "RegistryIO.h"
 #include "DummyClip.h"
 #include <vector>
@@ -266,20 +267,27 @@ void SoundOut::openGUI() {
     datasize >>=10;
     s_metric = t_GB;
   }
-
+  char samples[20];
+  if (vi.num_audio_samples > 0x7ffffffe) {
+    sprintf_s(samples,"%u%u"
+      ,(unsigned int)(vi.num_audio_samples>>32)
+      ,(unsigned int)(vi.num_audio_samples&0xfffffffff));
+  } else {
+    sprintf_s(samples,"%u"
+      ,(unsigned int)(vi.num_audio_samples&0xfffffffff));
+  }
   char text[800];
   sprintf_s(text, 800,
       "Audio Channels: %u.\n"
       "Sample Type: %s.\n"
       "Samples Per Second: %4d.\n"
-      "Audio Samples: %u%u samples.\n"
+      "Audio Samples: %s samples.\n"
       "Audio Data: %d%s.\n"
       "Audio Length: %02d:%02d:%02d:%03d.\n"
       ,vi.AudioChannels()
       ,s_type
       ,vi.audio_samples_per_second
-      ,(unsigned int)(vi.num_audio_samples>>32)
-      ,(unsigned int)(vi.num_audio_samples&0xfffffffff)
+      , samples
       ,(int)datasize, s_metric
       ,(aLenInMsecs/(60*60*1000)), (aLenInMsecs/(60*1000)) % 60, (aLenInMsecs/1000) % 60, aLenInMsecs % 1000
     );
@@ -332,6 +340,10 @@ BOOL CALLBACK MainDialogProc(
           return true;
         case IDC_BTN_SAVEOGG:
           so->SetOutput(new VorbisOutput(so->GetClip(),so->env));
+          return true;
+        case IDC_BTN_ANALYZE:
+          so->SetOutput(new AnalyzeSound(so->GetClip(),so->env));
+          
           return true;
 			}
 			break;

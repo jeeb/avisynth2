@@ -12,6 +12,8 @@
 #define IDC_BTN_SAVEAC3         1010
 #define IDC_BTN_COMMANDOUT      1011
 #define IDC_CBO1                1013
+#define IDC_BTN_ANALYZE         1014
+#define IDC_BTN3                1015
 #define IDD_FLACSETTINGS        2000
 #define IDC_FLAC_COMPRESSIONLEVEL 1001
 #define IDC_GRP3                1002
@@ -20,14 +22,14 @@
 #define IDC_FLAC_SAVE           1005
 #define IDC_FLAC_CANCEL         1006
 #define IDD_DLG_CONVERT         3000
+#define IDC_GRP4                1004
 #define IDC_PGB_CONVERTPROGRESS 1001
 #define IDC_STC_CONVERTMSG      1002
 #define IDC_BTN_CONVERTABORT    1003
-#define IDC_GRP4                1004
 #define IDD_MP2SETTINGS         4000
-#define IDC_GRP5                1003
 #define IDC_MP2BITRATE          1001
 #define IDC_STC3                1002
+#define IDC_GRP5                1003
 #define IDC_STC4                1004
 #define IDC_MP2CHANNELS         1005
 #define IDC_MP2ADDCRC           4002
@@ -59,8 +61,8 @@
 #define IDC_WAVSAVE             1005
 #define IDC_WAVPEAKINFO         6001
 #define IDD_AC3SETTINGS         7000
-#define IDC_AC3GROUP            1002
 #define IDC_AC3CBRMODE          1001
+#define IDC_AC3GROUP            1002
 #define IDC_AC3VBRMODE          1003
 #define IDC_AC3CBRRATE          1004
 #define IDC_AC3VBRRATE          1005
@@ -131,5 +133,8 @@
 #define IDC_VORBISCANCEL        1006
 #define IDC_VORBISSAVE          1007
 #define IDC_VORBISCBR           1008
+#define IDD_ANALYZESTATS        3700
+#define IDC_GRP15               1001
+#define IDC_ANALYZETEXT         1002
 #define ICO_AVISYNTH            1050
 #define IDR_VERSION             1

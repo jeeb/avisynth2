@@ -343,11 +343,31 @@ bool PipeOutput::initEncoder() {
 	  wfxt.Format.nAvgBytesPerSec = wfxt.Format.nSamplesPerSec * wfxt.Format.nBlockAlign;
 	  wfxt.Format.cbSize = sizeof(wfxt) - sizeof(wfxt.Format);
 	  wfxt.Samples.wValidBitsPerSample = wfxt.Format.wBitsPerSample;
-	  wfxt.dwChannelMask = SPEAKER_ALL;
+	  wfxt.dwChannelMask = SPEAKER_ALL;  // Default
+    switch (vi.AudioChannels()) {
+        case 1 :	/* center channel mono */
+					wfxt.dwChannelMask = SPEAKER_FRONT_CENTER;
+					break ;
+
+				case 2 :	/* front left and right */
+          wfxt.dwChannelMask = SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT;
+					break ;
+
+				case 4 :	/* Quad */
+					wfxt.dwChannelMask = SPEAKER_FRONT_LEFT |SPEAKER_FRONT_RIGHT | SPEAKER_BACK_LEFT|SPEAKER_BACK_RIGHT;
+					break ;
+
+				case 6 :	/* 5.1 */
+          wfxt.dwChannelMask = SPEAKER_FRONT_LEFT |SPEAKER_FRONT_RIGHT | SPEAKER_BACK_LEFT|SPEAKER_BACK_RIGHT;
+					break ;
+
+				case 8 :	/* 7.1 */
+          wfxt.dwChannelMask = SPEAKER_FRONT_LEFT_OF_CENTER | SPEAKER_FRONT_RIGHT_OF_CENTER |SPEAKER_FRONT_LEFT |SPEAKER_FRONT_RIGHT | SPEAKER_BACK_LEFT|SPEAKER_BACK_RIGHT;
+          break ;
+		} 	
 	  wfxt.SubFormat = vi.IsSampleType(SAMPLE_FLOAT) ? KSDATAFORMAT_SUBTYPE_IEEE_FLOAT : KSDATAFORMAT_SUBTYPE_PCM;
     audioFmtLen = sizeof(wfxt);
-	}
-	else {
+  }	else {
 	  memset(&wfx, 0, sizeof(wfx));
 	  wfx.wFormatTag = vi.IsSampleType(SAMPLE_FLOAT) ? WAVE_FORMAT_IEEE_FLOAT : WAVE_FORMAT_PCM;
 	  wfx.nChannels = vi.AudioChannels();
@@ -515,7 +535,7 @@ void PipeOutput::writeSamples(const void *ptr, int count) {
     if (GetLastError() == ERROR_NO_DATA)
       exitThread = true; // Pipe was closed (normal exit path).
     else {
-      MessageBox(NULL,"Pipe Write Failed","Commandline PIPE Encoder",MB_OK);
+//      MessageBox(NULL,"Pipe Write Failed","Commandline PIPE Encoder",MB_OK);
       exitThread = true; 
     }
   }

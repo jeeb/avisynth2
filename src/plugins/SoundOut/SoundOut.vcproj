@@ -366,6 +366,14 @@
 				>
 			</File>
 			<File
+				RelativePath=".\AnalyzeSound.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\AnalyzeSound.h"
+				>
+			</File>
+			<File
 				RelativePath=".\FlacOutput.cpp"
 				>
 			</File>

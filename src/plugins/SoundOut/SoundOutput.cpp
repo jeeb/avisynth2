@@ -382,7 +382,7 @@ void SampleFetcher::FetchLoop() {
       exitThread = true;
 
     SetEvent(evtNextBlockReady);
-    if (!s->lastBlock) {
+    if (!exitThread) {
       HRESULT wait_result = WAIT_TIMEOUT;
       while (wait_result == WAIT_TIMEOUT && !exitThread) {
         wait_result = WaitForSingleObject(evtProcessNextBlock, 1000);

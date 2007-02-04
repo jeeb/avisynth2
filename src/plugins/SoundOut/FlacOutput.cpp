@@ -144,6 +144,8 @@ void FlacOutput::encodeLoop() {
 }
 
 void 	FlacOutput::progress_callback (FLAC__uint64 bytes_written, FLAC__uint64 samples_written, unsigned frames_written, unsigned total_frames_estimate) {
+  if (quietExit || !wnd)
+    return;
   if (GetTickCount() - lastUpdateTick < 100)
     return;
 
