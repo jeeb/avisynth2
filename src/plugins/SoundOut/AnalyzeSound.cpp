@@ -1,6 +1,5 @@
 #include "AnalyzeSound.h"
 #include <math.h>
-
 AnalyzeSound* out;
 
 BOOL CALLBACK AnalyzeDialogProc(
@@ -44,7 +43,7 @@ BOOL CALLBACK AnalyzeDialogProc(
   return false;
 }
 
-AnalyzeSound::AnalyzeSound(PClip _child, IScriptEnvironment* _env) : SoundOutput(ConvertAudio::Create(_child, SAMPLE_FLOAT|SAMPLE_INT16,SAMPLE_FLOAT) ,_env)
+AnalyzeSound::AnalyzeSound(PClip _child, IScriptEnvironment* _env) : SoundOutput(ConvertAudio::Create(_child, SAMPLE_FLOAT,SAMPLE_FLOAT) ,_env)
 {  
   params["filterID"] = AVSValue("analyze");
   params["showoutput"] = AVSValue(true);
@@ -52,8 +51,9 @@ AnalyzeSound::AnalyzeSound(PClip _child, IScriptEnvironment* _env) : SoundOutput
   params["nofilename"] = AVSValue(true);
   params["showProgress"] = AVSValue(false);
   hStats = 0;
-  this->startEncoding();
+  canReplayGain = true;
   out = this;
+  this->startEncoding();
 }
 
 AnalyzeSound::~AnalyzeSound(void)
@@ -61,7 +61,6 @@ AnalyzeSound::~AnalyzeSound(void)
   if (hStats)
     DestroyWindow(hStats);
   hStats = 0;
-
 }
 
 bool AnalyzeSound::initEncoder() {
@@ -79,6 +78,12 @@ bool AnalyzeSound::initEncoder() {
     SendMessage(hStats,WM_SETICON,ICON_SMALL, (LPARAM)LoadImage( g_hInst, MAKEINTRESOURCE(ICO_AVISYNTH),IMAGE_ICON,0,0,0));
   }
 
+  rGain = (replaygain_t**)malloc(sizeof(replaygain_t*)*vi.AudioChannels());
+  for (int i = 0; i<vi.AudioChannels(); i++){
+    rGain[i] = (replaygain_t*)malloc(sizeof(replaygain_t));
+    if (INIT_GAIN_ANALYSIS_OK != InitGainAnalysis(rGain[i],vi.audio_samples_per_second))
+      canReplayGain= false;
+  }
   return true;
 }
 
@@ -111,10 +116,17 @@ void AnalyzeSound::updateStats(__int64 processed,__int64 total, bool force) {
     float max = 20.0f * log10f(maximum[i]);
 
     char buf2[100];
-    sprintf_s(buf2, 100, "[Channel %d] Maximum:%1.2fdB. Average:%1.2fdB. RMS:%1.2fdB\r\n",
+    sprintf_s(buf2, 100, "[Ch %d] Maximum:%1.2fdB. Average:%1.2fdB. RMS:%1.2fdB. ",
       i, (float)max, (float)avg, (float)rms);
     strcat_s(buf, 2000, buf2);
 
+    if (canReplayGain) {
+      GetTitleGain(rGain[i]);
+      sprintf_s(buf2, 100, "ReplayGain:%1.2fdB\r\n", GetAlbumGain(rGain[i]));      
+      strcat_s(buf, 2000, buf2);
+    } else {
+      strcat_s(buf, 2000, "\r\n");
+    }
     // Add to all channel stats
     all_squared_accumulated += squared_accumulated[i];
     all_accumulated += accumulated[i];
@@ -155,10 +167,28 @@ void AnalyzeSound::encodeLoop() {
         squared_accumulated[ch] += sample * sample;
       }
     }
+    if (canReplayGain) {
+      SFLOAT* s = (SFLOAT*)malloc(sb->numSamples*sizeof(SFLOAT));
+      for (int ch = 0; ch < channels; ch++) {
+        samples = (SFLOAT*)sb->getSamples();
+        samples = &samples[ch];
+        for (int n = 0; n < sb->numSamples; n++) {
+          s[n] = samples[n*channels] * 32768.0f;  // Why, LAME, why?
+        }
+        AnalyzeSamples(rGain[ch], s,s,sb->numSamples,1);
+      }
+      free(s);
+    }
     encodedSamples += sb->numSamples;
     this->updateStats(encodedSamples, vi.num_audio_samples, false);
   } while (!sb->lastBlock && !exitThread);
 
  this->updateStats(encodedSamples, vi.num_audio_samples, true);
+ if (canReplayGain) {
+    for (int i = 0; i<vi.AudioChannels(); i++){ 
+      free(rGain[i]);
+    }
+ }
+ free(rGain);
  encodeThread = 0;
 }
