@@ -343,7 +343,7 @@ bool PipeOutput::initEncoder() {
 	  wfxt.Format.nAvgBytesPerSec = wfxt.Format.nSamplesPerSec * wfxt.Format.nBlockAlign;
 	  wfxt.Format.cbSize = sizeof(wfxt) - sizeof(wfxt.Format);
 	  wfxt.Samples.wValidBitsPerSample = wfxt.Format.wBitsPerSample;
-	  wfxt.dwChannelMask = SPEAKER_ALL;  // Default
+	  wfxt.dwChannelMask = 0;  // Default
     switch (vi.AudioChannels()) {
         case 1 :	/* center channel mono */
 					wfxt.dwChannelMask = SPEAKER_FRONT_CENTER;
@@ -353,16 +353,24 @@ bool PipeOutput::initEncoder() {
           wfxt.dwChannelMask = SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT;
 					break ;
 
+				case 3 :	/* front left and right */
+          wfxt.dwChannelMask = SPEAKER_FRONT_LEFT | SPEAKER_FRONT_CENTER | SPEAKER_FRONT_RIGHT;
+					break ;
+
 				case 4 :	/* Quad */
 					wfxt.dwChannelMask = SPEAKER_FRONT_LEFT |SPEAKER_FRONT_RIGHT | SPEAKER_BACK_LEFT|SPEAKER_BACK_RIGHT;
 					break ;
 
+				case 5 :	/* 3/2 */
+          wfxt.dwChannelMask = SPEAKER_FRONT_LEFT | SPEAKER_FRONT_CENTER | SPEAKER_FRONT_RIGHT | SPEAKER_BACK_LEFT|SPEAKER_BACK_RIGHT;
+					break ;
+
 				case 6 :	/* 5.1 */
-          wfxt.dwChannelMask = SPEAKER_FRONT_LEFT |SPEAKER_FRONT_RIGHT | SPEAKER_BACK_LEFT|SPEAKER_BACK_RIGHT;
+          wfxt.dwChannelMask = SPEAKER_FRONT_LEFT | SPEAKER_FRONT_CENTER | SPEAKER_FRONT_RIGHT | SPEAKER_BACK_LEFT|SPEAKER_BACK_RIGHT | SPEAKER_FRONT_CENTER | SPEAKER_LOW_FREQUENCY;
 					break ;
 
 				case 8 :	/* 7.1 */
-          wfxt.dwChannelMask = SPEAKER_FRONT_LEFT_OF_CENTER | SPEAKER_FRONT_RIGHT_OF_CENTER |SPEAKER_FRONT_LEFT |SPEAKER_FRONT_RIGHT | SPEAKER_BACK_LEFT|SPEAKER_BACK_RIGHT;
+          wfxt.dwChannelMask = SPEAKER_FRONT_LEFT_OF_CENTER | SPEAKER_FRONT_CENTER | SPEAKER_FRONT_RIGHT_OF_CENTER |SPEAKER_FRONT_LEFT |SPEAKER_FRONT_RIGHT | SPEAKER_BACK_LEFT|SPEAKER_BACK_RIGHT | SPEAKER_LOW_FREQUENCY;
           break ;
 		} 	
 	  wfxt.SubFormat = vi.IsSampleType(SAMPLE_FLOAT) ? KSDATAFORMAT_SUBTYPE_IEEE_FLOAT : KSDATAFORMAT_SUBTYPE_PCM;

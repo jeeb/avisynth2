@@ -22,10 +22,10 @@
 #define IDC_FLAC_SAVE           1005
 #define IDC_FLAC_CANCEL         1006
 #define IDD_DLG_CONVERT         3000
-#define IDC_GRP4                1004
 #define IDC_PGB_CONVERTPROGRESS 1001
 #define IDC_STC_CONVERTMSG      1002
 #define IDC_BTN_CONVERTABORT    1003
+#define IDC_GRP4                1004
 #define IDD_MP2SETTINGS         4000
 #define IDC_MP2BITRATE          1001
 #define IDC_STC3                1002

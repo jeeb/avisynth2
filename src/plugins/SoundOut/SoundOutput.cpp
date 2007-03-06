@@ -111,7 +111,7 @@ DWORD WINAPI StartExitTimer(LPVOID p) {
   return 0;
 }
 SoundOutput::SoundOutput(PClip _child, IScriptEnvironment* _env) : 
-  GenericVideoFilter(_child), wnd(0), env(_env), encodeThread(0), outputFile(0), autoCloseThread(0)
+  GenericVideoFilter(_child), wnd(0), env(_env), encodeThread(0), outputFile(0), autoCloseThread(0), parent(0)
 {
   params["nofilename"] = AVSValue(false);  // Setting this will disable prompt when Save is selected.
   params["useFilename"] = AVSValue("");  // Setting this will disable prompt when Save is selected, and use this filename instead.
@@ -120,7 +120,7 @@ SoundOutput::SoundOutput(PClip _child, IScriptEnvironment* _env) :
   params["autoCloseWindow"] = AVSValue(false);
   input = new SampleFetcher(child, env);
   lastUpdateTick = GetTickCount();
-  quietExit = false;
+  quietExit = false;  
 }
 
 SoundOutput::~SoundOutput(void)
@@ -152,6 +152,10 @@ SoundOutput::~SoundOutput(void)
 
   if (autoCloseThread)
     CloseHandle(autoCloseThread);
+
+  if (parent)
+    parent->reEnableControls();
+
   autoCloseThread = 0;
 }
 

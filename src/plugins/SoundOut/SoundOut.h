@@ -49,6 +49,11 @@ public:
   PClip GetClip() {return child;}
   IScriptEnvironment* env;
   HWND wnd;
+  void reEnableControls();
+  void disableControls();
+  bool blockRequests;
+  void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env);
+  PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
 private: 
   Param xferParams;
   void passSettings(SoundOutput *s);
@@ -56,6 +61,8 @@ private:
   void openGUI();
   SoundOutput* currentOut;
   const char* forceOut;
+  bool silentBlock;
+  bool generateVideo;
 };
 
 BOOL CALLBACK MainDialogProc(

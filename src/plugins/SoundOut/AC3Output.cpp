@@ -93,9 +93,12 @@ AC3Output::AC3Output(PClip _child, IScriptEnvironment* _env) : SoundOutput(_chil
   params["dchighpass"] = AVSValue(false);
   params["accuratealloc"] = AVSValue(true);
   params["dolbysurround"] = AVSValue(false);
-  params["islfe"] = AVSValue(true);
   params["drc"] = AVSValue(DYNRNG_PROFILE_NONE);
   params["dialognormalization"] = AVSValue(31);
+  if (vi.AudioChannels() < 4)
+    params["islfe"] = AVSValue(false);
+  else
+    params["islfe"] = AVSValue(true);
 
 }
 
@@ -123,6 +126,15 @@ void AC3Output::showGUI() {
   for (int i = 0; i<AC3_ChannelSize; i++) {
     SendDlgItemMessage(wnd, IDC_AC3CHANNELMAPPING, CB_ADDSTRING, 0, (LPARAM)AC3_ChannelString[i]);
   }
+  switch (vi.AudioChannels()) {
+    case 4:
+    case 5:
+      EnableWindow(GetDlgItem(wnd, IDC_AC3LFE), true);
+      break;
+    default:
+      EnableWindow(GetDlgItem(wnd, IDC_AC3LFE), false);
+  }
+
 }
 
 bool AC3Output::getParamsFromGUI() {
@@ -186,11 +198,17 @@ bool AC3Output::setParamsToGUI() {
     if (AC3_ChannelVal[i] == n) 
       SendDlgItemMessage(wnd, IDC_AC3CHANNELMAPPING,CB_SETCURSEL,i,0);
   }
-
   CheckDlgButton(wnd, IDC_AC3BANDWIDTH, params["bandwidthfilter"].AsBool());
   CheckDlgButton(wnd, IDC_AC3LFELOWPASS, params["lfelowpass"].AsBool());
   CheckDlgButton(wnd, IDC_AC3DCHIGHPASS, params["dchighpass"].AsBool());
-  CheckDlgButton(wnd, IDC_AC3LFE, params["islfe"].AsBool());
+  if (vi.AudioChannels() == 4 || vi.AudioChannels() == 5) {
+    CheckDlgButton(wnd, IDC_AC3LFE, params["islfe"].AsBool());
+  } else {
+    if (vi.AudioChannels()<4)
+      CheckDlgButton(wnd, IDC_AC3LFE, false);
+    else 
+      CheckDlgButton(wnd, IDC_AC3LFE, true);
+  }
 
   GUI_ready = true;
   return true;

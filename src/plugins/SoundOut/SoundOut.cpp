@@ -95,14 +95,13 @@ extern "C" __declspec(dllexport) const char* __stdcall AvisynthPluginInit2(IScri
   p.erase("filterID");
   p.erase("outputFileFilter");
   p.erase("extension");
-  p.erase("nofilename");
   p.erase("useFilename");
   p.erase("showProgress");
   p.erase("overwriteFile");
 
   memset(buf,0,sizeof(buf));
-  strcat_s(buf,4096,"c[output]s[filename]s[showprogress]b[autoclose]b");
-  base_params = 5;  // How many arguments are defined above?
+  strcat_s(buf,4096,"c[output]s[filename]s[showprogress]b[autoclose]b[silentblock]b[addvideo]b");
+  base_params = 7;  // How many arguments are defined above?
   for ( i = p.begin(); i != p.end(); i++) {
     AVSValue v = (*i).second;
     strcat_s(buf,4096,"[");
@@ -157,6 +156,8 @@ const char* t_GB="GB";
 SoundOut::SoundOut(AVSValue args, IScriptEnvironment* _env) : GenericVideoFilter(args[0].AsClip()), currentOut(0), env(_env) {
   guiThread = 0;
   wnd = 0;
+  blockRequests = false;
+  generateVideo = false;
   if (!vi.HasAudio()) {
     MessageBox(NULL,"No audio found in clip. I will just go away!","SoundOut",MB_OK);
     return;
@@ -171,9 +172,17 @@ SoundOut::SoundOut(AVSValue args, IScriptEnvironment* _env) : GenericVideoFilter
   if (args[4].Defined()) {
     xferParams["autoCloseWindow"] = args[4];
   }
-  /*if (args[5].Defined()) {
-    xferParams["overwriteFile"] = args[5];
-  }*/
+  silentBlock = args[5].AsBool(true);
+
+  if (!vi.HasVideo() && args[6].AsBool(true)) {
+    vi.pixel_type = VideoInfo::CS_BGR32;
+    vi.width = 32;
+    vi.height = 32;
+    vi.fps_numerator = 25;
+    vi.fps_denominator = 1;
+    vi.num_frames = vi.FramesFromAudioSamples(vi.num_audio_samples);
+    generateVideo = true;
+  }
   int n = base_params;  // Offset in arg array
   for (Param::iterator i = p.begin(); i != p.end(); i++) {
     if (args[n].Defined()) {
@@ -185,6 +194,7 @@ SoundOut::SoundOut(AVSValue args, IScriptEnvironment* _env) : GenericVideoFilter
   forceOut = 0;
   if (args[1].Defined()) {  // Direct output.
     forceOut = args[1].AsString();
+    blockRequests = true;
   }
 
   guiThread = CreateThread(NULL,NULL,StartGUIThread,this, NULL,NULL);
@@ -192,11 +202,15 @@ SoundOut::SoundOut(AVSValue args, IScriptEnvironment* _env) : GenericVideoFilter
 }
 
 SoundOut::~SoundOut() {
+  while (blockRequests) { // Encoder still running
+    Sleep(1000);
+  }
   _CrtDumpMemoryLeaks();
   if (wnd)
     DestroyWindow(wnd);
   if (guiThread)
    TerminateThread(guiThread,0);
+  blockRequests = false;
 }
 void SoundOut::startUp() {
   if (forceOut) {  // Direct output.
@@ -221,7 +235,9 @@ void SoundOut::startUp() {
 
     if (!out)
       env->ThrowError("SoundOut: Output type not recognized.");
+    out->parent = this;
     passSettings(out);
+    disableControls();
     out->startEncoding();
   } else {
     openGUI();
@@ -299,6 +315,61 @@ void SoundOut::SetOutput(SoundOutput* newinput) {
   passSettings(newinput);
   newinput->showGUI();
   newinput->setParamsToGUI();
+  newinput->parent = this;
+  disableControls();
+}
+
+void SoundOut::disableControls() {
+  blockRequests = true;
+  if (wnd) {
+    ShowWindow(wnd,SW_MINIMIZE);
+    EnableWindow(GetDlgItem(wnd, IDC_BTN_ANALYZE), false);
+    EnableWindow(GetDlgItem(wnd, IDC_BTN_SAVEWAV), false);
+    EnableWindow(GetDlgItem(wnd, IDC_BTN_SAVEFLAC), false);
+    EnableWindow(GetDlgItem(wnd, IDC_BTN_SAVEMP3), false);
+    EnableWindow(GetDlgItem(wnd, IDC_BTN_SAVEAPE), false);
+    EnableWindow(GetDlgItem(wnd, IDC_BTN_SAVEOGG), false);
+    EnableWindow(GetDlgItem(wnd, IDC_BTN_SAVEMP2), false);
+    EnableWindow(GetDlgItem(wnd, IDC_BTN_SAVEAC3), false);
+    EnableWindow(GetDlgItem(wnd, IDC_BTN_COMMANDOUT), false);
+  }
+}
+
+void SoundOut::reEnableControls() {
+  blockRequests = false;
+  if (wnd) {
+    ShowWindow(wnd,SW_NORMAL);
+    EnableWindow(GetDlgItem(wnd, IDC_BTN_ANALYZE), true);
+    EnableWindow(GetDlgItem(wnd, IDC_BTN_SAVEWAV), true);
+    EnableWindow(GetDlgItem(wnd, IDC_BTN_SAVEFLAC), true);
+    EnableWindow(GetDlgItem(wnd, IDC_BTN_SAVEMP3), true);
+    EnableWindow(GetDlgItem(wnd, IDC_BTN_SAVEAPE), true);
+    EnableWindow(GetDlgItem(wnd, IDC_BTN_SAVEOGG), true);
+    EnableWindow(GetDlgItem(wnd, IDC_BTN_SAVEMP2), true);
+    EnableWindow(GetDlgItem(wnd, IDC_BTN_SAVEAC3), true);
+    EnableWindow(GetDlgItem(wnd, IDC_BTN_COMMANDOUT), true);
+  }
+}
+void __stdcall SoundOut::GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) {
+  while (blockRequests) {
+    if (silentBlock) {
+      memset(buf, 0, vi.BytesFromAudioSamples(count));
+      return;
+    }
+    Sleep(1000);
+  }
+  child->GetAudio(buf, start, count, env);
+}
+
+PVideoFrame __stdcall SoundOut::GetFrame(int n, IScriptEnvironment* env) {
+
+  if (this->generateVideo) {
+    PVideoFrame v = env->NewVideoFrame(vi);
+    BYTE* dst = v->GetWritePtr();
+    memset(dst,0,v->GetPitch() * v->GetHeight());
+    return v;
+  }
+  return child->GetFrame(n, env);
 }
 
 BOOL CALLBACK MainDialogProc(

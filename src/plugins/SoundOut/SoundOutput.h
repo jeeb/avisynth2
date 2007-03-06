@@ -52,6 +52,7 @@ public:
   virtual void setDefaults() {}
   virtual bool getParamsFromGUI() {return true;}
   HWND wnd;
+  SoundOut* parent;
 protected:
   virtual bool initEncoder() { return true;}   // Called to Init the encoder, returns false if error occured.
   void updatePercent(int p);
