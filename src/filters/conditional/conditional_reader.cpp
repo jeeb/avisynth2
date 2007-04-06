@@ -24,39 +24,39 @@
 #include "../text-overlay.h"
 
 
-ConditionalReader::ConditionalReader(PClip _child, const char* filename, const char* _varname, bool _show, IScriptEnvironment* _env) :
-  GenericVideoFilter(_child), variableName(_varname), show(_show), env(_env)
+ConditionalReader::ConditionalReader(PClip _child, const char* filename, const char* _varname, bool _show, IScriptEnvironment* env) :
+  GenericVideoFilter(_child), variableName(_varname), show(_show)
 {
-	FILE * f;
-	char *line;
-	int lines;
+  FILE * f;
+  char *line;
+  int lines;
 
   if ((f = fopen(filename, "rb")) == NULL)
-		env->ThrowError("ConditionalReader: Could not open file.");
+    env->ThrowError("ConditionalReader: Could not open file.");
 
   lines = 0;
   mode = MODE_UNKNOWN;
 
-	while ((line = readline(f)) != NULL) {
-		char *ptr;
-		int fields;
+  while ((line = readline(f)) != NULL) {
+    char *ptr;
+    int fields;
 
-		lines++;
+    lines++;
 
-		/* We skip spaces */
-		ptr = skipspaces(line);
+    /* We skip spaces */
+    ptr = skipspaces(line);
 
     /* Skip coment lines or empty lines */
-		if(iscomment(ptr) || *ptr == '\0') {
-			free(line);
-			continue;
-		}
+    if(iscomment(ptr) || *ptr == '\0') {
+      free(line);
+      continue;
+    }
 
     if (mode == MODE_UNKNOWN) {
       // We have not recieved a mode - We expect type.
       char* keyword [1024];
       char* type [1024];
-      fields = sscanf(ptr,"%1024s %1024s", keyword, type);
+      fields = sscanf(ptr,"%1023s %1023s", keyword, type);
       if (fields) {
         if (!lstrcmpi((const char*)keyword, "type")) {
           if (!lstrcmpi((const char*)type, "int")) {
@@ -69,7 +69,7 @@ ConditionalReader::ConditionalReader(PClip _child, const char* filename, const c
             mode = MODE_BOOL;
             boolVal = new bool[vi.num_frames];
           } else {
-            ThrowLine("ConditionalReader: Unknown 'type' specified in line %d", lines);
+            ThrowLine("ConditionalReader: Unknown 'type' specified in line %d", lines, env);
           }// end if compare type
         }// end if compare keyword
       }// end if fields
@@ -78,54 +78,54 @@ ConditionalReader::ConditionalReader(PClip _child, const char* filename, const c
 
       char* keyword [1024];
       char* type [1024];
-      fields = sscanf(ptr,"%1024s %1024s", keyword, type);
+      fields = sscanf(ptr,"%1023s %1023s", keyword, type);
 
       if (!lstrcmpi((const char*)keyword, "default")) {
-        AVSValue def = ConvertType((const char*)type, lines);
+        AVSValue def = ConvertType((const char*)type, lines, env);
         SetRange(0, vi.num_frames-1, def);
-			  free(line);
+        free(line);
         continue;
       } // end if "default"
 
       if (ptr[0] == 'R' || ptr[0] == 'r') {  // Range
         ptr++;
-		    ptr = skipspaces(ptr);
+        ptr = skipspaces(ptr);
         int start;
         int stop;
         char* value [64];
-        fields = sscanf(ptr, "%d %d %64s", &start, &stop, value);
+        fields = sscanf(ptr, "%d %d %63s", &start, &stop, value);
 
         if (fields != 3) 
-          ThrowLine("ConditionalReader: Could not read range in line %d", lines);
+          ThrowLine("ConditionalReader: Could not read range in line %d", lines, env);
         if (start > stop)
-          ThrowLine("ConditionalReader: The start frame is after the end frame in line %d", lines);
+          ThrowLine("ConditionalReader: The start frame is after the end frame in line %d", lines, env);
 
-        AVSValue set = ConvertType((const char*)value, lines);
+        AVSValue set = ConvertType((const char*)value, lines, env);
         SetRange(start, stop, set);
       } else if (ptr[0] == 'I' || ptr[0] == 'i') {  // Interpolate
         if (mode == MODE_BOOL)
-          ThrowLine("ConditionalReader: Cannot interpolate booleans in line %d", lines);
+          ThrowLine("ConditionalReader: Cannot interpolate booleans in line %d", lines, env);
 
         ptr++;
-		    ptr = skipspaces(ptr);
+        ptr = skipspaces(ptr);
         int start;
         int stop;
         char* start_value [64];
         char* stop_value [64];
-        fields = sscanf(ptr, "%d %d %64s %64s", &start, &stop, start_value, stop_value);
+        fields = sscanf(ptr, "%d %d %63s %63s", &start, &stop, start_value, stop_value);
 
         if (fields != 4) 
-          ThrowLine("ConditionalReader: Could not read interpolation range in line %d", lines);
+          ThrowLine("ConditionalReader: Could not read interpolation range in line %d", lines, env);
         if (start > stop)
-          ThrowLine("ConditionalReader: The start frame is after the end frame in line %d", lines);
+          ThrowLine("ConditionalReader: The start frame is after the end frame in line %d", lines, env);
 
-        AVSValue set_start = ConvertType((const char*)start_value, lines);
-        AVSValue set_stop = ConvertType((const char*)stop_value, lines);
+        AVSValue set_start = ConvertType((const char*)start_value, lines, env);
+        AVSValue set_stop = ConvertType((const char*)stop_value, lines, env);
 
         int range = stop-start;
+		float diff = set_stop.AsFloat() - set_start.AsFloat();
         for (int i = 0; i<=range; i++) {
           float where = (float)(i)/(float)range;
-          float diff = set_stop.AsFloat() - set_start.AsFloat();
           float n = where * diff + set_start.AsFloat();
           SetFrame(i+start, (mode == MODE_FLOAT)
                   ? AVSValue(n)
@@ -134,9 +134,9 @@ ConditionalReader::ConditionalReader(PClip _child, const char* filename, const c
       } else {
         char* value [64];
         int cframe;
-        fields = sscanf(ptr, "%d %64s", &cframe, value);
+        fields = sscanf(ptr, "%d %63s", &cframe, value);
         if (fields == 2) {
-          AVSValue set = ConvertType((const char*)value, lines);
+          AVSValue set = ConvertType((const char*)value, lines, env);
           SetFrame(cframe, set);
         } else {
           _RPT1(0,"ConditionalReader: Ignored line %d.\n", lines);
@@ -144,11 +144,11 @@ ConditionalReader::ConditionalReader(PClip _child, const char* filename, const c
       }
     
     } // End we have defined type
-  	free(line);
+    free(line);
   }// end while still some file left to read.
 
-	/* We are done with the file */
-	fclose(f);
+  /* We are done with the file */
+  fclose(f);
 
   if (mode == MODE_UNKNOWN)
     env->ThrowError("ConditionalReader: Mode was not defined!");
@@ -159,10 +159,10 @@ ConditionalReader::ConditionalReader(PClip _child, const char* filename, const c
 
 // Converts from the char array given to the type specified.
 
-AVSValue ConditionalReader::ConvertType(const char* content, int line)
+AVSValue ConditionalReader::ConvertType(const char* content, int line, IScriptEnvironment* env)
 {
   if (mode == MODE_UNKNOWN)
-    ThrowLine("ConditionalReader: Type has not been defined. Line %d", line);
+    ThrowLine("ConditionalReader: Type has not been defined. Line %d", line, env);
 
   int fields;
   switch (mode) {
@@ -170,7 +170,7 @@ AVSValue ConditionalReader::ConvertType(const char* content, int line)
       int ival;
       fields = sscanf(content, "%d", &ival);
       if (!fields)
-        ThrowLine("ConditionalReader: Could not find an expected integer at line %d!", line);
+        ThrowLine("ConditionalReader: Could not find an expected integer at line %d!", line, env);
 
       return AVSValue(ival);
 
@@ -178,18 +178,31 @@ AVSValue ConditionalReader::ConvertType(const char* content, int line)
       float fval;
       fields = sscanf(content, "%e", &fval);
       if (!fields)
-        ThrowLine("ConditionalReader: Could not find an expected float at line %d!", line);
+        ThrowLine("ConditionalReader: Could not find an expected float at line %d!", line, env);
       return AVSValue(fval);
 
     case MODE_BOOL:
-      char* bval [6];
-      fields = sscanf(content, "%6s", bval);
+      char* bval [8];
+      fields = sscanf(content, "%7s", bval);
       if (!lstrcmpi((const char*)bval, "true")) {
         return AVSValue(true);
-      } else if (!lstrcmpi((const char*)bval, "false")) {
+      }
+      else if (!lstrcmpi((const char*)bval, "t")) {
+        return AVSValue(true);
+      }
+      else if (!lstrcmpi((const char*)bval, "yes")) {
+        return AVSValue(true);
+      }
+      else if (!lstrcmpi((const char*)bval, "false")) {
+        return AVSValue(false);
+      }
+      else if (!lstrcmpi((const char*)bval, "f")) {
+        return AVSValue(false);
+      }
+      else if (!lstrcmpi((const char*)bval, "no")) {
         return AVSValue(false);
       } 
-      ThrowLine("ConditionalReader: Boolean value was not true or false in line %d", line);
+      ThrowLine("ConditionalReader: Boolean value was not true or false in line %d", line, env);
   }
   return AVSValue(0);
 }
@@ -282,10 +295,8 @@ ConditionalReader::~ConditionalReader(void)
 }
 
 
-void ConditionalReader::ThrowLine(const char* err, int line) {
-  char* error = (char*)malloc(strlen(err)+16);
-  sprintf(error, err, line);
-  env->ThrowError(error);
+void ConditionalReader::ThrowLine(const char* err, int line, IScriptEnvironment* env) {
+  env->ThrowError(err, line);
 }
 
 
@@ -315,8 +326,8 @@ AVSValue __cdecl ConditionalReader::Create(AVSValue args, void* user_data, IScri
 
 // Write ------------------------------------------------
 
-Write::Write (PClip _child, const char _filename[], AVSValue args, int _linecheck, bool _append, bool _flush, IScriptEnvironment* _env):
-	GenericVideoFilter(_child), linecheck(_linecheck), flush(_flush), append(_append), env(_env)
+Write::Write (PClip _child, const char _filename[], AVSValue args, int _linecheck, bool _append, bool _flush, IScriptEnvironment* env):
+	GenericVideoFilter(_child), linecheck(_linecheck), flush(_flush), append(_append)
 {
 	strncpy(filename, _filename, 254);
 	arrsize = __min(args.ArraySize(), maxWriteArgs);
@@ -383,7 +394,7 @@ Write::~Write(void) {
 	}
 
 	if (linecheck == -2) {	//write at end
-		Write::FileOut(env);
+		Write::FileOut(0);
 	}
 	if (!flush) fclose(fout);
 };
@@ -392,7 +403,10 @@ void Write::FileOut(IScriptEnvironment* env) {
 	int i;
 	if (flush) {
 		fout = fopen(filename, mode);
-		if (!fout) env->ThrowError("Write: File cannot be opened.");
+		if (!fout) {
+			if (env) env->ThrowError("Write: File cannot be opened.");
+			return;
+		}
 	}
 	for (i= ( (linecheck==1) ? 1 : 0) ; i<maxWriteArgs; i++ ) {
 		fprintf(fout, "%s", arglist[i].string );

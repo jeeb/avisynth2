@@ -167,7 +167,7 @@ GetSample::GetSample(bool _load_audio, bool _load_video, unsigned _media, LOG* _
     m_pPos =0;
     state = State_Stopped;
     avg_time_per_frame = 0;
-    a_sample_bytes = 0;
+    av_sample_bytes = 0;
     av_buffer = 0;
     flushing = end_of_stream = false;
     memset(&vi, 0, sizeof(vi));
@@ -184,14 +184,16 @@ GetSample::GetSample(bool _load_audio, bool _load_video, unsigned _media, LOG* _
 	else {
 	  // Make sure my_media_types[8] is long enough!
 	  unsigned i=0;
+//    In the order we want codecs to bid
 	  if (media & mediaYV12)   InitMediaType(my_media_types[i++], MEDIATYPE_Video, MEDIASUBTYPE_YV12);
 	  if (media & mediaYUY2)   InitMediaType(my_media_types[i++], MEDIATYPE_Video, MEDIASUBTYPE_YUY2);
+	  if (media & mediaAYUV)   InitMediaType(my_media_types[i++], MEDIATYPE_Video, MEDIASUBTYPE_AYUV); //Needs unpacking
 	  if (media & mediaARGB)   InitMediaType(my_media_types[i++], MEDIATYPE_Video, MEDIASUBTYPE_ARGB32);
 	  if (media & mediaRGB32)  InitMediaType(my_media_types[i++], MEDIATYPE_Video, MEDIASUBTYPE_RGB32);
 	  if (media & mediaRGB24)  InitMediaType(my_media_types[i++], MEDIATYPE_Video, MEDIASUBTYPE_RGB24);
-	  if (media & mediaYV411)  InitMediaType(my_media_types[i++], MEDIATYPE_Video, MEDIASUBTYPE_Y411); //Needs unpacking
-	  if (media & mediaYV411)  InitMediaType(my_media_types[i++], MEDIATYPE_Video, MEDIASUBTYPE_Y41P); //Needs unpacking
-	  if (media & mediaYV24)  InitMediaType(my_media_types[i++], MEDIATYPE_Video, MEDIASUBTYPE_AYUV);  //Needs unpacking
+//	  if (media & mediaY41P)   InitMediaType(my_media_types[i++], MEDIATYPE_Video, MEDIASUBTYPE_Y41P); //Needs unpacking
+	  if (media & mediaY411)   InitMediaType(my_media_types[i++], MEDIATYPE_Video, MEDIASUBTYPE_Y411); //Needs unpacking
+//	  if (media & mediaYUV9)   InitMediaType(my_media_types[i++], MEDIATYPE_Video, MEDIASUBTYPE_YUV9);
 	  no_my_media_types = i;
 	  if (media == mediaNONE) media = mediaAUTO;
 	}
@@ -260,27 +262,49 @@ GetSample::GetSample(bool _load_audio, bool _load_video, unsigned _media, LOG* _
       if (!vi.IsPlanar()) { // Packed formats have rows 32bit aligned
 
         const int rowsize = pvf->GetRowSize();
-        env->BitBlt(pvf->GetWritePtr(), pvf->GetPitch(), buf, (rowsize+3)&~3, rowsize, pvf->GetHeight());
+        const int height  = pvf->GetHeight();
+        int stride;
+
+        // Check for rows not being 32 bit aligned
+        if (((rowsize*height + 3)&~3) == ((av_sample_bytes+3)&~3)) {
+          stride = rowsize;
+        } else  {
+          stride  = (rowsize+3)&~3;
+        }
+
+        env->BitBlt(pvf->GetWritePtr(), pvf->GetPitch(), buf, stride, rowsize, height);
       }
       else {
         if (vi.IsYV12()) {
           const int rowsize = pvf->GetRowSize(PLANAR_Y);
           const int height  = pvf->GetHeight(PLANAR_Y);
 
-          // All planar formats have Y rows 32bit aligned
-          env->BitBlt(pvf->GetWritePtr(PLANAR_Y), pvf->GetPitch(PLANAR_Y), buf, (rowsize+3)&~3, rowsize, height);
-
           const int UVrowsize = pvf->GetRowSize(PLANAR_V);
           const int UVheight  = pvf->GetHeight(PLANAR_V);
 
-          // YV12 format has UV rows 16bit aligned with
-          // V plane first, after aligned end of Y plane
-          buf += ((rowsize+3)&~3) * height;
-          env->BitBlt(pvf->GetWritePtr(PLANAR_V), pvf->GetPitch(PLANAR_V), buf, (UVrowsize+1)&~1, UVrowsize, UVheight);
+          int stride;
+          int UVstride;
 
-          // And U plane last, after aligned end of V plane
-          buf += ((UVrowsize+1)&~1) * UVheight;
-          env->BitBlt(pvf->GetWritePtr(PLANAR_U), pvf->GetPitch(PLANAR_U), buf, (UVrowsize+1)&~1, UVrowsize, UVheight);
+          // Check for rows not being 32 bit aligned
+          if (((rowsize*height + 2*UVrowsize*UVheight + 3)&~3) == ((av_sample_bytes+3)&~3)) {
+            stride    = rowsize;
+            UVstride  = UVrowsize;
+          } else {
+            // Planar formats should have Y rows 32bit aligned
+            stride    = (rowsize+3)&~3;
+            // YV12 format should have UV rows 16bit aligned
+            UVstride  = (UVrowsize+1)&~1;
+          }
+
+          env->BitBlt(pvf->GetWritePtr(PLANAR_Y), pvf->GetPitch(PLANAR_Y), buf, stride, rowsize, height);
+
+            // V plane first, after aligned end of Y plane
+          buf += stride * height;
+          env->BitBlt(pvf->GetWritePtr(PLANAR_V), pvf->GetPitch(PLANAR_V), buf, UVstride, UVrowsize, UVheight);
+
+            // And U plane last, after aligned end of V plane
+          buf += UVstride * UVheight;
+          env->BitBlt(pvf->GetWritePtr(PLANAR_U), pvf->GetPitch(PLANAR_U), buf, UVstride, UVrowsize, UVheight);
         } else {  // 4:1:1 or 4:4:4 which needs packed -> planar conversion.
 
           const int rowsize = pvf->GetRowSize(PLANAR_Y);
@@ -919,16 +943,23 @@ pbFormat:
 		}
 		pixel_type = VideoInfo::CS_YV12;
 
-    } else if        (pmt->subtype == MEDIASUBTYPE_Y411) {  
-		if (!(media & mediaYV411)) {
-		  dssRPT0(dssNEG,  "*** Video: Subtype denied - YV411\n");
+    } else if   (pmt->subtype == MEDIASUBTYPE_Y411) {  
+		if (!(media & mediaY411)) {
+		  dssRPT0(dssNEG,  "*** Video: Subtype denied - Y411\n");
 		  return S_FALSE;
 		}
 		pixel_type = VideoInfo::CS_YV411;
 
-    } else if        (pmt->subtype == MEDIASUBTYPE_AYUV) {  
+/*  } else if   (pmt->subtype == MEDIASUBTYPE_Y41P) {  
+		if (!(media & mediaY411)) {
+		  dssRPT0(dssNEG,  "*** Video: Subtype denied - Y41P\n");
+		  return S_FALSE;
+		}
+		pixel_type = VideoInfo::CS_YV411;
+*/
+    } else if   (pmt->subtype == MEDIASUBTYPE_AYUV) {  
 		if (!(media & mediaYV24)) {
-		  dssRPT0(dssNEG,  "*** Video: Subtype denied - YV24\n");
+		  dssRPT0(dssNEG,  "*** Video: Subtype denied - AYUV\n");
 		  return S_FALSE;
 		}
 		pixel_type = VideoInfo::CS_YV24;
@@ -1119,10 +1150,10 @@ pbFormat:
     pSamples->GetPointer(&av_buffer);
     int deltaT = avg_time_per_frame;
 
+    av_sample_bytes = pSamples->GetActualDataLength();
     if (load_audio) {  // audio
-      a_sample_bytes = pSamples->GetActualDataLength();
-      deltaT = MulDiv(a_sample_bytes, 10000000, vi.BytesPerAudioSample()*vi.SamplesPerSecond());
-      dssRPT1(dssSAMP, "Receive: Got %d bytes of audio data.\n",a_sample_bytes);
+      deltaT = MulDiv(av_sample_bytes, 10000000, vi.BytesPerAudioSample()*vi.SamplesPerSecond());
+      dssRPT1(dssSAMP, "Receive: Got %d bytes of audio data.\n",av_sample_bytes);
     }
 
     HRESULT result = pSamples->GetTime(&sample_start_time, &sample_end_time);
@@ -1153,7 +1184,7 @@ pbFormat:
     } while ((wait_result == WAIT_TIMEOUT) && (state != State_Stopped));
 
     av_buffer = 0;
-    a_sample_bytes = 0;
+    av_sample_bytes = 0;
 
     dssRPT1(dssINFO, "Receive() - returning. (%s)\n", streamName);
 
@@ -1573,14 +1604,15 @@ DirectShowSource::DirectShowSource(const char* filename, int _avg_time_per_frame
       if (!get_sample.IsConnected()) {
         if (_enable_video)
           env->ThrowError("DirectShowSource: GRF file does not have a compatible open video pin.\n"
-                          "Graph must have 1 output pin that will bid RGB24, RGB32, ARGB, YUY2, YV12 Y411 or AYUV");
+                          "Graph must have 1 output pin that will bid RGB24, RGB32, ARGB, YUY2, YV12, Y411 or AYUV");
         else
           env->ThrowError("DirectShowSource: GRF file does not have a compatible open audio pin.\n"
                           "Graph must have 1 output pin that will bid 8, 16, 24 or 32 bit PCM or IEEE Float.");
       }
     } else {
-      CheckHresult(env, gb->RenderFile(filenameW, NULL), "couldn't open file ", filename);
-      if (!get_sample.IsConnected()) {
+      HRESULT RFHresult = gb->RenderFile(filenameW, NULL);
+      if (!get_sample.IsConnected()) { // Ignore arbitary errors, run with what we got
+        CheckHresult(env, RFHresult, "couldn't open file ", filename);
         env->ThrowError("DirectShowSource: RenderFile, the filter graph manager won't talk to me");
       }
     }
@@ -1857,7 +1889,7 @@ DirectShowSource::DirectShowSource(const char* filename, int _avg_time_per_frame
       next_sample -= vi.AudioSamplesFromBytes(audio_bytes_read);
       audio_bytes_read = 0;
 
-      const __int64 avail_samples = vi.AudioSamplesFromBytes(get_sample.a_sample_bytes);
+      const __int64 avail_samples = vi.AudioSamplesFromBytes(get_sample.av_sample_bytes);
       if ( ((seekmode != 2) && (start < next_sample))
         // Seek=true and Seekzero=true and stepping back
         || ((seekmode == 1) && (start >= next_sample+avail_samples+50000))) {
@@ -1918,12 +1950,12 @@ DirectShowSource::DirectShowSource(const char* filename, int _avg_time_per_frame
 			env->ThrowError("DirectShowSource : Timeout waiting for audio.");
 
         while (skip_left > 0) {
-          if (get_sample.a_sample_bytes-audio_bytes_read >= skip_left) {
+          if (get_sample.av_sample_bytes-audio_bytes_read >= skip_left) {
             audio_bytes_read += skip_left;
             break;
           }
-          skip_left -= get_sample.a_sample_bytes-audio_bytes_read;
-          audio_bytes_read = get_sample.a_sample_bytes;
+          skip_left -= get_sample.av_sample_bytes-audio_bytes_read;
+          audio_bytes_read = get_sample.av_sample_bytes;
           
           if (get_sample.NextSample(timeout))
             audio_bytes_read = 0;
@@ -1943,10 +1975,10 @@ DirectShowSource::DirectShowSource(const char* filename, int _avg_time_per_frame
         env->ThrowError("DirectShowSource : Timeout waiting for audio.");
     while (bytes_left) {
       // Can we read from the Directshow filters buffer?
-      if (get_sample.a_sample_bytes - audio_bytes_read > 0) { // Copy as many bytes as needed.
+      if (get_sample.av_sample_bytes - audio_bytes_read > 0) { // Copy as many bytes as needed.
 
         // This many bytes can be safely read.
-        const int available_bytes = min(bytes_left, get_sample.a_sample_bytes - audio_bytes_read);
+        const int available_bytes = min(bytes_left, get_sample.av_sample_bytes - audio_bytes_read);
         dssRPT2(dssCALL, "GetAudio: Memcpy %d offset, %d bytes.\n", bytes_filled, available_bytes);
 
         memcpy(&samples[bytes_filled], &get_sample.av_buffer[audio_bytes_read], available_bytes);
@@ -2056,8 +2088,10 @@ AVSValue __cdecl Create_DirectShowSource(AVSValue args, void*, IScriptEnvironmen
     const char* pixel_type = args[8].AsString();
     if      (!lstrcmpi(pixel_type, "YUY2"))  { _media = GetSample::mediaYUY2; }
     else if (!lstrcmpi(pixel_type, "YV12"))  { _media = GetSample::mediaYV12; }
-    else if (!lstrcmpi(pixel_type, "YV411"))  { _media = GetSample::mediaYV411; }
-    else if (!lstrcmpi(pixel_type, "YV24"))  { _media = GetSample::mediaYV24; }
+//  else if (!lstrcmpi(pixel_type, "YUV9"))  { _media = GetSample::mediaYUV9; }
+//  else if (!lstrcmpi(pixel_type, "Y41P"))  { _media = GetSample::mediaY41P; }
+    else if (!lstrcmpi(pixel_type, "Y411"))  { _media = GetSample::mediaY411; }
+    else if (!lstrcmpi(pixel_type, "AYUV"))  { _media = GetSample::mediaAYUV; }
     else if (!lstrcmpi(pixel_type, "RGB24")) { _media = GetSample::mediaRGB24; }
     else if (!lstrcmpi(pixel_type, "RGB32")) { _media = GetSample::mediaRGB32 | GetSample::mediaARGB; }
     else if (!lstrcmpi(pixel_type, "ARGB"))  { _media = GetSample::mediaARGB; }
@@ -2066,7 +2100,7 @@ AVSValue __cdecl Create_DirectShowSource(AVSValue args, void*, IScriptEnvironmen
     else if (!lstrcmpi(pixel_type, "AUTO"))  { _media = GetSample::mediaAUTO; }
     else {
       env->ThrowError("DirectShowSource: pixel_type must be \"RGB24\", \"RGB32\", \"ARGB\", "
-                                           "\"YUY2\", \"YV12\", \"YV24\", \"YV411\", \"RGB\", \"YUV\" or \"AUTO\"");
+                      "\"YUY2\", \"YV12\", \"AYUV\", \"Y411\", \"RGB\", \"YUV\" or \"AUTO\"");
     }
   }
   const int _frames = args[9].AsInt(0);

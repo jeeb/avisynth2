@@ -99,10 +99,52 @@ private:
   double p0,p2,p3,q0,q1,q2,q3;
 };
 
-// 09-14-2002 - Vlad59 - Lanczos3Resize
-class Lanczos3Filter : public ResamplingFunction
+class LanczosFilter : public ResamplingFunction
 /**
-  * Lanczos3 filter, used in Lanczos3Resize
+  * Lanczos filter, used in LanczosResize
+ **/
+{
+public:
+  LanczosFilter(int taps);
+	double f(double x);
+	double support() { return taps; };
+
+private:
+	double sinc(double value);
+  double taps;
+};
+
+class BlackmanFilter : public ResamplingFunction
+/**
+  * Blackman filter, used in BlackmanResize
+ **/
+{
+public:
+  BlackmanFilter(int taps);
+	double f(double x);
+	double support() { return taps; };
+
+private:
+  double taps, rtaps;
+};
+
+// Spline16
+class Spline16Filter : public ResamplingFunction
+/**
+  * Spline16 of Panorama Tools is a cubic-spline, with derivative set to 0 at the edges (4x4 pixels).
+ **/
+{
+public:
+	double f(double x);
+	double support() { return 2.0; };
+
+private:
+};
+
+// Spline36
+class Spline36Filter : public ResamplingFunction
+/**
+  * Spline36 is like Spline16,  except that it uses 6x6=36 pixels.
  **/
 {
 public:
@@ -110,13 +152,12 @@ public:
 	double support() { return 3.0; };
 
 private:
-	double sinc(double value);
 };
 
-// Lanczos4Resize
-class Lanczos4Filter : public ResamplingFunction
+// Spline64
+class Spline64Filter : public ResamplingFunction
 /**
-  * Lanczos4 filter, used in Lanczos4Resize
+  * Spline64 is like Spline36,  except that it uses 8x8=64 pixels.
  **/
 {
 public:
@@ -124,9 +165,22 @@ public:
 	double support() { return 4.0; };
 
 private:
-	double sinc(double value);
 };
 
+
+class GaussianFilter : public ResamplingFunction
+/**
+  * GaussianFilter, from swscale.
+ **/
+{
+public:
+  GaussianFilter(double p);
+	double f(double x);
+	double support() { return 4.0; };
+
+private:
+ double param;
+};
 
 int* GetResamplingPatternRGB(int original_width, double subrange_start, double subrange_width,
                                     int target_width, ResamplingFunction* func, IScriptEnvironment* env);

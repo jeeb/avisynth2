@@ -36,7 +36,7 @@
 
 #include "audio.h"
 
-#define BIGBUFFSIZE (2048*1024) // Use a 2MB buffer for EnsureVBRMP3Sync seeking & Normalize scanning
+#define BIGBUFFSIZE (2048*1024) // Use a 2Mb buffer for EnsureVBRMP3Sync seeking & Normalize scanning
 
 /********************************************************************
 ***** Declare index of new filters for Avisynth's filter engine *****
@@ -58,6 +58,7 @@ AVSFunction Audio_filters[] = {
                                 { "GetRightChannel", "c", GetChannel::Create_right },
                                 { "GetChannel", "ci+", GetChannel::Create_n },
                                 { "GetChannels", "ci+", GetChannel::Create_n },     // Alias to ease use!
+                                { "KillVideo", "c", KillVideo::Create },
                                 { "KillAudio", "c", KillAudio::Create },
                                 { "ConvertAudioTo16bit", "c", ConvertAudio::Create_16bit },   // in convertaudio.cpp
                                 { "ConvertAudioTo8bit", "c", ConvertAudio::Create_8bit },
@@ -486,21 +487,22 @@ void __stdcall GetChannel::GetAudio(void* buf, __int64 start, __int64 count, ISc
 
 
 PClip GetChannel::Create_left(PClip clip) {
-  int* ch = new int[1];
-  ch[0] = 0;
+
   if (clip->GetVideoInfo().AudioChannels() == 1)
     return clip;
-  else
-    return new GetChannel(clip, ch, 1);
+
+  int* ch = new int[1];
+  ch[0] = 0;
+  return new GetChannel(clip, ch, 1);
 }
 
 PClip GetChannel::Create_right(PClip clip) {
-  int* ch = new int[1];
-  ch[0] = 1;
   if (clip->GetVideoInfo().AudioChannels() == 1)
     return clip;
-  else
-    return new GetChannel(clip, ch, 1);
+
+  int* ch = new int[1];
+  ch[0] = 1;
+  return new GetChannel(clip, ch, 1);
 }
 
 PClip GetChannel::Create_n(PClip clip, int* n, int numchannels) {
@@ -530,13 +532,35 @@ AVSValue __cdecl GetChannel::Create_n(AVSValue args, void*, IScriptEnvironment* 
 }
 
 /******************************
+ *******   Kill Video  ********
+ ******************************/
+
+KillVideo::KillVideo(PClip _clip)
+    : GenericVideoFilter(_clip) {
+  vi.width = 0;
+  vi.height= 0;
+  vi.fps_numerator  = 0;
+  vi.fps_denominator= 0;
+  vi.num_frames = 0;
+  vi.pixel_type = 0;
+  vi.image_type = 0;
+}
+
+AVSValue __cdecl KillVideo::Create(AVSValue args, void*, IScriptEnvironment*) {
+  return new KillVideo(args[0].AsClip());
+}
+
+
+/******************************
  *******   Kill Audio  ********
  ******************************/
 
 KillAudio::KillAudio(PClip _clip)
     : GenericVideoFilter(_clip) {
   vi.audio_samples_per_second = 0;
+  vi.sample_type = 0;
   vi.num_audio_samples = 0;
+  vi.nchannels = 0;
 }
 
 AVSValue __cdecl KillAudio::Create(AVSValue args, void*, IScriptEnvironment*) {
@@ -572,6 +596,13 @@ AVSValue __cdecl DelayAudio::Create(AVSValue args, void*, IScriptEnvironment* en
 Amplify::Amplify(PClip _child, float* _volumes, int* _i_v)
     : GenericVideoFilter(ConvertAudio::Create(_child, SAMPLE_INT16 | SAMPLE_FLOAT | SAMPLE_INT32, SAMPLE_FLOAT)),
 volumes(_volumes), i_v(_i_v) { }
+
+
+Amplify::~Amplify()
+{
+    if (volumes) { delete[] (float*)volumes; volumes=0; }
+    if (i_v)     { delete[] (int*)i_v;     i_v=0;     }
+}
 
 
 void __stdcall Amplify::GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) {

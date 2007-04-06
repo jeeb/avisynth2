@@ -87,7 +87,7 @@ public:
   AVISource(const char filename[], bool fAudio, const char pixel_type[],
             const char fourCC[], int mode, IScriptEnvironment* env);  // mode: 0=detect, 1=avifile, 2=opendml, 3=avifile (audio only)
   ~AVISource();
-  void CleanUp();
+  void CleanUp(); // Tritical - Jan 2006
   const VideoInfo& __stdcall GetVideoInfo();
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
   void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) ;
@@ -497,7 +497,9 @@ AVISource::AVISource(const char filename[], bool fAudio, const char pixel_type[]
           pwfx = audioStreamSource->GetFormat();
           vi.audio_samples_per_second = pwfx->nSamplesPerSec;
           vi.nchannels = pwfx->nChannels;
-          if (pwfx->wBitsPerSample == 16) {
+          if (pwfx->wFormatTag == WAVE_FORMAT_IEEE_FLOAT) {
+            vi.sample_type = SAMPLE_FLOAT;
+          } else if (pwfx->wBitsPerSample == 16) {
             vi.sample_type = SAMPLE_INT16;
           } else if (pwfx->wBitsPerSample == 8) {
             vi.sample_type = SAMPLE_INT8;
@@ -519,24 +521,18 @@ AVISource::AVISource(const char filename[], bool fAudio, const char pixel_type[]
     if (mode != MODE_WAV) {
       int keyframe = pvideo->NearestKeyFrame(0);
       PVideoFrame frame = env->NewVideoFrame(vi, -4);
-      LRESULT error = DecompressFrame(keyframe, false, frame->GetWritePtr());
-      if (error != ICERR_OK || (!frame)||(dropped_frame)) {   // shutdown, if init not succesful.
-/*
-        if (hic) {
-          !ex ? ICDecompressEnd(hic) : ICDecompressExEnd(hic);
-          ICClose(hic);
-        }
-        if (pvideo) delete pvideo;
-        if (aSrc) delete aSrc;
-        if (audioStreamSource) delete audioStreamSource;
-        if (pfile)
-          pfile->Release();
-        AVIFileExit();
-        if (pbiSrc)
-          free(pbiSrc);
-*/
+      BYTE *ptr = frame->GetWritePtr();
+      LRESULT error = DecompressFrame(keyframe, false, ptr);
+      if (error != ICERR_OK || (!frame))   // shutdown, if init not succesful.
         env->ThrowError("AviSource: Could not decompress frame 0");
 
+      // Cope with dud AVI files that start with drop
+      // frames, just return the first key frame
+      if (dropped_frame) {
+        keyframe = pvideo->NextKeyFrame(0);
+        error = DecompressFrame(keyframe, false, ptr);
+        if (error != ICERR_OK)   // shutdown, if init not succesful.
+          env->ThrowError("AviSource: Could not decompress first keyframe %d", keyframe);
       }
       last_frame_no=0;
       last_frame=frame;
@@ -552,7 +548,7 @@ AVISource::~AVISource() {
   AVISource::CleanUp();
 }
 
-void AVISource::CleanUp() {
+void AVISource::CleanUp() { // Tritical - Jan 2006
   if (hic) {
     !ex ? ICDecompressEnd(hic) : ICDecompressExEnd(hic);
     ICClose(hic);

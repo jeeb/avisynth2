@@ -109,10 +109,9 @@ private:
 
   VideoInfo vi;
 
-  PVideoFrame static_frame;
-
   char filename[MAX_PATH + 1];
   bool should_flip;
+  int  framecopies;
       
   BITMAPFILEHEADER fileHeader;
   BITMAPINFOHEADER infoHeader;

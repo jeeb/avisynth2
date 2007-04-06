@@ -88,8 +88,11 @@ double MitchellNetravaliFilter::f (double x) {
 /***********************
  *** Lanczos3 filter ***
  ***********************/
+LanczosFilter::LanczosFilter(int t = 3) {
+   taps = (double)(max( 1,min(100,t)));
+}
 
-double Lanczos3Filter::sinc(double value) {
+double LanczosFilter::sinc(double value) {
   if (value != 0.0) {
     value *= M_PI;
     return sin(value) / value;
@@ -98,41 +101,111 @@ double Lanczos3Filter::sinc(double value) {
   }
 }
 
-double Lanczos3Filter::f(double value) {
-  if (value < 0.0) {
-    value = -value;
-  }
+double LanczosFilter::f(double value) {
+   value = fabs(value);
 
-  if (value < 3.0) {
-    return (sinc(value) * sinc(value / 3.0));
+  if (value < taps) {
+    return (sinc(value) * sinc(value / taps));
   } else {
     return 0.0;
   }
+}
+
+
+/***********************
+ *** Blackman filter ***
+ ***********************/
+BlackmanFilter::BlackmanFilter(int t = 4) {
+   taps = (double)(max( 1,min(100,t)));
+   rtaps = 1.0/taps;
+}
+
+double BlackmanFilter::f(double value) {
+   value = fabs(value);
+
+  if (value < taps) {
+    if (value == 0.0) {
+      return 1.0;
+    } else {
+      value *= M_PI;
+      return (sin(value) / value) * (0.42 + 0.5*cos(value*rtaps) + 0.08*cos(2*value*rtaps));
+    }
+  } else {
+    return 0.0;
+  }
+}
+
+
+/***********************
+ *** Spline16 filter ***
+ ***********************/
+
+double Spline16Filter::f(double value) {
+  value = fabs(value);
+
+  if (value < 1.0) {
+    return ( ( value - 9.0/5.0 ) * value - 1.0/5.0 ) * value + 1.0;
+  } else if (value < 2.0) {
+    return ( ( -1.0/3.0 * (value-1.0) + 4.0/5.0 ) * (value-1.0) - 7.0/15.0 ) * (value-1.0);
+  }
+  return 0.0;
 }
 
 /***********************
- *** Lanczos4 filter ***
+ *** Spline36 filter ***
  ***********************/
 
-double Lanczos4Filter::sinc(double value) {
-  if (value != 0.0) {
-    value *= M_PI;
-    return sin(value) / value;
-  } else {
-    return 1.0;
+double Spline36Filter::f(double value) {
+  value = fabs(value);
+
+  if        (value < 1.0) {
+    return ( ( 13.0/11.0  * (value    ) - 453.0/ 209.0 ) * (value    ) -   3.0/ 209.0 ) *(value    ) + 1.0;
+  } else if (value < 2.0) {
+    return ( ( -6.0/11.0  * (value-1.0) + 270.0/ 209.0 ) * (value-1.0) - 156.0/ 209.0 ) *(value-1.0);
+  } else if (value < 3.0) {
+    return  ( ( 1.0/11.0  * (value-2.0) -  45.0/ 209.0 ) * (value-2.0) +  26.0/ 209.0 ) *(value-2.0);
   }
+  return 0.0;
 }
 
-double Lanczos4Filter::f(double value) {
-  if (value < 0.0) {
-    value = -value;
-  }
+/***********************
+ *** Spline64 filter ***
+ ***********************/
 
-  if (value < 4.0) {
-    return (sinc(value) * sinc(value / 4.0));
-  } else {
-    return 0.0;
+double Spline64Filter::f(double value) {
+  value = fabs(value);
+
+  if        (value < 1.0) {
+    return (( 49.0/41.0 * (value    ) - 6387.0/2911.0) * (value    ) -    3.0/2911.0) * (value    ) + 1.0;
+  } else if (value < 2.0) {
+    return ((-24.0/41.0 * (value-1.0) + 4032.0/2911.0) * (value-1.0) - 2328.0/2911.0) * (value-1.0);
+  } else if (value < 3.0) {
+    return ((  6.0/41.0 * (value-2.0) - 1008.0/2911.0) * (value-2.0) +  582.0/2911.0) * (value-2.0);
+  } else if (value < 4.0) {
+    return ((- 1.0/41.0 * (value-3.0) +  168.0/2911.0) * (value-3.0) -   97.0/2911.0) * (value-3.0);
   }
+  return 0.0;
+}
+
+/***********************
+ *** Gaussian filter ***
+ ***********************/
+
+/* Solve taps from p*value*value < 9 as pow(2.0, -9.0) == 1.0/512.0 i.e 0.5 bit
+                     value*value < 9/p       p = param*0.1;
+                     value*value < 90/param
+                     value*value < 90/{0.1, 22.5, 30.0, 100.0}
+                     value*value < {900, 4.0, 3.0, 0.9}
+                     value       < {30, 2.0, 1.73, 0.949}         */
+
+GaussianFilter::GaussianFilter(double p = 30.0) {
+  param = min(100.0,max(0.1,p));
+}
+
+double GaussianFilter::f(double value) {
+  value = fabs(value);
+	double p = param*0.1;
+	return pow(2.0, - p*value*value);
 }
 
 
@@ -187,7 +260,7 @@ int* GetResamplingPatternRGB( int original_width, double subrange_start, double 
     double total = 0.0;
 
     // Ensure that we have a valid position
-    double ok_pos = max(0.0,min(original_width,pos));
+    double ok_pos = max(0.0,min(original_width-1,pos));
 
     for (int j=0; j<fir_filter_size; ++j) {  // Accumulate all coefficients
       total += func->f((start_pos+j - ok_pos) * filter_step);
@@ -273,7 +346,7 @@ int* GetResamplingPatternYUV( int original_width, double subrange_start, double 
     double total = 0.0;
 
     // Ensure that we have a valid position
-    double ok_pos = max(0.0,min(original_width, pos)); 
+    double ok_pos = max(0.0,min(original_width-1, pos)); 
 
     for (int j=0; j<fir_filter_size; ++j) {  // Accumulate all coefficients
       total += func->f((start_pos + j - ok_pos) * filter_step);

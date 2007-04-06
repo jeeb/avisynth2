@@ -77,7 +77,7 @@ PVideoFrame FlipVertical::GetFrame(int n, IScriptEnvironment* env) {
   int src_pitch = src->GetPitch();
   int dst_pitch = dst->GetPitch();
   env->BitBlt(dstp, dst_pitch, srcp + (vi.height-1) * src_pitch, -src_pitch, row_size, vi.height);
-  if (vi.IsPlanar()) {
+  if (vi.IsPlanar() && !vi.IsY8()) {
     srcp = src->GetReadPtr(PLANAR_U);
     dstp = dst->GetWritePtr(PLANAR_U);
     row_size = src->GetRowSize(PLANAR_U);
@@ -129,51 +129,53 @@ PVideoFrame FlipHorizontal::GetFrame(int n, IScriptEnvironment* env) {
     return dst;
   }
   if (vi.IsPlanar()) {  //For planar always 1bpp
-		srcp+=row_size-1;
-		for (int y=0; y<h;y++) { // Loop planar luma.
-			for (int x=0; x<row_size; x++) {
-				dstp[x] = srcp[-x];
-			}
-			srcp += src_pitch;
-			dstp += dst_pitch;
-		}
+    srcp+=row_size-1;
+    for (int y=0; y<h;y++) { // Loop planar luma.
+      for (int x=0; x<row_size; x++) {
+        dstp[x] = srcp[-x];
+      }
+      srcp += src_pitch;
+      dstp += dst_pitch;
+    }
 
-    srcp = src->GetReadPtr(PLANAR_U);
-    dstp = dst->GetWritePtr(PLANAR_U);
-    row_size = src->GetRowSize(PLANAR_U);
-    src_pitch = src->GetPitch(PLANAR_U);
-    dst_pitch = dst->GetPitch(PLANAR_U);
-    h = src->GetHeight(PLANAR_U);
-    srcp+=row_size-1;
-    for (y=0; y<h;y++) {
-      for (int x=0; x<row_size; x++) {
-        dstp[x] = srcp[-x];
+    if (!vi.IsY8()) {
+      srcp = src->GetReadPtr(PLANAR_U);
+      dstp = dst->GetWritePtr(PLANAR_U);
+      row_size = src->GetRowSize(PLANAR_U);
+      src_pitch = src->GetPitch(PLANAR_U);
+      dst_pitch = dst->GetPitch(PLANAR_U);
+      h = src->GetHeight(PLANAR_U);
+      srcp+=row_size-1;
+      for (y=0; y<h;y++) {
+        for (int x=0; x<row_size; x++) {
+          dstp[x] = srcp[-x];
+        }
+        srcp += src_pitch;
+        dstp += dst_pitch;
       }
-      srcp += src_pitch;
-      dstp += dst_pitch;
-    }
-    srcp = src->GetReadPtr(PLANAR_V);
-    dstp = dst->GetWritePtr(PLANAR_V);
-    srcp+=row_size-1;
-    for (y=0; y<h;y++) {
-      for (int x=0; x<row_size; x++) {
-        dstp[x] = srcp[-x];
+      srcp = src->GetReadPtr(PLANAR_V);
+      dstp = dst->GetWritePtr(PLANAR_V);
+      srcp+=row_size-1;
+      for (y=0; y<h;y++) {
+        for (int x=0; x<row_size; x++) {
+          dstp[x] = srcp[-x];
+        }
+        srcp += src_pitch;
+        dstp += dst_pitch;
       }
-      srcp += src_pitch;
-      dstp += dst_pitch;
     }
-		return dst;
+    return dst;
   }
   srcp+=row_size-bpp;
   if (vi.IsRGB32()) {
-		for (int y=0; y<h;y++) { // Loop for RGB
-			for (int x=0; x<row_size/4; x++) {
-				((int*)dstp)[x] = ((int*)srcp)[-x];
-			}
-			srcp += src_pitch;
-			dstp += dst_pitch;
-		}
-		return dst;
+    for (int y=0; y<h;y++) { // Loop for RGB
+      for (int x=0; x<row_size/4; x++) {
+          ((int*)dstp)[x] = ((int*)srcp)[-x];
+      }
+      srcp += src_pitch;
+      dstp += dst_pitch;
+    }
+    return dst;
   }
   for (int y=0; y<h;y++) { // Loop for RGB
     for (int x=0; x<row_size; x+=bpp) {
@@ -234,18 +236,17 @@ Crop::Crop(int _left, int _top, int _width, int _height, int _align, PClip _chil
 
     // YUY2, etc, ... can only crop to even pixel boundaries horizontally
     if (_left   & xmask)
-      env->ThrowError("Crop: YUV images can only be cropped by Mod %d (left side).", xmask+1);
+      env->ThrowError("Crop: YUV image can only be cropped by Mod %d (left side).", xmask+1);
     if (_width  & xmask)
-      env->ThrowError("Crop: YUV images can only be cropped by Mod %d (right side).", xmask+1);
+      env->ThrowError("Crop: YUV image can only be cropped by Mod %d (right side).", xmask+1);
     if (_top    & ymask)
-      env->ThrowError("Crop: YUV images can only be cropped by Mod %d (top).", ymask+1);
+      env->ThrowError("Crop: YUV image can only be cropped by Mod %d (top).", ymask+1);
     if (_height & ymask)
-      env->ThrowError("Crop: YUV images can only be cropped by Mod %d (bottom).", ymask+1);
+      env->ThrowError("Crop: YUV image can only be cropped by Mod %d (bottom).", ymask+1);
   } else {
     // RGB is upside-down
     _top = vi.height - _height - _top;
   }
-
 
   if (_left + _width > vi.width || _top + _height > vi.height)
     env->ThrowError("Crop: you cannot use crop to enlarge or 'shift' a clip");
@@ -261,7 +262,7 @@ Crop::Crop(int _left, int _top, int _width, int _height, int _align, PClip _chil
     if (env->GetCPUFlags() & CPUF_SSE2)
       align = 16;
 
-    if (!(left_bytes & (align-1)))  // We already have alignment.
+    if (!(left_bytes & ((align<<xsub)-1)))  // We already have alignment.
       align=0;
   }
 
@@ -290,16 +291,13 @@ PVideoFrame Crop::GetFrame(int n, IScriptEnvironment* env)
     return dst;
   }
 
-  if (!vi.IsPlanar())
+  if (!vi.IsPlanar() || vi.IsY8())
     return env->Subframe(frame, top * frame->GetPitch() + left_bytes, frame->GetPitch(), vi.RowSize(), vi.height);
-  else if (vi.IsY8())
-    return env->SubframePlanar(frame, top * frame->GetPitch() + left_bytes, frame->GetPitch(), vi.RowSize(), vi.height,
-                         0, 0, frame->GetPitch(PLANAR_U));
   else
     return env->SubframePlanar(frame, top * frame->GetPitch() + left_bytes, frame->GetPitch(), vi.RowSize(), vi.height,
-                         (top>>ysub) * frame->GetPitch(PLANAR_U) + (left_bytes>>xsub),
-                         (top>>ysub) * frame->GetPitch(PLANAR_V) + (left_bytes>>xsub),
-                         frame->GetPitch(PLANAR_U));
+                                      (top>>ysub) * frame->GetPitch(PLANAR_U) + (left_bytes>>xsub),
+                                      (top>>ysub) * frame->GetPitch(PLANAR_V) + (left_bytes>>xsub),
+                                      frame->GetPitch(PLANAR_U));
 }
 
 
@@ -317,25 +315,38 @@ AVSValue __cdecl Crop::Create(AVSValue args, void*, IScriptEnvironment* env)
  *******   Add Borders   ******
  *****************************/
 
-AddBorders::AddBorders(int _left, int _top, int _right, int _bot, int _clr, PClip _child)
- : GenericVideoFilter(_child), left(_left), top(_top), right(_right), bot(_bot), clr(_clr), mybuffer(0)
+AddBorders::AddBorders(int _left, int _top, int _right, int _bot, int _clr, PClip _child, IScriptEnvironment* env)
+ : GenericVideoFilter(_child), left(_left), top(_top), right(_right), bot(_bot), clr(_clr)
 {
   if (vi.IsYUV()) {
-    // YUY2 can only add even amounts
-    left = left & -2;
-    right = (right+1) & -2;
-    if (vi.IsYV12()) {
-      top=top& -2;
-      bot=(bot+1)& -2;
+    if (vi.IsY8()) {
+      xsub=0;
+      ysub=0;
     }
+    else {
+      xsub=vi.GetPlaneWidthSubsampling(PLANAR_U);
+      ysub=vi.GetPlaneHeightSubsampling(PLANAR_U);
+    }
+    const int xmask = (1 << xsub) - 1;
+    const int ymask = (1 << ysub) - 1;
 
-  } else {
+    // YUY2, etc, ... can only add even amounts
+    if (_left  & xmask)
+      env->ThrowError("AddBorders: YUV image can only add by Mod %d (left side).", xmask+1);
+    if (_right & xmask)
+      env->ThrowError("AddBorders: YUV image can only add by Mod %d (right side).", xmask+1);
+
+    if (_top   & ymask)
+      env->ThrowError("AddBorders: YUV image can only add by Mod %d (top).", ymask+1);
+    if (_bot   & ymask)
+      env->ThrowError("AddBorders: YUV image can only add by Mod %d (bottom).", ymask+1);
+  }
+  else {
     // RGB is upside-down
     int t = top; top = bot; bot = t;
   }
   vi.width += left+right;
   vi.height += top+bot;
-//  child->SetCacheHints(CACHE_NOTHING,0);
 }
 
 
@@ -358,62 +369,62 @@ PVideoFrame AddBorders::GetFrame(int n, IScriptEnvironment* env)
   const int middle_black = dst_pitch - src_row_size;
   const int final_black = bot * dst_pitch + vi.BytesFromPixels(right) 
                           + (dst_pitch - dst_row_size);
-
-  const int initial_blackUV = (top/2) * dst->GetPitch(PLANAR_U) + left/2;
-  const int middle_blackUV = dst->GetPitch(PLANAR_U) - src->GetRowSize(PLANAR_U);
-  const int final_blackUV = (bot/2) * dst->GetPitch(PLANAR_U) + (right/2)
-                          + (dst->GetPitch(PLANAR_U)- dst->GetRowSize(PLANAR_U));
-
-
-  if (vi.IsYV12()) {
-    BitBlt(dstp+initial_black, dst_pitch, srcp, src_pitch, src_row_size, src_height);
-    BitBlt(dst->GetWritePtr(PLANAR_U)+initial_blackUV, dst->GetPitch(PLANAR_U), src->GetReadPtr(PLANAR_U), src->GetPitch(PLANAR_U), src->GetRowSize(PLANAR_U), src->GetHeight(PLANAR_U));
-    BitBlt(dst->GetWritePtr(PLANAR_V)+initial_blackUV, dst->GetPitch(PLANAR_V), src->GetReadPtr(PLANAR_V), src->GetPitch(PLANAR_V), src->GetRowSize(PLANAR_V), src->GetHeight(PLANAR_V));
+  if (vi.IsPlanar()) {
     const unsigned int colr = RGB2YUV(clr);
-    short YBlack=(colr>>16)&0xff | ((colr>>8)&0xff00);
-    unsigned char VBlack=(colr)&0xff;
-    unsigned char UBlack=(colr>>8)&0xff;
+    const unsigned char YBlack=(colr>>16)&0xff;
+    const unsigned char UBlack=(colr>>8)&0xff;
+    const unsigned char VBlack=(colr)&0xff;
 
-    for (int a=0; a<initial_black; a += 2)
-      *(unsigned short*)(dstp+a) = YBlack;
+    BitBlt(dstp+initial_black, dst_pitch, srcp, src_pitch, src_row_size, src_height);
+    for (int a=0; a<initial_black; a++)
+      *(unsigned char*)(dstp+a) = YBlack;
     dstp += initial_black + src_row_size;
     for (int y=src_height-1; y>0; --y) {
-      for (int b=0; b<middle_black; b += 2)
-        *(unsigned short*)(dstp+b) = YBlack;
+      for (int b=0; b<middle_black; b++)
+        *(unsigned char*)(dstp+b) = YBlack;
       dstp += dst_pitch;
     }
-    for (int c=0; c<final_black; c += 2)
-      *(unsigned short*)(dstp+c) = YBlack;
+    for (int c=0; c<final_black; c++)
+      *(unsigned char*)(dstp+c) = YBlack;
 
-    dstp = dst->GetWritePtr(PLANAR_U);
-    for (a=0; a<initial_blackUV; a++)
-      *(unsigned char*)(dstp+a) = UBlack;
-    dstp += initial_blackUV + src->GetRowSize(PLANAR_U);
-    for (y=src->GetHeight(PLANAR_U)-1; y>0; --y) {
-      for (int b=0; b<middle_blackUV; b++)
-        *(unsigned char*)(dstp+b) = UBlack;
-      dstp += dst->GetPitch(PLANAR_U);
+    if (!vi.IsY8()) {
+      const int initial_blackUV = (top>>ysub) * dst->GetPitch(PLANAR_U) + (left>>xsub);
+      const int middle_blackUV  = dst->GetPitch(PLANAR_U) - src->GetRowSize(PLANAR_U);
+      const int final_blackUV   = (bot>>ysub) * dst->GetPitch(PLANAR_U) + (right>>xsub)
+                                + (dst->GetPitch(PLANAR_U)- dst->GetRowSize(PLANAR_U));
+
+      BitBlt(dst->GetWritePtr(PLANAR_U)+initial_blackUV, dst->GetPitch(PLANAR_U), src->GetReadPtr(PLANAR_U), src->GetPitch(PLANAR_U), src->GetRowSize(PLANAR_U), src->GetHeight(PLANAR_U));
+      dstp = dst->GetWritePtr(PLANAR_U);
+      for (a=0; a<initial_blackUV; a++)
+        *(unsigned char*)(dstp+a) = UBlack;
+      dstp += initial_blackUV + src->GetRowSize(PLANAR_U);
+      for (y=src->GetHeight(PLANAR_U)-1; y>0; --y) {
+        for (int b=0; b<middle_blackUV; b++)
+          *(unsigned char*)(dstp+b) = UBlack;
+        dstp += dst->GetPitch(PLANAR_U);
+      }
+      for (c=0; c<final_blackUV; c ++)
+        *(unsigned char*)(dstp+c) = UBlack;
+
+      BitBlt(dst->GetWritePtr(PLANAR_V)+initial_blackUV, dst->GetPitch(PLANAR_V), src->GetReadPtr(PLANAR_V), src->GetPitch(PLANAR_V), src->GetRowSize(PLANAR_V), src->GetHeight(PLANAR_V));
+      dstp = dst->GetWritePtr(PLANAR_V);
+      for (a=0; a<initial_blackUV; a++)
+        *(unsigned char*)(dstp+a) = VBlack;
+      dstp += initial_blackUV + src->GetRowSize(PLANAR_U);
+      for (y=src->GetHeight(PLANAR_U)-1; y>0; --y) {
+        for (int b=0; b<middle_blackUV; b++)
+          *(unsigned char*)(dstp+b) = VBlack;
+        dstp += dst->GetPitch(PLANAR_U);
+      }
+      for (c=0; c<final_blackUV; c++)
+        *(unsigned char*)(dstp+c) = VBlack;
     }
-    for (c=0; c<final_blackUV; c ++)
-      *(unsigned char*)(dstp+c) = UBlack;
-
-    dstp = dst->GetWritePtr(PLANAR_V);
-    for (a=0; a<initial_blackUV; a++)
-      *(unsigned char*)(dstp+a) = VBlack;
-    dstp += initial_blackUV + src->GetRowSize(PLANAR_U);
-    for (y=src->GetHeight(PLANAR_U)-1; y>0; --y) {
-      for (int b=0; b<middle_blackUV; b++)
-        *(unsigned char*)(dstp+b) = VBlack;
-      dstp += dst->GetPitch(PLANAR_U);
-    }
-    for (c=0; c<final_blackUV; c++)
-      *(unsigned char*)(dstp+c) = VBlack;
-
-  } else if (vi.IsYUY2()) {
-    BitBlt(dstp+initial_black, dst_pitch, srcp, src_pitch, src_row_size, src_height);
+  }
+  else if (vi.IsYUY2()) {
     const unsigned int colr = RGB2YUV(clr);
     const unsigned __int32 black = (colr>>16) * 0x010001 + ((colr>>8)&255) * 0x0100 + (colr&255) * 0x01000000;
-//    const unsigned __int32 black = 0x80108010;
+
+    BitBlt(dstp+initial_black, dst_pitch, srcp, src_pitch, src_row_size, src_height);
     for (int a=0; a<initial_black; a += 4)
       *(unsigned __int32*)(dstp+a) = black;
     dstp += initial_black + src_row_size;
@@ -424,66 +435,53 @@ PVideoFrame AddBorders::GetFrame(int n, IScriptEnvironment* env)
     }
     for (int c=0; c<final_black; c += 4)
       *(unsigned __int32*)(dstp+c) = black;
-  } else {
-    if (vi.IsRGB24()){
-      BitBlt(dstp+initial_black, dst_pitch, srcp, src_pitch, src_row_size, src_height);
-      const int ofs = dst_pitch - dst_row_size;
-      const unsigned char clr0 = (clr & 0xFF);
-      const unsigned short clr1 = (clr >> 8);
-      for (int i=0; i<initial_black; i+=3) {
-       dstp[i] = clr0; *(unsigned __int16*)(dstp+i+1) = clr1;
-       if (i % dst_pitch >= dst_row_size - 3) i += ofs;
-       } //for i
-    dstp += initial_black + src_row_size;
-    for (int y=src_height-1; y>0; --y) {
-      if (middle_black) {
-      for (i=0; i<middle_black; i+=3) {
-       dstp[i] = clr0; *(unsigned __int16*)(dstp+i+1) = clr1;
-       if (i == vi.BytesFromPixels(right)-3) i += ofs;
-       } // for i
-      } // if middle_black
-      dstp += dst_pitch;
-    } // for y
-      for (i=0; i<final_black; i+=3) {
-       dstp[i] = clr0; *(unsigned __int16*)(dstp+i+1) = clr1;
-       if (i % dst_pitch == vi.BytesFromPixels(right)-3) i += ofs;
-       } // for i
-       } // if vi.IsRGB24
-   else {
-    BitBlt(dstp+initial_black, dst_pitch, srcp, src_pitch, src_row_size, src_height);
-      for (int i=0; i<initial_black; i+=4) {
-       *(unsigned __int32*)(dstp+i) = clr;
-       } // for i
-    dstp += initial_black + src_row_size;
-    for (int y=src_height-1; y>0; --y) {
-      if (middle_black) {
-      for (i=0; i<middle_black; i+=4)
-       *(unsigned __int32*)(dstp+i) = clr;
-    } // if middle_black
-      dstp += dst_pitch;
-    } // for y
-      for (i=0; i<final_black; i+=4)
-       *(unsigned __int32*)(dstp+i) = clr;
-  } // end else vi.IsRGB24
   }
+  else if (vi.IsRGB24()) {
+    const int ofs = dst_pitch - dst_row_size;
+    const unsigned char  clr0 = (clr & 0xFF);
+    const unsigned short clr1 = (clr >> 8);
+
+    BitBlt(dstp+initial_black, dst_pitch, srcp, src_pitch, src_row_size, src_height);
+    for (int i=0; i<initial_black; i+=3) {
+      dstp[i] = clr0; *(unsigned __int16*)(dstp+i+1) = clr1;
+      if (i % dst_pitch >= dst_row_size - 3) i += ofs;
+    } //for i
+    dstp += initial_black + src_row_size;
+    for (int y=src_height-1; y>0; --y) {
+      for (i=0; i<middle_black; i+=3) {
+        dstp[i] = clr0; *(unsigned __int16*)(dstp+i+1) = clr1;
+        if (i == vi.BytesFromPixels(right)-3) i += ofs;
+      } // for i
+      dstp += dst_pitch;
+    } // for y
+    for (i=0; i<final_black; i+=3) {
+      dstp[i] = clr0; *(unsigned __int16*)(dstp+i+1) = clr1;
+      if (i % dst_pitch == vi.BytesFromPixels(right)-3) i += ofs;
+    } // for i
+  } // if vi.IsRGB24
+  else {
+    BitBlt(dstp+initial_black, dst_pitch, srcp, src_pitch, src_row_size, src_height);
+    for (int i=0; i<initial_black; i+=4)
+      *(unsigned __int32*)(dstp+i) = clr;
+    dstp += initial_black + src_row_size;
+    for (int y=src_height-1; y>0; --y) {
+      for (i=0; i<middle_black; i+=4)
+        *(unsigned __int32*)(dstp+i) = clr;
+      dstp += dst_pitch;
+    } // for y
+    for (i=0; i<final_black; i+=4)
+      *(unsigned __int32*)(dstp+i) = clr;
+  } // end else
   return dst;
 }
-
 
 
 
 AVSValue __cdecl AddBorders::Create(AVSValue args, void*, IScriptEnvironment* env) 
 {
   return new AddBorders( args[1].AsInt(), args[2].AsInt(), args[3].AsInt(), 
-                         args[4].AsInt(), args[5].AsInt(0), args[0].AsClip() );
+                         args[4].AsInt(), args[5].AsInt(0), args[0].AsClip(), env);
 }
-
-
-
-
-
-
-
 
 
 
@@ -571,12 +569,33 @@ AVSValue __cdecl Create_Letterbox(AVSValue args, void*, IScriptEnvironment* env)
     env->ThrowError("LetterBox: You cannot specify letterboxing that is bigger than the picture (height).");  
   if (right+left>=vi.width) // Must be >= otherwise it is interpreted wrong by crop()
     env->ThrowError("LetterBox: You cannot specify letterboxing that is bigger than the picture (width).");
-  if (vi.IsYUY2() && (left&1))
-    env->ThrowError("LetterBox: Width must be divideable with 2 (Left side)");
-  if (vi.IsYUY2() && (right&1))
-    env->ThrowError("LetterBox: Width must be divideable with 2 (Right side)");
 
-  return new AddBorders(left, top, right, bot, color, new Crop(left, top, vi.width-left-right, vi.height-top-bot, 0, clip, env));
+  if (vi.IsYUV()) {
+    int xsub, ysub;
+
+    if (vi.IsY8()) {
+      xsub=0;
+      ysub=0;
+    }
+    else {
+      xsub=vi.GetPlaneWidthSubsampling(PLANAR_U);
+      ysub=vi.GetPlaneHeightSubsampling(PLANAR_U);
+    }
+    const int xmask = (1 << xsub) - 1;
+    const int ymask = (1 << ysub) - 1;
+
+    // YUY2, etc, ... can only operate to even pixel boundaries
+    if (left  & xmask)
+      env->ThrowError("LetterBox: YUV images width must be divideable by %d (left side).", xmask+1);
+    if (right & xmask)
+      env->ThrowError("LetterBox: YUV images width must be divideable by %d (right side).", xmask+1);
+
+    if (top   & ymask)
+      env->ThrowError("LetterBox: YUV images height must be divideable by %d (top).", ymask+1);
+    if (bot   & ymask)
+      env->ThrowError("LetterBox: YUV images height must be divideable by %d (bottom).", ymask+1);
+  }
+  return new AddBorders(left, top, right, bot, color, new Crop(left, top, vi.width-left-right, vi.height-top-bot, 0, clip, env), env);
 }
 
 

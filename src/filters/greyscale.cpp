@@ -44,7 +44,8 @@
  ************************************/
 
 AVSFunction Greyscale_filters[] = {
-  { "Greyscale", "c[matrix]s", Greyscale::Create },       // matrix can be "rec709" or "Average"
+  { "Greyscale", "c[matrix]s", Greyscale::Create },       // matrix can be "rec601", "rec709" or "Average"
+  { "Grayscale", "c[matrix]s", Greyscale::Create },
   { 0 }
 };
 
@@ -59,8 +60,10 @@ Greyscale::Greyscale(PClip _child, const char* matrix, IScriptEnvironment* env)
       theMatrix = Rec709;
     else if (!lstrcmpi(matrix, "Average"))
       theMatrix = Average;
+    else if (!lstrcmpi(matrix, "rec601"))
+      theMatrix = Rec601;
     else
-      env->ThrowError("GreyScale: invalid \"matrix\" parameter (must be matrix=\"Rec709\" or \"Average\")");
+      env->ThrowError("GreyScale: invalid \"matrix\" parameter (must be matrix=\"Rec601\", \"Rec709\" or \"Average\")");
   }
 }
 

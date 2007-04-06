@@ -466,19 +466,21 @@ AVSValue ExpNot::Evaluate(IScriptEnvironment* env)
 
 AVSValue ExpVariableReference::Evaluate(IScriptEnvironment* env) 
 {
+  AVSValue result;
   try {
     // first look for a genuine variable
+	// No Tritical don't add a cache to this one, it's a Var
     return env->GetVar(name);
   }
   catch (IScriptEnvironment::NotFound) {
     try {
       // next look for a single-arg function taking implicit "last"
-      return env->Invoke(name, env->GetVar("last"));
+      result = env->Invoke(name, env->GetVar("last"));
     }
     catch (IScriptEnvironment::NotFound) {
       try {
         // finally look for an argless function
-        return env->Invoke(name, AVSValue(0,0));
+        result = env->Invoke(name, AVSValue(0,0));
       }
       catch (IScriptEnvironment::NotFound) {
         env->ThrowError("I don't know what \"%s\" means", name);
@@ -486,6 +488,11 @@ AVSValue ExpVariableReference::Evaluate(IScriptEnvironment* env)
       }
     }
   }
+  // Add cache to Bracketless call of argless function
+  if (result.IsClip()) { // Tritical Jan 2006
+    return Cache::Create_Cache(AVSValue(&result, 1), 0, env);
+  }
+  return result;
 }
 
 
@@ -582,6 +589,9 @@ ExpFunctionCall::~ExpFunctionCall(void)
 AVSValue ExpFunctionCall::Evaluate(IScriptEnvironment* env)
 {
   AVSValue result = Call(env);
+  if (result.IsClip()) {
+    return Cache::Create_Cache(AVSValue(&result, 1), 0, env);
+  }
   return result;
 }
 

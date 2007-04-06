@@ -447,7 +447,7 @@ Tweak::Tweak( PClip _child, double _hue, double _sat, double _bright, double _co
 	Cont = (int) (_cont * 512);
 	Bright = (int) _bright;
 
- 	const double Hue = (_hue * 3.1415926) / 180.0;
+ 	const double Hue = (_hue * 3.14159265358979323846) / 180.0;
 	const double SIN = sin(Hue);
 	const double COS = cos(Hue);
 	double theta;

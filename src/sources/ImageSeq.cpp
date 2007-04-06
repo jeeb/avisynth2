@@ -292,7 +292,7 @@ AVSValue __cdecl ImageWriter::Create(AVSValue args, void*, IScriptEnvironment* e
 ImageReader::ImageReader(const char * _base_name, const int _start, const int _end,
                          const float _fps, bool _use_DevIL, bool _info, const char * _pixel,
 						 IScriptEnvironment* env)
- : base_name(), start(_start), end(_end), use_DevIL(_use_DevIL), static_frame(NULL), info(_info)
+ : base_name(), start(_start), end(_end), use_DevIL(_use_DevIL), info(_info), framecopies(0)
 {
   // Generate full name
   if (IsAbsolutePath(_base_name))
@@ -317,6 +317,9 @@ ImageReader::ImageReader(const char * _base_name, const int _start, const int _e
   vi.fps_numerator = int(num+0.5);
   vi.fps_denominator = denom;
     
+  // undecorated filename means they want a single, static image
+  if( strcmp(filename, base_name) == 0 ) framecopies = vi.num_frames;
+
   if (use_DevIL == false)
   {
 	fileHeader.bfType = 0;
@@ -456,12 +459,6 @@ ImageReader::~ImageReader()
 
 PVideoFrame ImageReader::GetFrame(int n, IScriptEnvironment* env) 
 {
-  // check if we want a static image
-  if (static_frame != NULL)
-  {
-    return static_frame;
-  }
-
   ILenum err = IL_NO_ERROR;
 
   PVideoFrame frame = env->NewVideoFrame(vi);
@@ -604,10 +601,6 @@ PVideoFrame ImageReader::GetFrame(int n, IScriptEnvironment* env)
     ApplyMessage(&frame, vi, text.str().c_str(), vi.width/4, TEXT_COLOR,0,0 , env);
   }
 
-  // undecorated filename means they want a single, static image
-  if( strcmp(filename, base_name) == 0 ) 
-    static_frame = frame;
-
   return frame;
 }
 
@@ -688,8 +681,18 @@ AVSValue __cdecl ImageReader::Create(AVSValue args, void*, IScriptEnvironment* e
 {
   const char * path = args[0].AsString("c:\\%06d.ebmp");
 
-  return new ImageReader(path, args[1].AsInt(0), args[2].AsInt(1000), args[3].AsFloat(24.0f), 
+  ImageReader *IR = new ImageReader(path, args[1].AsInt(0), args[2].AsInt(1000), args[3].AsFloat(24.0f), 
                          args[4].AsBool(false), args[5].AsBool(false), args[6].AsString("rgb24"), env);
+  // If we are returning a stream of 2 or more copies of the same image
+  // then use FreezeFrame and the Cache to minimise any reloading.
+  if (IR->framecopies > 1) {
+	AVSValue cache_args[1] = { IR };
+    AVSValue cache = env->Invoke("Cache", AVSValue(cache_args, 1));
+	AVSValue ff_args[4] = { cache, 0, IR->framecopies-1, 0 };
+    return env->Invoke("FreezeFrame", AVSValue(ff_args, 4)).AsClip();
+  }
+
+  return IR;
 
 }
 

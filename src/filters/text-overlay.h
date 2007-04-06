@@ -53,6 +53,7 @@ public:
   Antialiaser(int width, int height, const char fontname[], int size, int textcolor, int halocolor);
   virtual ~Antialiaser();
   HDC GetDC();
+  void FreeDC();
   
   void Apply(const VideoInfo& vi, PVideoFrame* frame, int pitch);
 
@@ -110,7 +111,8 @@ public:
 			int _textcolor, int _halocolor, IScriptEnvironment* env);
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
 
-  static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
+  static AVSValue __cdecl CreateSMTPE(AVSValue args, void*, IScriptEnvironment* env);
+  static AVSValue __cdecl CreateTime(AVSValue args, void*, IScriptEnvironment* env);
 
 private:
   Antialiaser antialiaser;
@@ -130,16 +132,18 @@ class Subtitle : public GenericVideoFilter
 {
 public:
   Subtitle( PClip _child, const char _text[], int _x, int _y, int _firstframe, int _lastframe, 
-            const char _fontname[], int _size, int _textcolor, int _halocolor, int _align, int _spc );
+            const char _fontname[], int _size, int _textcolor, int _halocolor, int _align, 
+            int _spc, bool _multiline, int _lsp );
   virtual ~Subtitle(void);
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
   
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);  
 
 private:
-  void InitAntialiaser(void);
+  void InitAntialiaser(IScriptEnvironment* env);
   
-  const int x, y, firstframe, lastframe, size;
+  const int x, y, firstframe, lastframe, size, lsp;
+  const bool multiline;
   const int textcolor, halocolor, align, spc;
   const char* const fontname;
   const char* const text;
@@ -211,11 +215,6 @@ inline static HFONT LoadFont(const char name[], int size, bool bold, bool italic
                      italic, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
                      CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, FF_DONTCARE | DEFAULT_PITCH, name );
 }
-
-inline char* MyStrdup(const char* s) {
-  return lstrcpy(new char[(lstrlen(s)+1)], s);
-}
-
 
 
 #endif  // __Text_overlay_H__

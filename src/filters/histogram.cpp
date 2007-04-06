@@ -63,7 +63,7 @@ Histogram::Histogram(PClip _child, int _mode, IScriptEnvironment* env)
 {
 
   if (mode == 0) {
-    if (!(vi.IsYUV()))
+    if (!vi.IsYUV())
       env->ThrowError("Histogram: YUV data only");
     vi.width += 256;
   }
@@ -197,13 +197,13 @@ PVideoFrame Histogram::DrawMode7(int n, IScriptEnvironment* env) {
   // Find maximum volume.
   int c = (int)count;
   int* channel_max = new int[channels];
-  for (int ch = 0; ch<channels; ch++) {
+  {for (int ch = 0; ch<channels; ch++) {
     int max_vol=0;
     for (int i=0; i < c;i++) {
       max_vol = max(max_vol, abs((int)samples[i*channels+ch]));
     }
     channel_max[ch] = max_vol;
-  }
+  }}
 
   // Draw bars
   BYTE* srcpY = src->GetWritePtr(PLANAR_Y);
@@ -234,7 +234,7 @@ PVideoFrame Histogram::DrawMode7(int n, IScriptEnvironment* env) {
     }
   }
 
-  for (int ch = 0; ch<channels; ch++) {
+  {for (int ch = 0; ch<channels; ch++) {
     int max = channel_max[ch];
     double ch_db = 96;
     if (max>0) {
@@ -245,11 +245,11 @@ PVideoFrame Histogram::DrawMode7(int n, IScriptEnvironment* env) {
     int y_pos = (int)(((double)bar_h*ch_db) / 96.0);
     int y_end = src->GetHeight(PLANAR_Y);
     // Luma
-    for (int y = y_pos; y<y_end; y++) {
+    {for (int y = y_pos; y<y_end; y++) {
       for (int x = x_pos; x < x_end; x++) {
         srcpY[x+y*Ypitch] = 0x48;
       }
-    }
+    }}
     // Chroma
     x_pos >>= xSubS;
     x_end >>= xSubS;
@@ -257,18 +257,18 @@ PVideoFrame Histogram::DrawMode7(int n, IScriptEnvironment* env) {
     y_end = src->GetHeight(PLANAR_U);
     BYTE u_val = 0;
     BYTE v_val = (max>=32767) ? 0xff : 0;
-    for (int y = y_pos; y<y_end; y++) {
+    {for (int y = y_pos; y<y_end; y++) {
       for (int x = x_pos; x < x_end; x++) {
         srcpU[x+y*UVpitch] = u_val;
         srcpV[x+y*UVpitch] = v_val;
       }
-    }
+    }}
     // Draw text
     char text[400];
     sprintf(text,"%5.2fdB",(float)-ch_db);
     DrawString(src, x_pos<<xSubS, vi.height-20, text);
 
-  }
+  }}
 
   delete[] channel_max;
   delete[] samples;
@@ -294,8 +294,8 @@ PVideoFrame Histogram::DrawMode6(int n, IScriptEnvironment* env) {
     memset(dstp, 16, imgSize);
     if (!vi.IsY8()) {
       int imgSizeU = dst->GetHeight(PLANAR_U) * dst->GetPitch(PLANAR_U);
-      memset(dst->GetWritePtr(PLANAR_U) , 127, imgSizeU);
-      memset(dst->GetWritePtr(PLANAR_V), 127, imgSizeU);
+      memset(dst->GetWritePtr(PLANAR_U) , 128, imgSizeU);
+      memset(dst->GetWritePtr(PLANAR_V), 128, imgSizeU);
     }
   }
 
@@ -412,9 +412,9 @@ PVideoFrame Histogram::DrawMode4(int n, IScriptEnvironment* env) {
   if (vi.IsPlanar()) {
     srcp = src->GetWritePtr(PLANAR_U);
     imgsize = src->GetHeight(PLANAR_U) * src->GetPitch(PLANAR_U);
-    memset(srcp, 127, imgsize);
+    memset(srcp, 128, imgsize);
     srcp = src->GetWritePtr(PLANAR_V);
-    memset(srcp, 127, imgsize);
+    memset(srcp, 128, imgsize);
   }
   return src;
 }
@@ -702,8 +702,8 @@ PVideoFrame Histogram::DrawMode1(int n, IScriptEnvironment* env) {
   if (src->GetHeight()<dst->GetHeight()) {
     memset(p, 16, imgSize);
     int imgSizeU = dst->GetHeight(PLANAR_U) * dst->GetPitch(PLANAR_U);
-    memset(dst->GetWritePtr(PLANAR_U) , 127, imgSizeU);
-    memset(dst->GetWritePtr(PLANAR_V), 127, imgSizeU);
+    memset(dst->GetWritePtr(PLANAR_U) , 128, imgSizeU);
+    memset(dst->GetWritePtr(PLANAR_V), 128, imgSizeU);
   }
 
   env->BitBlt(p, dst->GetPitch(), src->GetReadPtr(), src->GetPitch(), src->GetRowSize(), src->GetHeight());

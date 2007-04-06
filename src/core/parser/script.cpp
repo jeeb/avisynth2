@@ -91,8 +91,8 @@ AVSFunction Script_functions[] = {
   { "audiolengthf", "c", AudioLengthF }, // at least this will give an order of the size
   { "audiochannels", "c", AudioChannels },
   { "audiobits", "c", AudioBits },
-  { "IsAudioFloat", "c", IsFloat },
-  { "IsAudioInt", "c", IsInt },
+  { "IsAudioFloat", "c", IsAudioFloat },
+  { "IsAudioInt", "c", IsAudioInt },
   { "IsRGB", "c", IsRGB },
   { "IsYUY2", "c", IsYUY2 },
   { "IsYUV", "c", IsYUV },
@@ -544,10 +544,10 @@ AVSValue FrameRateDenominator(AVSValue args, void*, IScriptEnvironment* env) { r
 AVSValue AudioRate(AVSValue args, void*, IScriptEnvironment* env) { return VI(args[0]).audio_samples_per_second; }
 AVSValue AudioLength(AVSValue args, void*, IScriptEnvironment* env) { return (int)VI(args[0]).num_audio_samples; }  // Truncated to int
 AVSValue AudioLengthF(AVSValue args, void*, IScriptEnvironment* env) { return (double)VI(args[0]).num_audio_samples; } // at least this will give an order of the size
-AVSValue AudioChannels(AVSValue args, void*, IScriptEnvironment* env) { return VI(args[0]).nchannels; }
+AVSValue AudioChannels(AVSValue args, void*, IScriptEnvironment* env) { return VI(args[0]).HasAudio() ? VI(args[0]).nchannels : 0; }
 AVSValue AudioBits(AVSValue args, void*, IScriptEnvironment* env) { return VI(args[0]).BytesPerChannelSample()*8; }
 AVSValue IsAudioFloat(AVSValue args, void*, IScriptEnvironment* env) { return VI(args[0]).IsSampleType(SAMPLE_FLOAT); }
-AVSValue IsAudioInt(AVSValue args, void*, IScriptEnvironment* env) { return !VI(args[0]).IsSampleType(SAMPLE_FLOAT); }
+AVSValue IsAudioInt(AVSValue args, void*, IScriptEnvironment* env) { return VI(args[0]).IsSampleType(SAMPLE_INT8 | SAMPLE_INT16 | SAMPLE_INT24 | SAMPLE_INT32 ); }
 
 AVSValue IsRGB(AVSValue args, void*, IScriptEnvironment* env) { return VI(args[0]).IsRGB(); }
 AVSValue IsRGB24(AVSValue args, void*, IScriptEnvironment* env) { return VI(args[0]).IsRGB24(); }
@@ -596,7 +596,7 @@ AVSValue Defined(AVSValue args, void*, IScriptEnvironment* env) { return args[0]
 
 AVSValue Default(AVSValue args, void*, IScriptEnvironment* env) { return args[0].Defined() ? args[0] : args[1]; }
 AVSValue VersionNumber(AVSValue args, void*, IScriptEnvironment* env) { return AVS_VERSION; }
-AVSValue VersionString(AVSValue args, void*, IScriptEnvironment* env) { return AVS_VERSTR; }
+AVSValue VersionString(AVSValue args, void*, IScriptEnvironment* env) { return _AVS_VERSTR; }
 
 AVSValue Int(AVSValue args, void*, IScriptEnvironment* env) { return int(args[0].AsFloat()); }
 AVSValue Frac(AVSValue args, void*, IScriptEnvironment* env) { return args[0].AsFloat() - int(args[0].AsFloat()); }

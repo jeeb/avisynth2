@@ -85,13 +85,14 @@ AVSFunction* builtin_functions[] = {
 // Global statistics counters
 struct {
   unsigned long CleanUps;
+  unsigned long Losses;
   unsigned long PlanA1;
   unsigned long PlanA2;
   unsigned long PlanB;
   unsigned long PlanC;
   unsigned long PlanD;
-  char tag[32];
-} g_Mem_stats = {0, 0, 0, 0, 0, 0, "CleanUps, Plan[A1,A2,B,C,D]"};
+  char tag[36];
+} g_Mem_stats = {0, 0, 0, 0, 0, 0, 0, "CleanUps, Losses, Plan[A1,A2,B,C,D]"};
 
 const HKEY RegRootKey = HKEY_LOCAL_MACHINE;
 const char RegAvisynthKey[] = "Software\\Avisynth";
@@ -452,37 +453,49 @@ public:
     return state == 0 || state == 1;
   }
 
+  // Update $Plugin! -- Tritical Jan 2006
   void AddFunction(const char* name, const char* params, IScriptEnvironment::ApplyFunc apply, void* user_data) {
     if (prescanning && !plugins)
       env->ThrowError("FunctionTable in prescanning state but no plugin has been set");
     if (!IsValidParameterString(params))
       env->ThrowError("%s has an invalid parameter string (bug in filter)", name);
 
-    LocalFunction* f = new LocalFunction;
+    bool duse = false;
+
+// Option for Tritcal - Nonstandard, manifestly changes behaviour
+#ifdef OPT_TRITICAL_NOOVERLOAD
+
+// Do not allow LoadPlugin or LoadCPlugin to be overloaded
+// to access the new function the alternate name must be used
+    if      (lstrcmpi(name, "LoadPlugin")  == 0) duse = true;
+    else if (lstrcmpi(name, "LoadCPlugin") == 0) duse = true;
+#endif
     const char* alt_name = 0;
-    if (!prescanning) {
+    LocalFunction *f = NULL;
+    if (!duse) {
+      f = new LocalFunction;
       f->name = strdup(name);  // Tritical May 2005
       f->param_types = strdup(params);
-      f->apply = apply;
-      f->user_data = user_data;
-      f->prev = local_functions;
-      local_functions = f;
-    } else {
-      _RPT1(0, "  Function %s (prescan)\n", name);
-      f->name = strdup(name);     // needs to copy here since the plugin will be unloaded
-      f->param_types = strdup(params);
-      f->prev = plugins->plugin_functions;
-      plugins->plugin_functions = f;
+      if (!prescanning) {
+        f->apply = apply;
+        f->user_data = user_data;
+        f->prev = local_functions;
+        local_functions = f;
+      } else {
+        _RPT1(0, "  Function %s (prescan)\n", name);
+        f->prev = plugins->plugin_functions;
+        plugins->plugin_functions = f;
+      }
     }
 
+    LocalFunction *f2 = NULL;
     if (loadplugin_prefix) {
       _RPT1(0, "  Plugin name %s\n", loadplugin_prefix);
       char result[512];
       strcpy(result, loadplugin_prefix);
       strcat(result, "_");
       strcat(result, name);
-      LocalFunction* f2 = new LocalFunction;
-      memcpy(f2, f, sizeof(LocalFunction));
+      f2 = new LocalFunction;
       f2->name = strdup(result);     // needs to copy here since the plugin will be unloaded
       f2->param_types = strdup(params);     // needs to copy here since the plugin will be unloaded
       alt_name =f2->name;
@@ -490,6 +503,8 @@ public:
         f2->prev = plugins->plugin_functions;
         plugins->plugin_functions = f2;
       } else {
+        f2->apply = apply;
+        f2->user_data = user_data;
         f2->prev = local_functions;
         local_functions = f2;
       }
@@ -498,42 +513,71 @@ public:
 // *** Make Plugin Functions readable for external apps            ***
 // *** Tobias Minich, Mar 2003                                     ***
 // BEGIN *************************************************************
-#if 1
     if (prescanning) {
-    AVSValue fnplugin;
-    char *fnpluginnew;
-    try {
-      fnplugin = env->GetVar("$PluginFunctions$");
-      int string_len = strlen(fnplugin.AsString())+strlen(name)+2;
+      AVSValue fnplugin;
+      char *fnpluginnew;
+      try {
+        fnplugin = env->GetVar("$PluginFunctions$");
+        int string_len = strlen(fnplugin.AsString())+1;
+          
+        if (!duse)
+          string_len += strlen(name)+1;
 
-      if (alt_name)
-        string_len += strlen(alt_name)+1;
+        if (alt_name)
+          string_len += strlen(alt_name)+1;
 
-      fnpluginnew = new char[string_len];
-      strcpy(fnpluginnew, fnplugin.AsString());
-      strcat(fnpluginnew, " ");
-      strcat(fnpluginnew, name);
-      if (alt_name) {
-        strcat(fnpluginnew, " ");
-        strcat(fnpluginnew, alt_name);
+        fnpluginnew = new char[string_len];
+        strcpy(fnpluginnew, fnplugin.AsString());
+        if (!duse) {
+          strcat(fnpluginnew, " ");
+          strcat(fnpluginnew, name);
+        }
+        if (alt_name) {
+          strcat(fnpluginnew, " ");
+          strcat(fnpluginnew, alt_name);
+        }
+        env->SetGlobalVar("$PluginFunctions$", AVSValue(env->SaveString(fnpluginnew, string_len)));
+        delete[] fnpluginnew;
+
+      } catch (...) {
+        int string_len = 0;
+        if (!duse && alt_name)
+        {
+          string_len = strlen(name)+strlen(alt_name)+2;
+          fnpluginnew = new char[string_len];
+          strcpy(fnpluginnew, name);
+          strcat(fnpluginnew, " ");
+          strcat(fnpluginnew, alt_name);
+        }
+        else if (!duse)
+        {
+          string_len = strlen(name)+1;
+          fnpluginnew = new char[string_len];
+          strcpy(fnpluginnew, name);
+        }
+        else if (alt_name)
+        {
+          string_len = strlen(alt_name)+1;
+          fnpluginnew = new char[string_len];
+          strcpy(fnpluginnew, alt_name);
+        }
+        env->SetGlobalVar("$PluginFunctions$", AVSValue(env->SaveString(fnpluginnew, string_len)));
+        delete[] fnpluginnew;
       }
-      env->SetGlobalVar("$PluginFunctions$", AVSValue(env->SaveString(fnpluginnew, string_len)));
-      delete[] fnpluginnew;
-
-    } catch (...) {
-      fnpluginnew = new char[strlen(name)+1];
-      strcpy(fnpluginnew, name);
-      env->SetGlobalVar("$PluginFunctions$", AVSValue(env->SaveString(fnpluginnew, strlen(name)+1)));
-      delete[] fnpluginnew;
+      char temp[1024] = "$Plugin!";
+      if (f) {
+        strcat(temp, name);
+        strcat(temp, "!Param$");
+        env->SetGlobalVar(env->SaveString(temp, 8+strlen(name)+7+1), AVSValue(f->param_types)); // Fizick
+      }
+      if (f2 && alt_name) {
+        strcpy(temp, "$Plugin!");
+        strcat(temp, alt_name);
+        strcat(temp, "!Param$");
+        env->SetGlobalVar(env->SaveString(temp, 8+strlen(alt_name)+7+1), AVSValue(f2->param_types));
+      }
     }
-    char temp[1024] = "$Plugin!";
-    strcat(temp, name);
-    strcat(temp, "!Param$");
-    env->SetGlobalVar(env->SaveString(temp, 8+strlen(name)+7+1), AVSValue(f->param_types)); // Fizick
-    }
-#endif
 // END ***************************************************************
-
   }
 
   AVSFunction* Lookup(const char* search_name, const AVSValue* args, int num_args, bool* pstrict) {
@@ -688,7 +732,7 @@ char* StringDump::SaveString(const char* s, int len) {
   if (len == -1)
     len = lstrlen(s);
   if (block_pos+len+1 > block_size) {
-    char* new_block = new char[block_size = max(block_size, len+1)];
+    char* new_block = new char[block_size = max(block_size, len+1+sizeof(char*))];
     _RPT0(0,"StringDump: Allocating new stringblock.\r\n");
     *(char**)new_block = current_block;   // beginning of block holds pointer to previous block
     current_block = new_block;
@@ -697,7 +741,7 @@ char* StringDump::SaveString(const char* s, int len) {
   char* result = current_block+block_pos;
   memcpy(result, s, len);
   result[len] = 0;
-  block_pos += len+1;
+  block_pos += (len+sizeof(char*)) & -sizeof(char*); // Keep 32bit aligned
   return result;
 }
 
@@ -926,7 +970,7 @@ int ScriptEnvironment::SetMemoryMax(int mem) {
   if (memory_max < memory_used) memory_max = memory_used; // can't be less than we already have
   mem_limit = memory_used + (__int64)memstatus.dwAvailPhys - 5242880i64;
   if (memory_max > mem_limit) memory_max = mem_limit;     // can't be more than 5Mb less than total
-  if (memory_max < 16777216i64) memory_max = 16777216i64; // can't be less than 16Mb
+  if (memory_max < 4194304i64) memory_max = 4194304i64;	  // can't be less than 4Mb -- Tritical Jan 2006
   return (int)(memory_max/1048576i64);
 }
 
@@ -1010,12 +1054,18 @@ const char* ScriptEnvironment::GetPluginDirectory()
       return 0;
     DWORD size;
     if (RegQueryValueEx(AvisynthKey, RegPluginDir, 0, 0, 0, &size))
+	{
+      RegCloseKey(AvisynthKey); // Dave Brueck - Dec 2005
       return 0;
+    }
     plugin_dir = new char[size];
     if (RegQueryValueEx(AvisynthKey, RegPluginDir, 0, 0, (LPBYTE)plugin_dir, &size)) {
       delete[] plugin_dir;
+      RegCloseKey(AvisynthKey); // Dave Brueck - Dec 2005
       return 0;
     }
+    RegCloseKey(AvisynthKey); // Dave Brueck - Dec 2005
+
     // remove trailing backslashes
     int l = strlen(plugin_dir);
     while (plugin_dir[l-1] == '\\')
@@ -1044,10 +1094,17 @@ bool ScriptEnvironment::LoadPluginsMatching(const char* pattern)
 //  strcpy(file, plugin_dir);
 //  strcat(file, "\\");
 //  strcat(file, pattern);
+  int count = 0;
   HANDLE hFind = FindFirstFile(pattern, &FileData);
   BOOL bContinue = (hFind != INVALID_HANDLE_VALUE);
   while (bContinue) {
     // we have to use full pathnames here
+    ++count;
+    if (count > 20) {
+      HMODULE* loaded_plugins = (HMODULE*)GetVar("$Plugins$").AsString();
+      FreeLibraries(loaded_plugins, this);
+      count = 0;
+    }
     GetFullPathName(FileData.cFileName, MAX_PATH, file, &dummy);
     function_table.PrescanPluginStart(file);
     LoadPlugin(AVSValue(&AVSValue(&AVSValue(file), 1), 1), (void*)true, this);
@@ -1541,6 +1598,7 @@ LinkedVideoFrameBuffer* ScriptEnvironment::GetFrameBuffer2(int size) {
     }
     _RPT2(0,"Freed %d frames, consisting of %d bytes.\n",freed_count, freed);
     memory_used -= freed;
+	g_Mem_stats.Losses += freed_count;
   } 
 
   // Plan A: When we are below our memory usage :-
@@ -1763,7 +1821,7 @@ void BitBlt(BYTE* dstp, int dst_pitch, const BYTE* srcp, int src_pitch, int row_
     return;
   }
   if (height == 1 || (dst_pitch == src_pitch && src_pitch == row_size)) {
-    memcpy(dstp, srcp, src_pitch * height);
+    memcpy(dstp, srcp, row_size*height);
   } else {
     for (int y=height; y>0; --y) {
       memcpy(dstp, srcp, row_size);

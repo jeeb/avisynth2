@@ -206,10 +206,11 @@ public:
     mediaARGB   = 1<<3,
     mediaRGB32  = 1<<4,
     mediaRGB24  = 1<<5,
-    mediaYV24   = 1<<6, // 2.6
-    mediaYV411  = 1<<7, // 2.6
+    mediaAYUV   = 1<<6, // 2.6
+    mediaY411   = 1<<7, // 2.6
+    mediaY41P   = 1<<8, // not implemented
     mediaRGB    = mediaARGB | mediaRGB32 | mediaRGB24,
-    mediaYUV    = mediaYUV9 | mediaYV12 | mediaYUY2 | mediaYV24 | mediaYV411,
+    mediaYUV    = mediaYUV9 | mediaYV12 | mediaYUY2 | mediaAYUV | mediaY411 | mediaY41P,
     mediaAUTO   = mediaRGB | mediaYUV
   };
   

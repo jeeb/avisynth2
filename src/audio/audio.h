@@ -153,9 +153,7 @@ private:
 
   const int num_children;
   PClip* child_array;
-  PClip tclip;
 
-  VideoInfo vi2;
 };
 
 
@@ -167,7 +165,10 @@ class GetChannel : public GenericVideoFilter
 public:
   GetChannel(PClip _clip, int* _channel, int numchannels);
   virtual ~GetChannel()
-   {if (tempbuffer_size) {delete[] tempbuffer;tempbuffer_size=0;}}
+  {
+    if (tempbuffer_size) {delete[] tempbuffer;tempbuffer_size=0;}
+    if (channel)         {delete[] channel;   channel=0;        }
+  }
 
   void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env);
   static PClip Create_left(PClip clip);
@@ -186,6 +187,18 @@ private:
   int src_bps;
   int dst_bps;
 };
+
+class KillVideo : public GenericVideoFilter
+/**
+  * Removes audio from clip
+ **/
+{
+public:
+  KillVideo(PClip _clip);
+  PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env) { return NULL; };
+  static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment*);
+};
+
 
 class KillAudio : public GenericVideoFilter
 /**
@@ -223,6 +236,7 @@ class Amplify : public GenericVideoFilter
 {
 public:
   Amplify(PClip _child, float* _volumes, int* _i_v);
+  ~Amplify();
   void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env);
 
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
@@ -279,7 +293,7 @@ private:
   const float t1factor, t2factor;
   int tempbuffer_size;
   signed char *tempbuffer;
-  PClip tclip,clip;
+  PClip clip;
 };
 
 

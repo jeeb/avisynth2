@@ -95,8 +95,10 @@ ConvertToYUY2::ConvertToYUY2(PClip _child, bool _interlaced, const char *matrix,
       theMatrix = PC_601;
     else if (!lstrcmpi(matrix, "PC.709"))
       theMatrix = PC_709;
+    else if (!lstrcmpi(matrix, "rec601"))
+      theMatrix = Rec601;
     else
-      env->ThrowError("ConvertToYUY2: invalid \"matrix\" parameter (must be matrix=\"Rec709\", \"PC.601\" or \"PC.709\")");
+      env->ThrowError("ConvertToYUY2: invalid \"matrix\" parameter (must be matrix=\"Rec601\", \"Rec709\", \"PC.601\" or \"PC.709\")");
   }
 
   if (vi.IsRGB()) {  // Generate MMX

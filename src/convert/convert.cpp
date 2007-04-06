@@ -48,7 +48,7 @@
 ********************************************************************/
 
 AVSFunction Convert_filters[] = {
-{ "ConvertToRGB", "c[matrix]s[interlaced]b", ConvertToRGB::Create },       // matrix can be "rec709", "PC.601" or "PC.709"
+{ "ConvertToRGB", "c[matrix]s[interlaced]b", ConvertToRGB::Create },       // matrix can be "rec601", rec709", "PC.601" or "PC.709"
   { "ConvertToRGB24", "c[matrix]s[interlaced]b", ConvertToRGB::Create24 },
   { "ConvertToRGB32", "c[matrix]s[interlaced]b", ConvertToRGB::Create32 },
   { "ConvertToY8", "c[matrix]s", ConvertToY8::Create },
@@ -84,8 +84,10 @@ ConvertToRGB::ConvertToRGB( PClip _child, bool rgb24, const char* matrix,
       theMatrix = PC_601;
     else if (!lstrcmpi(matrix, "PC.709"))
       theMatrix = PC_709;
+    else if (!lstrcmpi(matrix, "rec601"))
+      theMatrix = Rec601;
     else
-      env->ThrowError("ConvertToRGB: invalid \"matrix\" parameter (must be matrix=\"Rec709\", \"PC.601\" or \"PC.709\")");
+      env->ThrowError("ConvertToRGB: invalid \"matrix\" parameter (must be matrix=\"Rec601\", \"Rec709\", \"PC.601\" or \"PC.709\")");
   }
   use_mmx = (env->GetCPUFlags() & CPUF_MMX) != 0;
 
