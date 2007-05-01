@@ -45,11 +45,12 @@ extern const char _AVS_VERSTR[], _AVS_COPYRIGHT[];
 // env->ManageCache() Non user keys definition
 // Define user accessible keys in avisynth.h
 //
-#define MC_ReturnVideoFrameBuffer  0xFFFF0001
-#define MC_PromoteVideoFrameBuffer 0xFFFF0002
+enum {MC_ReturnVideoFrameBuffer =0xFFFF0001};
+enum {MC_PromoteVideoFrameBuffer=0xFFFF0002};
+enum {MC_RegisterCache          =0xFFFF0003};
 
-#define MC_LockVFBList  0xFFFF0003
-#define MC_UnlockVFBList 0xFFFF0004
+enum {MC_LockVFBList            =0xFFFF0010};
+enum {MC_UnlockVFBList          =0xFFFF0011};
 
 #include "core/avisynth.h"
 

@@ -449,11 +449,10 @@ PVideoFrame __stdcall FilteredResizeH::GetFrame(int n, IScriptEnvironment* env)
       gen_srcp = (BYTE*)srcp;
       gen_dstp = dstp;
       assemblerY.Call();
-      if (src->GetRowSize(PLANAR_U)) {
+      if (src->GetRowSize(PLANAR_U)) {  // Y8 is finished here
         gen_src_pitch = src->GetPitch(PLANAR_U);
         gen_dst_pitch = dst->GetPitch(PLANAR_U);
-        if (vi.IsY8())  // Y8 is finished here
-          return dst;
+
         if (vi.IsVPlaneFirst()) {  // Process in order - also to avoid 2 byte overwrite, when rowsize=pitch=(mod6 rowsize).
           gen_srcp = (BYTE*)src->GetReadPtr(PLANAR_V);
           gen_dstp = dst->GetWritePtr(PLANAR_V);

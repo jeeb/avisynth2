@@ -77,7 +77,7 @@ PVideoFrame FlipVertical::GetFrame(int n, IScriptEnvironment* env) {
   int src_pitch = src->GetPitch();
   int dst_pitch = dst->GetPitch();
   env->BitBlt(dstp, dst_pitch, srcp + (vi.height-1) * src_pitch, -src_pitch, row_size, vi.height);
-  if (vi.IsPlanar() && !vi.IsY8()) {
+  if (src->GetPitch(PLANAR_U)) {
     srcp = src->GetReadPtr(PLANAR_U);
     dstp = dst->GetWritePtr(PLANAR_U);
     row_size = src->GetRowSize(PLANAR_U);
@@ -138,7 +138,7 @@ PVideoFrame FlipHorizontal::GetFrame(int n, IScriptEnvironment* env) {
       dstp += dst_pitch;
     }
 
-    if (!vi.IsY8()) {
+    if (src->GetPitch(PLANAR_U)) {
       srcp = src->GetReadPtr(PLANAR_U);
       dstp = dst->GetWritePtr(PLANAR_U);
       row_size = src->GetRowSize(PLANAR_U);
@@ -204,7 +204,7 @@ AVSValue __cdecl FlipHorizontal::Create(AVSValue args, void*, IScriptEnvironment
  *****************************/
 
 Crop::Crop(int _left, int _top, int _width, int _height, int _align, PClip _child, IScriptEnvironment* env)
- : GenericVideoFilter(_child), align(_align)
+ : GenericVideoFilter(_child), align(_align), xsub(0), ysub(0)
 {
   /* Negative values -> VDub-style syntax
      Namely, Crop(a, b, -c, -d) will crop c pixels from the right and d pixels from the bottom.  
@@ -223,11 +223,7 @@ Crop::Crop(int _left, int _top, int _width, int _height, int _align, PClip _chil
   if (_height<=0)
     env->ThrowError("Crop: Destination height is 0 or less.");
   if (vi.IsYUV()) {
-    if (vi.IsY8()) {
-      xsub=0;
-      ysub=0;
-    }
-    else {
+    if (!vi.IsY8()) {
       xsub=vi.GetPlaneWidthSubsampling(PLANAR_U);
       ysub=vi.GetPlaneHeightSubsampling(PLANAR_U);
     }
@@ -248,6 +244,7 @@ Crop::Crop(int _left, int _top, int _width, int _height, int _align, PClip _chil
     _top = vi.height - _height - _top;
   }
 
+
   if (_left + _width > vi.width || _top + _height > vi.height)
     env->ThrowError("Crop: you cannot use crop to enlarge or 'shift' a clip");
 
@@ -257,13 +254,7 @@ Crop::Crop(int _left, int _top, int _width, int _height, int _align, PClip _chil
   vi.height = _height;
 
   if (align) {
-    align = 8;
-
-    if (env->GetCPUFlags() & CPUF_SSE2)
-      align = 16;
-
-    if (!(left_bytes & ((align<<xsub)-1)))  // We already have alignment.
-      align=0;
+    align = (env->GetCPUFlags() & CPUF_SSE2) ? 15 : 7;
   }
 
 }
@@ -273,25 +264,33 @@ PVideoFrame Crop::GetFrame(int n, IScriptEnvironment* env)
 {
   PVideoFrame frame = child->GetFrame(n, env);
 
-  if (align) {
-    PVideoFrame dst = env->NewVideoFrame(vi,align);  
+  const BYTE* srcpY = frame->GetReadPtr(PLANAR_Y) + top *  frame->GetPitch(PLANAR_Y) + left_bytes;
+  const BYTE* srcpU = frame->GetReadPtr(PLANAR_U) + (top>>ysub) *  frame->GetPitch(PLANAR_U) + (left_bytes>>xsub);
+  const BYTE* srcpV = frame->GetReadPtr(PLANAR_V) + (top>>ysub) *  frame->GetPitch(PLANAR_V) + (left_bytes>>xsub);
 
-    env->BitBlt(dst->GetWritePtr(PLANAR_Y), dst->GetPitch(PLANAR_Y),
-      frame->GetReadPtr(PLANAR_Y) + top *  frame->GetPitch(PLANAR_Y) + left_bytes,
+  int _align;
+
+  if (frame->GetPitch(PLANAR_U) && (!vi.IsYV12() || env->PlanarChromaAlignment(IScriptEnvironment::PlanarChromaAlignmentTest)))
+    _align = align & ((int)srcpY|(int)srcpU|(int)srcpV);
+  else
+    _align = align & (int)srcpY;
+
+  if (_align) {
+    PVideoFrame dst = env->NewVideoFrame(vi,align+1);  
+
+    env->BitBlt(dst->GetWritePtr(PLANAR_Y), dst->GetPitch(PLANAR_Y), srcpY,
       frame->GetPitch(PLANAR_Y), dst->GetRowSize(PLANAR_Y), dst->GetHeight(PLANAR_Y));
 
-    env->BitBlt(dst->GetWritePtr(PLANAR_U), dst->GetPitch(PLANAR_U),
-      frame->GetReadPtr(PLANAR_U) + (top>>ysub) *  frame->GetPitch(PLANAR_U) + (left_bytes>>xsub),
+    env->BitBlt(dst->GetWritePtr(PLANAR_U), dst->GetPitch(PLANAR_U), srcpU,
       frame->GetPitch(PLANAR_U), dst->GetRowSize(PLANAR_U), dst->GetHeight(PLANAR_U));
 
-    env->BitBlt(dst->GetWritePtr(PLANAR_V), dst->GetPitch(PLANAR_V),
-      frame->GetReadPtr(PLANAR_V) + (top>>ysub) *  frame->GetPitch(PLANAR_V) + (left_bytes>>xsub),
+    env->BitBlt(dst->GetWritePtr(PLANAR_V), dst->GetPitch(PLANAR_V), srcpV,
       frame->GetPitch(PLANAR_V), dst->GetRowSize(PLANAR_V), dst->GetHeight(PLANAR_V));
 
     return dst;
   }
 
-  if (!vi.IsPlanar() || vi.IsY8())
+  if (!frame->GetPitch(PLANAR_U))
     return env->Subframe(frame, top * frame->GetPitch() + left_bytes, frame->GetPitch(), vi.RowSize(), vi.height);
   else
     return env->SubframePlanar(frame, top * frame->GetPitch() + left_bytes, frame->GetPitch(), vi.RowSize(), vi.height,
@@ -316,14 +315,10 @@ AVSValue __cdecl Crop::Create(AVSValue args, void*, IScriptEnvironment* env)
  *****************************/
 
 AddBorders::AddBorders(int _left, int _top, int _right, int _bot, int _clr, PClip _child, IScriptEnvironment* env)
- : GenericVideoFilter(_child), left(_left), top(_top), right(_right), bot(_bot), clr(_clr)
+ : GenericVideoFilter(_child), left(_left), top(_top), right(_right), bot(_bot), clr(_clr), xsub(0), ysub(0)
 {
   if (vi.IsYUV()) {
-    if (vi.IsY8()) {
-      xsub=0;
-      ysub=0;
-    }
-    else {
+    if (!vi.IsY8()) {
       xsub=vi.GetPlaneWidthSubsampling(PLANAR_U);
       ysub=vi.GetPlaneHeightSubsampling(PLANAR_U);
     }
@@ -387,7 +382,7 @@ PVideoFrame AddBorders::GetFrame(int n, IScriptEnvironment* env)
     for (int c=0; c<final_black; c++)
       *(unsigned char*)(dstp+c) = YBlack;
 
-    if (!vi.IsY8()) {
+    if (src->GetPitch(PLANAR_U)) {
       const int initial_blackUV = (top>>ysub) * dst->GetPitch(PLANAR_U) + (left>>xsub);
       const int middle_blackUV  = dst->GetPitch(PLANAR_U) - src->GetRowSize(PLANAR_U);
       const int final_blackUV   = (bot>>ysub) * dst->GetPitch(PLANAR_U) + (right>>xsub)
@@ -571,13 +566,10 @@ AVSValue __cdecl Create_Letterbox(AVSValue args, void*, IScriptEnvironment* env)
     env->ThrowError("LetterBox: You cannot specify letterboxing that is bigger than the picture (width).");
 
   if (vi.IsYUV()) {
-    int xsub, ysub;
+    int xsub = 0;
+    int ysub = 0;
 
-    if (vi.IsY8()) {
-      xsub=0;
-      ysub=0;
-    }
-    else {
+    if (!vi.IsY8()) {
       xsub=vi.GetPlaneWidthSubsampling(PLANAR_U);
       ysub=vi.GetPlaneHeightSubsampling(PLANAR_U);
     }

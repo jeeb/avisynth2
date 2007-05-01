@@ -43,14 +43,15 @@
 ********************************************************************/
 
 AVSFunction Edit_filters[] = {  
-  { "Trim", "cii", Trim::Create },                          // first frame, last frame
+  { "Trim", "cii[]b", Trim::Create },                       // first frame, last frame[, pad audio]
   { "FreezeFrame", "ciii", FreezeFrame::Create },           // first frame, last frame, source frame
-  { "DeleteFrame", "ci", DeleteFrame::Create },             // frame #
-  { "DuplicateFrame", "ci", DuplicateFrame::Create },       // frame #
+  { "DeleteFrame", "ci+", DeleteFrame::Create },             // frame #
+  { "DuplicateFrame", "ci+", DuplicateFrame::Create },       // frame #
   { "UnalignedSplice", "cc+", Splice::CreateUnaligned },    // clips
   { "AlignedSplice", "cc+", Splice::CreateAligned },        // clips
   { "Dissolve", "cc+i[fps]f", Dissolve::Create },           // clips, overlap frames[, fps]
-  { "AudioDub", "cc", AudioDub::Create },                   // video src, audio src
+  { "AudioDub", "cc", AudioDub::Create, (void*)0},          // video src, audio src
+  { "AudioDubEx", "cc", AudioDub::Create, (void*)1},        // video! src, audio! src
   { "Reverse", "c", Reverse::Create },                      // plays backwards
   { "FadeOut0", "ci[color]i[fps]f", Create_FadeOut0},       // # frames[, color][, fps]
   { "FadeOut", "ci[color]i[fps]f", Create_FadeOut},         // # frames[, color][, fps]
@@ -73,20 +74,43 @@ AVSFunction Edit_filters[] = {
  *******   Trim Filter   ******
  ******************************/
 
-Trim::Trim(int _firstframe, int _lastframe, PClip _child, IScriptEnvironment* env) : GenericVideoFilter(_child) 
+Trim::Trim(int _firstframe, int _lastframe, bool _padaudio, PClip _child, IScriptEnvironment* env) : GenericVideoFilter(_child) 
 {
+  int lastframe;
+
   if (!vi.HasVideo())
     env->ThrowError("Trim: Cannot trim if there is no video.");
 
-  if (_lastframe == 0) _lastframe = vi.num_frames-1;
   firstframe = min(max(_firstframe, 0), vi.num_frames-1);
-  int lastframe=_lastframe;
-  if (_lastframe<0)
+
+  if (_lastframe == 0)
+    lastframe = vi.num_frames-1;
+  else if (_lastframe < 0)
     lastframe = firstframe - _lastframe - 1;
+  else
+    lastframe = _lastframe;
+
   lastframe = min(max(lastframe, firstframe), vi.num_frames-1);
-  audio_offset = vi.AudioSamplesFromFrames(firstframe);
   vi.num_frames = lastframe+1 - firstframe;
-  vi.num_audio_samples = vi.AudioSamplesFromFrames(lastframe+1) - audio_offset;
+
+  audio_offset = vi.AudioSamplesFromFrames(firstframe);
+  if (_padaudio)
+    vi.num_audio_samples = vi.AudioSamplesFromFrames(lastframe+1) - audio_offset;
+  else {
+	__int64 samples;
+
+    if (_lastframe == 0)
+      samples = vi.num_audio_samples;
+	else {
+	  samples = vi.AudioSamplesFromFrames(lastframe+1);
+	  if (samples > vi.num_audio_samples)
+		samples = vi.num_audio_samples;
+	}
+    if (audio_offset >= samples)
+      vi.num_audio_samples = 0;
+    else
+      vi.num_audio_samples = samples - audio_offset;
+  }
 }
 
 
@@ -110,7 +134,7 @@ bool Trim::GetParity(int n)
 
 AVSValue __cdecl Trim::Create(AVSValue args, void*, IScriptEnvironment* env) 
 {
-  return new Trim(args[1].AsInt(), args[2].AsInt(), args[0].AsClip(), env);
+  return new Trim(args[1].AsInt(), args[2].AsInt(), args[3].AsBool(true), args[0].AsClip(), env);
 }
 
 
@@ -146,20 +170,9 @@ AVSValue __cdecl FreezeFrame::Create(AVSValue args, void*, IScriptEnvironment* e
 }
 
 
-
-
-
-
-
 /******************************
  *******   Delete Frame  ******
  ******************************/
-
-AVSValue __cdecl DeleteFrame::Create(AVSValue args, void*, IScriptEnvironment* env) 
-{
-  return new DeleteFrame(args[1].AsInt(), args[0].AsClip());
-}
-
 
 DeleteFrame::DeleteFrame(int _frame, PClip _child)
  : GenericVideoFilter(_child), frame(_frame) { --vi.num_frames; }
@@ -176,9 +189,37 @@ bool DeleteFrame::GetParity(int n)
   return child->GetParity(n + (n>=frame)); 
 }
 
+AVSValue __cdecl DeleteFrame::Create(AVSValue args, void*, IScriptEnvironment* env) 
+{
+  const int n = args[1].ArraySize();
+  int m = n-1;
+  int *frames = new int[n];
 
+  frames[0] = args[1][0].AsInt();
+  for (int i=1; i<n; ++i) {
+    frames[i] = args[1][i].AsInt();
+    // Bubble insert
+    for (int j=0; j<i; ++j) {
+      // Remove duplicates
+      if (frames[i] == frames[j]) {
+        m -= 1;
+        frames[i] = MAX_INT;
+        break;
+      }
+      else if (frames[i] < frames[j]) {
+        const int t = frames[j];
+        frames[j] = frames[i];
+        frames[i] = t;
+      }
+    }
+  }
+  PClip result = args[0].AsClip();
+  for (int k=m; k>=0; --k)
+    result = new DeleteFrame(frames[k], result);
 
-
+  delete[] frames;
+  return result;
+}
 
 
 
@@ -204,12 +245,28 @@ bool DuplicateFrame::GetParity(int n)
 
 AVSValue __cdecl DuplicateFrame::Create(AVSValue args, void*, IScriptEnvironment* env) 
 {
-  return new DuplicateFrame(args[1].AsInt(), args[0].AsClip());
+  const int n = args[1].ArraySize();
+  int *frames = new int[n];
+
+  frames[0] = args[1][0].AsInt();
+  for (int i=1; i<n; ++i) {
+    frames[i] = args[1][i].AsInt();
+    // Bubble insert
+    for (int j=0; j<i; ++j) {
+      if (frames[i] < frames[j]) {
+        const int t = frames[j];
+        frames[j] = frames[i];
+        frames[i] = t;
+      }
+    }
+  }
+  PClip result = args[0].AsClip();
+  for (int k=n-1; k>=0; --k)
+    result = new DuplicateFrame(frames[k], result);
+
+  delete[] frames;
+  return result;
 }
-
-
-
-
 
 
 
@@ -419,14 +476,14 @@ PVideoFrame Dissolve::GetFrame(int n, IScriptEnvironment* env)
 
   const int multiplier = n - video_fade_start + 1;
 
-  if ((env->GetCPUFlags() & CPUF_MMX) && (!(a->GetRowSize()&4)) ) {  // MMX and Video is mod 4
+  if ((env->GetCPUFlags() & CPUF_MMX) && (!(a->GetRowSize(PLANAR_Y_ALIGNED)&7)) ) {  // MMX and Video is mod 8
     int weight = (multiplier * 32767) / (overlap+1);
     int invweight = 32767-weight;
     env->MakeWritable(&a);
-    mmx_weigh_yv12(a->GetWritePtr(), b->GetReadPtr(), a->GetPitch(), b->GetPitch(), a->GetRowSize(), a->GetHeight(), weight, invweight);
+    mmx_weigh_plane(a->GetWritePtr(), b->GetReadPtr(), a->GetPitch(), b->GetPitch(), a->GetRowSize(PLANAR_Y_ALIGNED), a->GetHeight(), weight, invweight);
     if (vi.IsPlanar()) {
-      mmx_weigh_yv12(a->GetWritePtr(PLANAR_U), b->GetReadPtr(PLANAR_U), a->GetPitch(PLANAR_U), b->GetPitch(PLANAR_U), a->GetRowSize(PLANAR_U_ALIGNED), a->GetHeight(PLANAR_U), weight, invweight);
-      mmx_weigh_yv12(a->GetWritePtr(PLANAR_V), b->GetReadPtr(PLANAR_V), a->GetPitch(PLANAR_V), b->GetPitch(PLANAR_V), a->GetRowSize(PLANAR_V_ALIGNED), a->GetHeight(PLANAR_V), weight, invweight);    
+      mmx_weigh_plane(a->GetWritePtr(PLANAR_U), b->GetReadPtr(PLANAR_U), a->GetPitch(PLANAR_U), b->GetPitch(PLANAR_U), a->GetRowSize(PLANAR_U_ALIGNED), a->GetHeight(PLANAR_U), weight, invweight);
+      mmx_weigh_plane(a->GetWritePtr(PLANAR_V), b->GetReadPtr(PLANAR_V), a->GetPitch(PLANAR_V), b->GetPitch(PLANAR_V), a->GetRowSize(PLANAR_V_ALIGNED), a->GetHeight(PLANAR_V), weight, invweight);    
     }
     return a;  
   }
@@ -563,19 +620,25 @@ bool Dissolve::GetParity(int n)
  *******   AudioDub Filter  ******
  *********************************/
 
-AudioDub::AudioDub(PClip child1, PClip child2, IScriptEnvironment* env) 
+AudioDub::AudioDub(PClip child1, PClip child2, int mode, IScriptEnvironment* env) 
 {
   const VideoInfo& vi1 = child1->GetVideoInfo();
   const VideoInfo& vi2 = child2->GetVideoInfo();
   const VideoInfo *vi_video, *vi_audio;
-  if (vi1.HasVideo() && vi2.HasAudio()) {
-    vchild = child1; achild = child2;
-    vi_video = &vi1, vi_audio = &vi2;
-  } else if (vi2.HasVideo() && vi1.HasAudio()) {
-    vchild = child2; achild = child1;
-    vi_video = &vi2, vi_audio = &vi1;
-  } else {
-    env->ThrowError("AudioDub: need an audio and a video track");
+  if (mode) { // Unconditionally accept audio and video
+	vchild = child1; achild = child2;
+	vi_video = &vi1; vi_audio = &vi2;
+  }
+  else {
+	if (vi1.HasVideo() && vi2.HasAudio()) {
+	  vchild = child1; achild = child2;
+	  vi_video = &vi1, vi_audio = &vi2;
+	} else if (vi2.HasVideo() && vi1.HasAudio()) {
+	  vchild = child2; achild = child1;
+	  vi_video = &vi2, vi_audio = &vi1;
+	} else {
+	  env->ThrowError("AudioDub: need an audio and a video track");
+	}
   }
 
   vi = *vi_video;
@@ -610,9 +673,9 @@ void AudioDub::GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironm
 }
 
 
-AVSValue __cdecl AudioDub::Create(AVSValue args, void*, IScriptEnvironment* env) 
+AVSValue __cdecl AudioDub::Create(AVSValue args, void* mode, IScriptEnvironment* env) 
 {
-  return new AudioDub(args[0].AsClip(), args[1].AsClip(), env);
+  return new AudioDub(args[0].AsClip(), args[1].AsClip(), int(mode), env);
 }
 
 
@@ -666,39 +729,50 @@ AVSValue __cdecl Reverse::Create(AVSValue args, void*, IScriptEnvironment* env)
 
 
 
-/******************************
+/*****************************
  ******   Loop Filter   *******
  *****************************/
 
-Loop::Loop(PClip _child, int _times, int _start, int _end, IScriptEnvironment* env)
- : GenericVideoFilter(_child), times(_times), start(_start), end(_end)
+Loop::Loop(PClip _child, int times, int _start, int _end, IScriptEnvironment* env)
+ : GenericVideoFilter(_child), start(_start), end(_end)
 {
   start = min(max(start,0),vi.num_frames-1);
   end = min(max(end,start),vi.num_frames-1);
   frames = end-start+1;
-  if (times<=0) {
+  if (times<0) { // Loop nearly forever
     vi.num_frames = 10000000;
     end = vi.num_frames;
-    times=10000000/(end-start);
-  } else {
+	if (vi.HasAudio()) {
+	  if (vi.HasVideo()) {
+		aud_start = vi.AudioSamplesFromFrames(start);
+		aud_end = vi.AudioSamplesFromFrames(end+1) - 1; // This is the output end sample
+		aud_count = vi.AudioSamplesFromFrames(frames); // length of each loop in samples
+	  } else {
+		// start and end frame numbers are meaningless without video
+		aud_start = 0;
+		aud_count = vi.num_audio_samples;
+		aud_end = Int32x32To64(400000, vi.audio_samples_per_second);
+	  }
+	  vi.num_audio_samples = aud_end+1;
+	}
+  }
+  else {
     vi.num_frames += (times-1) * frames;
     end = start + times * frames - 1;
+	if (vi.HasAudio()) {
+	  if (vi.HasVideo()) {
+		aud_start = vi.AudioSamplesFromFrames(start);
+		aud_end = vi.AudioSamplesFromFrames(end+1) - 1; // This is the output end sample
+		aud_count = vi.AudioSamplesFromFrames(frames); // length of each loop in samples
+	  } else {
+		// start and end frame numbers are meaningless without video
+		aud_start = 0;
+		aud_count = vi.num_audio_samples;
+		aud_end = vi.num_audio_samples * times;
+	  }
+	  vi.num_audio_samples += (times-1) * aud_count;
+	}
   }
-
-  if (vi.HasAudio()) {
-    if (vi.HasVideo()) {
-      start_samples = vi.AudioSamplesFromFrames(start);
-      loop_ends_at_sample = vi.AudioSamplesFromFrames(end); // This is the output end sample
-      loop_len_samples = (__int64)(0.5+(double)(loop_ends_at_sample - start_samples)/(double)times);  // length (in float) of each loop in samples
-    } else {
-        // start and end frame numbers are meaningless without video
-        start_samples = 0;
-        loop_len_samples = vi.num_audio_samples;
-        loop_ends_at_sample = vi.num_audio_samples * times;
-    }
-    vi.num_audio_samples += (loop_len_samples*times);
-  }
-
 }
 
 
@@ -713,44 +787,37 @@ bool Loop::GetParity(int n)
   return child->GetParity(convert(n));
 }
  
-void Loop::GetAudio(void* buf, __int64 s_start, __int64 count, IScriptEnvironment* env) {
-
-  if (s_start+count<start_samples) {
-    child->GetAudio(buf,s_start,count,env);
-    return;
-  }
-
-  if (s_start>loop_ends_at_sample) {
-    child->GetAudio(buf,s_start-(loop_len_samples*(times-1)),count,env);
-    return;
-  } 
-
+void Loop::GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) {
+  __int64 get_count, get_start;
+  const int bpas = vi.BytesPerAudioSample();
   char* samples = (char*)buf;
-  int bps = vi.BytesPerChannelSample();
 
-  int s_pitch=vi.AudioChannels();
- 
-  __int64 in_loop_start=s_start-start_samples;  // This is the offset within the loop
-  __int64 fetch_at_sample = (in_loop_start%loop_len_samples); // This is the first sample to get.
+  while (count > 0) {
+	if (start > aud_end) {   // tail of clip
+	  get_start = aud_start + aud_count + start - (aud_end+1);
+	  get_count = count;
+	}
+	else {
+	  if (start > aud_start) // loop part of clip
+		get_start = (start - aud_start) % aud_count + aud_start;
+	  else                   // head of clip
+		get_start = start;
 
-  while (count>0) {
-    if (count+fetch_at_sample<loop_len_samples) {  // All samples can be fetched within loop
-      child->GetAudio(samples,start_samples+fetch_at_sample,count,env);
-      return;
-    } else {  // Get as many as possible without getting over the length of the loop 
-      __int64 get_count=loop_len_samples-fetch_at_sample;
-      if (get_count>count) get_count=count;  // Just to be safe
-      if (get_count+s_start>loop_ends_at_sample) get_count=loop_ends_at_sample-(get_count+s_start); // Just to be safe
-      child->GetAudio(samples,start_samples+fetch_at_sample,get_count,env);
-      samples+=get_count*s_pitch*bps;  // update dest start pointer
-      count-=get_count;
-      s_start+=get_count;
-      if (s_start>=loop_ends_at_sample) { // Continue on after the loop
-        child->GetAudio(samples,start_samples+loop_len_samples,count,env);
-        return;
-      } 
-      fetch_at_sample=0;  // Reset and make ready for another loop
-    }
+	  get_count = aud_count - (get_start - aud_start); // count to end of next iteration
+
+	  if (get_start+get_count > aud_end+1) // loop(0) case
+		get_count = aud_end+1 - get_start;
+	  else if (start+get_count > aud_end)
+		get_count = count; // if is last iteration do all of remainder
+
+	  if (get_count > count) get_count = count;
+	}
+
+	child->GetAudio(samples, get_start, get_count, env);
+
+	samples += get_count * bpas;  // update dest start pointer
+	start   += get_count;
+	count   -= get_count;
   }
 }
 
@@ -783,6 +850,7 @@ AVSValue __cdecl Loop::Create(AVSValue args, void*, IScriptEnvironment* env)
 
 
 PClip __cdecl ColorClip(PClip a, int duration, int color, float fps, IScriptEnvironment* env) {
+	try {	// HIDE DAMN SEH COMPILER BUG!!!
   if (a->GetVideoInfo().HasVideo()) {
 	AVSValue blackness_args[] = { a, duration, color };
 	static const char* arg_names[3] = { 0, 0, "color" };
@@ -793,6 +861,8 @@ PClip __cdecl ColorClip(PClip a, int duration, int color, float fps, IScriptEnvi
 	static const char* arg_names[4] = { 0, 0, "color", "fps" };
 	return env->Invoke("Blackness", AVSValue(blackness_args, 4), arg_names ).AsClip();
   }
+	}
+	catch (...) { throw; }
 }
 
 AVSValue __cdecl Create_FadeOut0(AVSValue args, void*,IScriptEnvironment* env) {
@@ -850,6 +920,7 @@ AVSValue __cdecl Create_FadeIn2(AVSValue args, void*,IScriptEnvironment* env) {
 }
 
 AVSValue __cdecl Create_FadeIO0(AVSValue args, void*, IScriptEnvironment* env) {
+	try {	// HIDE DAMN SEH COMPILER BUG!!!
   const int duration = args[1].AsInt();
   const int fadeclr = args[2].AsInt(0);
   const float fps = args[3].AsFloat(24);
@@ -857,9 +928,12 @@ AVSValue __cdecl Create_FadeIO0(AVSValue args, void*, IScriptEnvironment* env) {
   PClip b = ColorClip(a,duration,fadeclr,fps,env);
   AVSValue dissolve_args[] = { b, a, b, duration, fps };
   return env->Invoke("Dissolve", AVSValue(dissolve_args,5)).AsClip();
+	}
+	catch (...) { throw; }
 }
 
 AVSValue __cdecl Create_FadeIO(AVSValue args, void*, IScriptEnvironment* env) {
+	try {	// HIDE DAMN SEH COMPILER BUG!!!
   const int duration = args[1].AsInt();
   const int fadeclr = args[2].AsInt(0);
   const float fps = args[3].AsFloat(24);
@@ -867,9 +941,12 @@ AVSValue __cdecl Create_FadeIO(AVSValue args, void*, IScriptEnvironment* env) {
   PClip b = ColorClip(a,duration+1,fadeclr,fps,env);
   AVSValue dissolve_args[] = { b, a, b, duration, fps };
   return env->Invoke("Dissolve", AVSValue(dissolve_args,5)).AsClip();
+	}
+	catch (...) { throw; }
 }
 
 AVSValue __cdecl Create_FadeIO2(AVSValue args, void*, IScriptEnvironment* env) {
+	try {	// HIDE DAMN SEH COMPILER BUG!!!
   const int duration = args[1].AsInt();
   const int fadeclr = args[2].AsInt(0);
   const float fps = args[3].AsFloat(24);
@@ -877,6 +954,8 @@ AVSValue __cdecl Create_FadeIO2(AVSValue args, void*, IScriptEnvironment* env) {
   PClip b = ColorClip(a,duration+2,fadeclr,fps,env);
   AVSValue dissolve_args[] = { b, a, b, duration, fps };
   return env->Invoke("Dissolve", AVSValue(dissolve_args,5)).AsClip();
+	}
+	catch (...) { throw; }
 }
 
 

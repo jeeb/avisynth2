@@ -847,7 +847,12 @@ pbFormat:
 0020: 80 00 00 aa 00 38 9b 71
 */
     if (pmt->majortype == MEDIATYPE_Audio) {
-      if (pmt->subtype != MEDIASUBTYPE_PCM  && pmt->subtype != MEDIASUBTYPE_IEEE_FLOAT ) {
+//    Cope with missing code in DirectShow "AVI/WAV File Source"
+	  const GUID MEDIASUBTYPE_extensible = {0x0000FFFE, 0x0000, 0x0010, 0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71};
+
+      if (pmt->subtype != MEDIASUBTYPE_PCM
+	   && pmt->subtype != MEDIASUBTYPE_IEEE_FLOAT
+	   && pmt->subtype != MEDIASUBTYPE_extensible ) {
         dssRPT1(dssNEG,  "*** Audio: Subtype rejected - %s\n", PrintGUID(&pmt->subtype));
         return S_FALSE;
       }
@@ -958,7 +963,7 @@ pbFormat:
 		pixel_type = VideoInfo::CS_YV411;
 */
     } else if   (pmt->subtype == MEDIASUBTYPE_AYUV) {  
-		if (!(media & mediaYV24)) {
+		if (!(media & mediaAYUV)) {
 		  dssRPT0(dssNEG,  "*** Video: Subtype denied - AYUV\n");
 		  return S_FALSE;
 		}

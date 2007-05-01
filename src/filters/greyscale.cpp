@@ -81,26 +81,26 @@ PVideoFrame Greyscale::GetFrame(int n, IScriptEnvironment* env)
   int myx = vi.width;
 
   if (vi.IsPlanar()) {
-	  pitch = frame->GetPitch(PLANAR_U)/4;
-	  int *srcpUV = (int*)frame->GetWritePtr(PLANAR_U);
-	  myx = frame->GetRowSize(PLANAR_U_ALIGNED)/4;
-	  myy = frame->GetHeight(PLANAR_U);
-	    for (int y=0; y<myy; y++) {
-		  for (int x=0; x<myx; x++) {
-		    srcpUV[x] = 0x80808080;  // mod 8
-		  }
-		  srcpUV += pitch;
-	    }
-	  pitch = frame->GetPitch(PLANAR_V)/4;
-	  srcpUV = (int*)frame->GetWritePtr(PLANAR_V);
-	  myx = frame->GetRowSize(PLANAR_V_ALIGNED)/4;
-	  myy = frame->GetHeight(PLANAR_V);
-	  for (y=0; y<myy; ++y) {
-		  for (int x=0; x<myx; x++) {
-		    srcpUV[x] = 0x80808080;  // mod 8
-		  }
-		  srcpUV += pitch;
-	  }
+    pitch = frame->GetPitch(PLANAR_U)/4;
+    int *srcpUV = (int*)frame->GetWritePtr(PLANAR_U);
+    myx = frame->GetRowSize(PLANAR_U_ALIGNED)/4;
+    myy = frame->GetHeight(PLANAR_U);
+    for (int y=0; y<myy; y++) {
+      for (int x=0; x<myx; x++) {
+        srcpUV[x] = 0x80808080;  // mod 8
+      }
+      srcpUV += pitch;
+    }
+    pitch = frame->GetPitch(PLANAR_V)/4;
+    srcpUV = (int*)frame->GetWritePtr(PLANAR_V);
+    myx = frame->GetRowSize(PLANAR_V_ALIGNED)/4;
+    myy = frame->GetHeight(PLANAR_V);
+    for (y=0; y<myy; ++y) {
+      for (int x=0; x<myx; x++) {
+        srcpUV[x] = 0x80808080;  // mod 8
+      }
+      srcpUV += pitch;
+    }
   }
 
   else if (vi.IsYUY2() && (env->GetCPUFlags() & CPUF_MMX)) {

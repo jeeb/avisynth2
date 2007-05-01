@@ -1,4 +1,4 @@
-// Avisynth v2.5.  Copyright 2002 Ben Rudiak-Gould et al.
+// Avisynth v2.5.  Copyright 2007 Ben Rudiak-Gould et al.
 // http://www.avisynth.org
 
 // This program is free software; you can redistribute it and/or modify
@@ -233,23 +233,17 @@ private:
 };
 
 
-static HRESULT hrfromcoinit = E_FAIL;
 BOOL APIENTRY DllMain(HANDLE hModule, ULONG ulReason, LPVOID lpReserved) {
 
 	switch(ulReason) {
 	case DLL_PROCESS_ATTACH:
-		hrfromcoinit = CoInitialize(NULL);
 		_RPT2(0,"Process attach: hModule = 0x%08x, gRefCnt = %ld\n", hModule, gRefCnt);
 		if ((TlsIndex = TlsAlloc()) == 0xFFFFFFFF) 
                 return FALSE;
 		break;
 
 	case DLL_PROCESS_DETACH:
-
-//		if (gRefCnt) Somehow prang this release!
-
 		TlsFree(TlsIndex); 
-		if(SUCCEEDED(hrfromcoinit)) CoUninitialize();
 		_RPT2(0,"Process detach: hModule = 0x%08x, gRefCnt = %ld\n", hModule, gRefCnt);
 		break;
 	}
@@ -571,7 +565,7 @@ STDMETHODIMP CAVIFileSynth::Open(LPCSTR szFile, UINT mode, LPCOLESTR lpszFileNam
 
 //	_RPT3(0,"%p->CAVIFileSynth::Open(\"%s\", 0x%08lx)\n", this, szFile, mode);
 
-	if (mode & (OF_CREATE|OF_WRITE))
+    if (mode & (OF_CREATE|OF_WRITE))
       return E_FAIL;
 
     delete env;   // just in case
@@ -599,6 +593,12 @@ bool CAVIFileSynth::DelayInit() {
         // create a script environment and load the script into it
         env = CreateScriptEnvironment();
         if (!env) return false;
+      }
+      catch (AvisynthError error) {
+        error_msg = error.msg;
+        return false;
+      }
+      try {
         AVSValue return_val = env->Invoke("Import", szScriptName);
         // store the script's return value (a video clip)
         if (return_val.IsClip()) {
@@ -617,19 +617,13 @@ bool CAVIFileSynth::DelayInit() {
           if (!AllowFloatAudio) // Ensure samples are int     
             filter_graph = ConvertAudio::Create(filter_graph, SAMPLE_INT8|SAMPLE_INT16|SAMPLE_INT24|SAMPLE_INT32, SAMPLE_INT16);
 
-		  int q = 0;
-		  filter_graph->SetCacheHints(Cache::GetMyThis, (int)&q);
+          if ((env->GetMTMode(false) > 0) && (env->GetMTMode(false) < 5)) {
+            filter_graph = new CacheMT1(new Distributor(filter_graph, env), env);
+          }
+          else {
+            filter_graph = Cache::Create_Cache(AVSValue(filter_graph), 0, env).AsClip();
+          }
 
-		  if (q != (int)(void *)filter_graph)
-			filter_graph = new Cache(filter_graph);
-
-
-/* -- rework to fit 2.5.7 code properly!
-
-          if(env->GetMTMode(false)>0&&env->GetMTMode(false)<5)  {
-            return_val=new Distributor(return_val.AsClip(),env);
-            return_val=new CacheMT1(return_val.AsClip(),env);
-          } */
           filter_graph->SetCacheHints(CACHE_ALL, 999); // Give the top level cache a big head start!!
         }
         else
@@ -642,12 +636,12 @@ bool CAVIFileSynth::DelayInit() {
         vi = &filter_graph->GetVideoInfo();
 /**** FORCED CONVERSIONS FOR NOW - ENABLE WHEN IMPLEMENTED  ****/
 /*
-        if (vi->IsY16() || vi->IsYV411()) {
+        if (vi->IsYV16() || vi->IsYV411()) {
           AVSValue args[1] = { filter_graph };
           filter_graph = env->Invoke("ConvertToYUY2", AVSValue(args,1)).AsClip();
           vi = &filter_graph->GetVideoInfo();
         }
-        if (vi->IsY24()) {
+        if (vi->IsYV24()) {
           AVSValue args[1] = { filter_graph };
           filter_graph = env->Invoke("ConvertToRGB32", AVSValue(args,1)).AsClip();
           vi = &filter_graph->GetVideoInfo();
@@ -666,7 +660,7 @@ bool CAVIFileSynth::DelayInit() {
           filter_graph = env->Invoke("MessageClip", AVSValue(args, 2), arg_names).AsClip();
           vi = &filter_graph->GetVideoInfo();
         }
-		catch (AvisynthError) {
+        catch (AvisynthError) {
           filter_graph = 0;
         }
       }
@@ -808,7 +802,7 @@ STDMETHODIMP CAVIFileSynth::GetStream(PAVISTREAM *ppStream, DWORD fccType, LONG 
 //////////// IAvisynthClipInfo
 
 int __stdcall CAVIFileSynth::GetError(const char** ppszMessage) {
-  if (!DelayInit())
+  if (!DelayInit() && !error_msg)
     error_msg = "Avisynth: script open failed!";
 
   if (ppszMessage)
@@ -1263,9 +1257,18 @@ STDMETHODIMP CAVIStreamSynth::ReadFormat(LONG lPos, LPVOID lpFormat, LONG *lpcbF
 
   if (!lpcbFormat) return E_POINTER;
 
+  bool UseWaveExtensible = false;
+  try {
+	AVSValue v = parent->env->GetVar("OPT_UseWaveExtensible");
+	UseWaveExtensible = v.IsBool() ? v.AsBool() : false;
+  }
+  catch (IScriptEnvironment::NotFound) { }
+
   if (!lpFormat) {
-    *lpcbFormat = fAudio ? sizeof(WAVEFORMATEX) : sizeof(BITMAPINFOHEADER);
-	  return S_OK;
+    *lpcbFormat = fAudio ? ( UseWaveExtensible ? sizeof(WAVEFORMATEXTENSIBLE)
+                                               : sizeof(WAVEFORMATEX) )
+                         : sizeof(BITMAPINFOHEADER);
+    return S_OK;
   }
 
   memset(lpFormat, 0, *lpcbFormat);
@@ -1273,14 +1276,6 @@ STDMETHODIMP CAVIStreamSynth::ReadFormat(LONG lPos, LPVOID lpFormat, LONG *lpcbF
   const VideoInfo* const vi = parent->vi;
 
   if (fAudio) {
-	bool UseWaveExtensible = false;
-
-	try {
-	  AVSValue v = parent->env->GetVar("OPT_UseWaveExtensible");
-	  UseWaveExtensible = v.IsBool() ? v.AsBool() : false;
-	}
-	catch (IScriptEnvironment::NotFound) { }
-
 	if (UseWaveExtensible) {  // Use WAVE_FORMAT_EXTENSIBLE audio output format 
 	  const GUID KSDATAFORMAT_SUBTYPE_PCM       = {0x00000001, 0x0000, 0x0010, {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71}};
 	  const GUID KSDATAFORMAT_SUBTYPE_IEEE_FLOAT= {0x00000003, 0x0000, 0x0010, {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71}};
@@ -1295,9 +1290,23 @@ STDMETHODIMP CAVIStreamSynth::ReadFormat(LONG lPos, LPVOID lpFormat, LONG *lpcbF
 	  wfxt.Format.nAvgBytesPerSec = wfxt.Format.nSamplesPerSec * wfxt.Format.nBlockAlign;
 	  wfxt.Format.cbSize = sizeof(wfxt) - sizeof(wfxt.Format);
 	  wfxt.Samples.wValidBitsPerSample = wfxt.Format.wBitsPerSample;
-	  wfxt.dwChannelMask = SPEAKER_ALL;
+
+	  const int SpeakerMasks[8] = { 0,
+	    0x00004, // 1         Cf
+		0x00003, // 2   Lf Rf
+		0x00007, // 3   Lf Rf Cf
+		0x00033, // 4   Lf Rf       Lr Rr
+		0x00037, // 5   Lf Rf Cf    Lr Rr
+		0x0003F, // 5.1 Lf Rf Cf Sw Lr Rr
+		0x0013F, // 6.1 Lf Rf Cf Sw Lr Rr Cr
+	  };
+	  wfxt.dwChannelMask = (unsigned)vi->AudioChannels() <= 7 ? SpeakerMasks[vi->AudioChannels()]
+	                     : (unsigned)vi->AudioChannels() <=18 ? DWORD(-1) >> (32-vi->AudioChannels())
+						 : SPEAKER_ALL;
+
 	  wfxt.SubFormat = vi->IsSampleType(SAMPLE_FLOAT) ? KSDATAFORMAT_SUBTYPE_IEEE_FLOAT : KSDATAFORMAT_SUBTYPE_PCM;
-	  memcpy(lpFormat, &wfxt, min(size_t(*lpcbFormat), sizeof(wfxt)));
+	  *lpcbFormat = min(*lpcbFormat, sizeof(wfxt));
+	  memcpy(lpFormat, &wfxt, size_t(*lpcbFormat));
 	}
 	else {
 	  WAVEFORMATEX wfx;
@@ -1308,7 +1317,8 @@ STDMETHODIMP CAVIStreamSynth::ReadFormat(LONG lPos, LPVOID lpFormat, LONG *lpcbF
 	  wfx.wBitsPerSample = vi->BytesPerChannelSample() * 8;
 	  wfx.nBlockAlign = vi->BytesPerAudioSample();
 	  wfx.nAvgBytesPerSec = wfx.nSamplesPerSec * wfx.nBlockAlign;
-	  memcpy(lpFormat, &wfx, min(size_t(*lpcbFormat), sizeof(wfx)));
+	  *lpcbFormat = min(*lpcbFormat, sizeof(wfx));
+	  memcpy(lpFormat, &wfx, size_t(*lpcbFormat));
 	}
   } else {
     BITMAPINFOHEADER bi;
@@ -1336,7 +1346,8 @@ STDMETHODIMP CAVIStreamSynth::ReadFormat(LONG lPos, LPVOID lpFormat, LONG *lpcbF
         _ASSERT(FALSE);
       }
     bi.biSizeImage = vi->BMPSize();
-    memcpy(lpFormat, &bi, min(size_t(*lpcbFormat), sizeof(bi)));
+    *lpcbFormat = min(*lpcbFormat, sizeof(bi));
+    memcpy(lpFormat, &bi, size_t(*lpcbFormat));
   }
   return S_OK;
 }
