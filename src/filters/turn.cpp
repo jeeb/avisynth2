@@ -56,7 +56,7 @@ PVideoFrame __stdcall Turn::GetFrame(int n, IScriptEnvironment* env) {
 
 	PVideoFrame src = child->GetFrame(n, env);
 
-    PVideoFrame dst = env->NewVideoFrame(vi,16);
+    PVideoFrame dst = env->NewVideoFrame(vi);
 
 	if (Usource && Vsource) {
 		PVideoFrame usrc = Usource->GetFrame(n, env);
@@ -69,7 +69,7 @@ PVideoFrame __stdcall Turn::GetFrame(int n, IScriptEnvironment* env) {
 					 usrc->GetRowSize(PLANAR_Y), usrc->GetHeight(PLANAR_Y),
 					  src->GetPitch(PLANAR_Y),   dst->GetPitch(PLANAR_Y),
 					 usrc->GetPitch(PLANAR_Y),   dst->GetPitch(PLANAR_U),
-					 direction);
+					 vsrc->GetPitch(PLANAR_Y),   direction);
 	}
 	else if (vi.IsPlanar())
 		TurnPlanFunc(src->GetReadPtr(PLANAR_Y), dst->GetWritePtr(PLANAR_Y),
@@ -79,7 +79,7 @@ PVideoFrame __stdcall Turn::GetFrame(int n, IScriptEnvironment* env) {
 					 src->GetRowSize(PLANAR_U), src->GetHeight(PLANAR_U),
 					 src->GetPitch(PLANAR_Y), dst->GetPitch(PLANAR_Y),
 					 src->GetPitch(PLANAR_U), dst->GetPitch(PLANAR_U),
-					 direction);
+					 src->GetPitch(PLANAR_V), direction);
 	else
 		TurnFunc(src->GetReadPtr(),dst->GetWritePtr(),src->GetRowSize(),
 				 src->GetHeight(),src->GetPitch(),dst->GetPitch(),direction);

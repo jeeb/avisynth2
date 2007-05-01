@@ -143,8 +143,8 @@ void TurnYUY2(const unsigned char *srcp, unsigned char *dstp, const int rowsize,
 			dstp_offset = ((height-2-y)<<1);
 			for (int x=0; x<rowsize; x+=4)
 			{
-				u = (srcp[x+1] + srcp[x+1+src_pitch])>>1;
-				v = (srcp[x+3] + srcp[x+3+src_pitch])>>1;
+				u = (srcp[x+1] + srcp[x+1+src_pitch] + 1) >> 1;
+				v = (srcp[x+3] + srcp[x+3+src_pitch] + 1) >> 1;
 				dstp[dstp_offset+0] = srcp[x+src_pitch];
 				dstp[dstp_offset+1] = u;
 				dstp[dstp_offset+2] = srcp[x];
@@ -167,8 +167,8 @@ void TurnYUY2(const unsigned char *srcp, unsigned char *dstp, const int rowsize,
 			dstp_offset = (y<<1);
 			for (int x=0; x<rowsize; x+=4)
 			{
-				u = (srcp[-x+1] + srcp[-x+1+src_pitch])>>1;
-				v = (srcp[-x+3] + srcp[-x+3+src_pitch])>>1;
+				u = (srcp[-x+1] + srcp[-x+1+src_pitch] + 1) >> 1;
+				v = (srcp[-x+3] + srcp[-x+3+src_pitch] + 1) >> 1;
 				dstp[dstp_offset+0] = srcp[-x+2];
 				dstp[dstp_offset+1] = u;
 				dstp[dstp_offset+2] = srcp[-x+2+src_pitch];
@@ -205,8 +205,8 @@ void TurnPlanar(const unsigned char *srcp_y, unsigned char *dstp_y,
 			  const int rowsize, const int height,
 			  const int rowsizeUV, const int heightUV,
 			  const int src_pitch_y, const int dst_pitch_y,
-			  const int src_pitch_uv, const int dst_pitch_uv,
-			  const int direction)
+			  const int src_pitch_u, const int dst_pitch_uv,
+			  const int src_pitch_v, const int direction)
 {
 	int y, x, offset;
 	if (direction == 1) // Right
@@ -230,8 +230,8 @@ void TurnPlanar(const unsigned char *srcp_y, unsigned char *dstp_y,
 				dstp_v[offset] = srcp_v[x];
 				offset += dst_pitch_uv;
 			}
-			srcp_u += src_pitch_uv;
-			srcp_v += src_pitch_uv;
+			srcp_u += src_pitch_u;
+			srcp_v += src_pitch_v;
 		}
 	}
 	else if (direction == -1) // Left
@@ -258,8 +258,8 @@ void TurnPlanar(const unsigned char *srcp_y, unsigned char *dstp_y,
 				dstp_v[offset] = srcp_v[-x];
 				offset += dst_pitch_uv;
 			}
-			srcp_u += src_pitch_uv;
-			srcp_v += src_pitch_uv;
+			srcp_u += src_pitch_u;
+			srcp_v += src_pitch_v;
 		}
 	}
 	else // 180
@@ -281,8 +281,8 @@ void TurnPlanar(const unsigned char *srcp_y, unsigned char *dstp_y,
 			}
 			dstp_u -= dst_pitch_uv;
 			dstp_v -= dst_pitch_uv;
-			srcp_u += src_pitch_uv;
-			srcp_v += src_pitch_uv;
+			srcp_u += src_pitch_u;
+			srcp_v += src_pitch_v;
 		}
 	}
 }
