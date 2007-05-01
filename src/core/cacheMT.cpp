@@ -54,9 +54,20 @@ extern struct {
 
 AVSFunction CacheMT_filters[] = {
   { "InternalCacheMT", "c", CacheMT::Create_Cache },
+  { "SetMTMode","[mode]i[threads]i",SetMTMode},
+  { "GetMTMode","[threads]b",GetMTMode},
   { 0 }
 };
  
+
+AVSValue SetMTMode(AVSValue args, void*, IScriptEnvironment* env)
+{
+  env->SetMTMode(args[0].AsInt(2),args[1].AsInt(0),false);
+  return AVSValue();
+}
+
+AVSValue GetMTMode(AVSValue args, void*, IScriptEnvironment* env){ return env->GetMTMode(args[0].AsBool(false)); }
+
 
 int wokingthreadcount = 0;
 
@@ -629,7 +640,7 @@ bool CacheMT::LockVFB(CachedVideoFrame *i, IScriptEnvironment* env)
 
 void CacheMT::UnlockVFB(CachedVideoFrame *i)
 {
-  if (!!i->vfb &&  InterlockedCompareExchange(&i->vfb_locked,0,1)==true) InterlockedDecrement(&i->vfb->refcount);
+  if (!!i->vfb &&  InterlockedCompareExchange(&i->vfb_locked,0,1)==(long)true) InterlockedDecrement(&i->vfb->refcount);
 }
 
 void CacheMT::ProtectVFB(CachedVideoFrame *i, int n)
@@ -655,7 +666,7 @@ void CacheMT::ProtectVFB(CachedVideoFrame *i, int n)
 
 void CacheMT::UnProtectVFB(CachedVideoFrame *i)
 {
-  if (!!i->vfb && InterlockedCompareExchange(&i->vfb_protected,0,1)==true) {
+  if (!!i->vfb && InterlockedCompareExchange(&i->vfb_protected,0,1)==(long)true) {
 	InterlockedDecrement(&i->vfb->refcount);
 	InterlockedDecrement(&protectcount);
   }
@@ -935,7 +946,7 @@ AVSValue __cdecl CacheMT::Create_Cache(AVSValue args, void*, IScriptEnvironment*
 /************ CacheMT1 ***************/
 /*************************************/
 
-CacheMT1::CacheMT1(PClip _child,IScriptEnvironment *env):CacheMT(_child,env),signature('cach'+'eMT '+1){}
+CacheMT1::CacheMT1(PClip _child,IScriptEnvironment *env):CacheMT(_child,env),signature('cach'^'eMT '+1){}
 
 PVideoFrame CacheMT1::childGetFrame(int n, IScriptEnvironment* env){
 	return CacheMT::childGetFrame(n,env);
@@ -945,7 +956,7 @@ PVideoFrame CacheMT1::childGetFrame(int n, IScriptEnvironment* env){
 /************ CacheMT2 ***************/
 /*************************************/
 
-CacheMT2::CacheMT2(AVSValue clip_array,IScriptEnvironment *env):CacheMT(clip_array[0].AsClip(),env),signature('cach'+'eMT '+2),nfilters(clip_array.ArraySize())
+CacheMT2::CacheMT2(AVSValue clip_array,IScriptEnvironment *env):CacheMT(clip_array[0].AsClip(),env),signature('cach'^'eMT '+2),nfilters(clip_array.ArraySize())
 {
 	filters=new PClip[nfilters];
 	filterstatus=new long[nfilters];
@@ -974,7 +985,7 @@ PVideoFrame CacheMT2::childGetFrame(int n, IScriptEnvironment* env){
 /************ CacheMT3 ***************/
 /*************************************/
 
-CacheMT3::CacheMT3(PClip _child,Mode3Gate* gate,IScriptEnvironment *env):CacheMT(_child,env),signature('cach'+'eMT '+3)
+CacheMT3::CacheMT3(PClip _child,Mode3Gate* gate,IScriptEnvironment *env):CacheMT(_child,env),signature('cach'^'eMT '+3)
 {
 	InitializeCriticalSectionAndSpinCount(&csFilter,4000);
 	if(gate)
@@ -998,7 +1009,7 @@ PVideoFrame CacheMT3::childGetFrame(int n, IScriptEnvironment* env){
 /************ CacheMT4 ***************/
 /*************************************/
 
-CacheMT4::CacheMT4(AVSValue clip_array,Mode3Gate* gate,IScriptEnvironment *env):CacheMT(clip_array[0].AsClip(),env),signature('cach'+'eMT '+4),nfilters(clip_array.ArraySize())
+CacheMT4::CacheMT4(AVSValue clip_array,Mode3Gate* gate,IScriptEnvironment *env):CacheMT(clip_array[0].AsClip(),env),signature('cach'^'eMT '+4),nfilters(clip_array.ArraySize())
 {
 	InitializeCriticalSectionAndSpinCount(&csFilter,4000);
 	if(gate)
@@ -1033,7 +1044,7 @@ CacheMT4::~CacheMT4(){
 /************ CacheMT5 ***************/
 /*************************************/
 
-CacheMT5::CacheMT5(PClip _child,IScriptEnvironment *env):CacheMT(_child,env),signature('cach'+'eMT '+5)
+CacheMT5::CacheMT5(PClip _child,IScriptEnvironment *env):CacheMT(_child,env),signature('cach'^'eMT '+5)
 {
 	InitializeCriticalSectionAndSpinCount(&csFilter,4000);
 }

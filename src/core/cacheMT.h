@@ -39,6 +39,9 @@
 #include "MT.h"
 //using namespace std;
 
+AVSValue GetMTMode(AVSValue args, void*, IScriptEnvironment* env);
+AVSValue SetMTMode(AVSValue args, void*, IScriptEnvironment* env);
+
 
 class Mode3Gate : public GenericVideoFilter{
 public:
