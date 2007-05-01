@@ -122,8 +122,6 @@ AVSFunction Script_functions[] = {
   { "Assert", "b[message]s", Assert },
   { "Assert", "s", AssertEval },
 
-  { "Cache", "c", Cache::Create_Cache },
-
   { "SetMemoryMax", "i", SetMemoryMax },
 
   { "SetWorkingDir", "s", SetWorkingDir },
@@ -145,18 +143,12 @@ AVSFunction Script_functions[] = {
   
   { "HasVideo", "c", HasVideo },
   { "HasAudio", "c", HasAudio },
- 
-  { "SetMTMode","[mode]i[threads]i",SetMTMode},
-  { "GetMTMode","[threads]b",GetMTMode},
 
+  { "Min", "f+", AvsMin },
+  { "Max", "f+", AvsMax },
+ 
   { 0 }
 };
-
-
-
-
-
-
 
 
 
@@ -191,16 +183,6 @@ void ScriptFunction::Delete(void* self, IScriptEnvironment*)
 
 
 
-
-
-
-
-
-
-
-
-
-
 /***********************************
  *******   Helper Functions   ******
  **********************************/
@@ -212,13 +194,11 @@ CWDChanger::CWDChanger(const char* new_cwd)
   restore = (save_cwd_success && set_cwd_success);
 }
 
-
 CWDChanger::~CWDChanger(void)
 {
   if (restore)
     SetCurrentDirectory(old_working_directory);
 }
-
 
 
 
@@ -295,13 +275,7 @@ AVSValue Import(AVSValue args, void*, IScriptEnvironment* env)
   return result;
 }
 
-AVSValue SetMTMode(AVSValue args, void*, IScriptEnvironment* env)
-{
-  env->SetMTMode(args[0].AsInt(2),args[1].AsInt(0),false);
-  return AVSValue();
-}
 
-AVSValue GetMTMode(AVSValue args, void*, IScriptEnvironment* env){ return env->GetMTMode(args[0].AsBool(false)); }
 
 AVSValue SetMemoryMax(AVSValue args, void*, IScriptEnvironment* env) { return env->SetMemoryMax(args[0].AsInt()); }
 AVSValue SetWorkingDir(AVSValue args, void*, IScriptEnvironment* env) { return env->SetWorkingDir(args[0].AsString()); }
@@ -514,7 +488,7 @@ AVSValue Spline(AVSValue args, void*, IScriptEnvironment* env )
 
 	n = coordinates.ArraySize() ;
 
-	if (n<4 || n&1) env->ThrowError("Two few arguments for Spline");
+	if (n<4 || n&1) env->ThrowError("To few arguments for Spline");
 
 	n=n/2;
 	for (i=1; i<=n; i++) {
@@ -604,3 +578,61 @@ AVSValue Float(AVSValue args, void*,IScriptEnvironment* env) { return args[0].As
 
 AVSValue Value(AVSValue args, void*, IScriptEnvironment* env) { char *stopstring; return strtod(args[0].AsString(),&stopstring); }
 AVSValue HexValue(AVSValue args, void*, IScriptEnvironment* env) { char *stopstring; return strtol(args[0].AsString(),&stopstring,16); }
+
+AVSValue AvsMin(AVSValue args, void*, IScriptEnvironment* env )
+{
+  int i;
+  bool isInt = true;
+
+  const int n = args[0].ArraySize();
+  if (n < 2) env->ThrowError("To few arguments for Min");
+
+  // If all numbers are Ints return an Int
+  for (i=0; i < n; i++)
+    if (!args[0][i].IsInt()) {
+      isInt = false;
+      break;
+  }
+
+  if (isInt) {
+    int V = args[0][0].AsInt();
+    for (i=1; i < n; i++)
+      V = min(V, args[0][i].AsInt());
+    return V;
+  }
+  else {
+    double V = args[0][0].AsFloat();
+    for (i=1; i < n; i++)
+      V = min(V, args[0][i].AsFloat());
+    return V;
+  }
+}
+
+AVSValue AvsMax(AVSValue args, void*, IScriptEnvironment* env )
+{
+  int i;
+  bool isInt = true;
+
+  const int n = args[0].ArraySize();
+  if (n < 2) env->ThrowError("To few arguments for Max");
+
+  // If all numbers are Ints return an Int
+  for (i=0; i < n; i++)
+    if (!args[0][i].IsInt()) {
+      isInt = false;
+      break;
+  }
+
+  if (isInt) {
+    int V = args[0][0].AsInt();
+    for (i=1; i < n; i++)
+      V = max(V, args[0][i].AsInt());
+    return V;
+  }
+  else {
+    double V = args[0][0].AsFloat();
+    for (i=1; i < n; i++)
+      V = max(V, args[0][i].AsFloat());
+    return V;
+  }
+}
