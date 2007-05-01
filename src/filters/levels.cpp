@@ -345,60 +345,57 @@ AVSValue __cdecl RGBAdjust::Create(AVSValue args, void*, IScriptEnvironment* env
 
 
 
-
-
-
-
 /* helper function for Tweak and MaskHS filters */
-bool ProcessPixel(int X, int Y, int Sat, bool allPixels, bool clockwise, int startHue, int endHue,
-								   int maxSat, int minSat, int p, int deg[256][256], int sq[182], int *iSat)
+bool ProcessPixel(int X, int Y, int Sat, int startHue, int endHue,
+                  int maxSat, int minSat, int p, int &iSat)
 {
-	if (allPixels) {
-		return true;
-	}
+    static bool degF = false;
+    static int deg[256][256];
 
+    if (!degF) {
+        degF = true;
+		// Precalc hue for all U/V combos
+		for (int x = 0; x<256; x++) {
+			for (int y = 0; y<256; y++) {
+				double theta = atan2((double)(x-128), (double)(y-128)) * 180.0 / 3.14159265358979323846;
+				deg[x][y] = (int) ((theta > 0.0) ? theta: 360.0+theta);
+			}
+		}
+    }
 	// hue
 	int T = deg[X+128][Y+128];
 
-	if (T==360) { // grey pixel
-		return false;
-	}
-
 	// startHue <= hue <= endHue
-	if (!clockwise) {
+	if (startHue < endHue) {
 		if (T>endHue || T<startHue) return false;
 	} else {
 		if (T<startHue && T>endHue) return false;
 	}
 
-	// We want a range of -128 to 127, but no negatives	.
-	X*=(X<0)?-1:1;
-	Y*=(Y<0)?-1:1;
-
 	// Interpolation range is +/- 2^p for p>0
-	int W = (int) sq[X]+sq[Y];
+	int W = X*X + Y*Y;
 
 	// Outside of [min-2^p, max+2^p] no adjustment
 	// minSat-2^p <= U^2 + V^2 <= maxSat+2^p
 	int max = min(maxSat+(1<<p),180);
 	int min = max(minSat-(1<<p),0);
-	if (((int) sq[max] < W) || ((int) sq[min] > W)) { // don't adjust
+	if ((max*max < W) || (min*min > W)) { // don't adjust
 		return false;
 	}
 
 	// In Range full adjust but no need to interpolate
 	// p==0 (no interpolation) needed for MaskHS
-	if (((int) sq[maxSat] > W) && ((int) sq[minSat] < W) || p==0) {
+	if (p==0 || ((int) maxSat*maxSat > W) && ((int) minSat*minSat < W)) {
 		return true;
 	}
 
 	// Interpolate saturation value
-	int holdSat = min((int) sqrt((float)W), 180);
+	int holdSat = W < 180*180 ? (int)sqrt((float)W) : 180;
  
 	if (holdSat<minSat) { // within 2^p of lower range
-		*iSat = (int) (((512 - Sat) * (minSat - holdSat) >> p) + Sat); 
+		iSat = (int) (((512 - Sat) * (minSat - holdSat) >> p) + Sat); 
 	} else { // within 2^p of upper range
-		*iSat = (int) (((512 - Sat) * (holdSat - maxSat) >> p) + Sat);
+		iSat = (int) (((512 - Sat) * (holdSat - maxSat) >> p) + Sat);
 	}
 	
 	return true;
@@ -409,116 +406,85 @@ bool ProcessPixel(int X, int Y, int Sat, bool allPixels, bool clockwise, int sta
 ******   Tweak    *****
 **********************/
 
-Tweak::Tweak( PClip _child, double _hue, double _sat, double _bright, double _cont, bool _coring,
-                            int _startHue, int _endHue, int _maxSat, int _minSat, int _interp, 
+Tweak::Tweak( PClip _child, double _hue, double _sat, double _bright, double _cont, bool coring,
+                            int startHue, int endHue, int _maxSat, int _minSat, int p, 
 							IScriptEnvironment* env ) 
-  : GenericVideoFilter(_child), coring(_coring), startHue(_startHue), endHue(_endHue), p(_interp)
+  : GenericVideoFilter(_child)
 {
-	try {	// HIDE DAMN SEH COMPILER BUG!!!
-  if (vi.IsRGB())
-		env->ThrowError("Tweak: YUV data only (no RGB)");
+  try {	// HIDE DAMN SEH COMPILER BUG!!!
+    if (vi.IsRGB())
+          env->ThrowError("Tweak: YUV data only (no RGB)");
 
-  if (vi.IsY8()) {
-	  if (!(_hue == 0.0 && _sat == 1.0 && startHue == 0 && endHue == 359 && _maxSat == 150 && _minSat == 0))
-      env->ThrowError("Tweak: bright and cont are the only options available for Y8.");
-  }
+    // Flag to skip special processing if doing all pixels
+    // If defaults, don't check for ranges, just do all
+    const bool allPixels = (startHue == 0 && endHue == 359 && _maxSat == 115 && _minSat == 0);
 
-  if (startHue > 359 || startHue < 0 || endHue > 359 || endHue < 0)
-		env->ThrowError("Tweak: startHue and endHue must be between 0 and 359.");
+    if (vi.IsY8()) {
+        if (!(_hue == 0.0 && _sat == 1.0 && startHue == 0 && endHue == 359 && _maxSat == 150 && _minSat == 0))
+        env->ThrowError("Tweak: bright and cont are the only options available for Y8.");
+    }
 
-  if (_minSat > _maxSat)
-		env->ThrowError("Tweak: make sure that MinSat =< MaxSat");
+    if (startHue > 359 || startHue < 0 || endHue > 359 || endHue < 0)
+          env->ThrowError("Tweak: startHue and endHue must be between 0 and 359.");
 
-  if (_maxSat > 150 || _maxSat < 1 || _minSat > 149 || _minSat < 0)
-		env->ThrowError("Tweak: maxSat and minSat must be between 0 and 150.");
+    if (_minSat > _maxSat)
+          env->ThrowError("Tweak: make sure that MinSat =< MaxSat");
 
-  if (p>4 || p<0)
-	  env->ThrowError("Tweak: make sure that 0<=p<=4.");
+    if (_maxSat > 150 || _maxSat < 1 || _minSat > 149 || _minSat < 0)
+          env->ThrowError("Tweak: maxSat and minSat must be between 0 and 150.");
+
+    if (p>4 || p<0)
+          env->ThrowError("Tweak: make sure that 0<=p<=4.");
 
 
-  // If defaults, don't check for ranges, just do all
-  if (startHue == 0 && endHue == 359 && _maxSat == 115 && _minSat == 0) {
-	  allPixels = true;
-  } else {
-	  allPixels = false;
-  }
+    Sat = (int) (_sat * 512);
+    Cont = (int) (_cont * 512);
+    Bright = (int) _bright;
 
-	Sat = (int) (_sat * 512);
-	Cont = (int) (_cont * 512);
-	Bright = (int) _bright;
+    const double Hue = (_hue * 3.14159265358979323846) / 180.0;
+    const double SIN = sin(Hue);
+    const double COS = cos(Hue);
 
- 	const double Hue = (_hue * 3.14159265358979323846) / 180.0;
-	const double SIN = sin(Hue);
-	const double COS = cos(Hue);
-	double theta;
+    Sin = (int) (SIN * 4096 + 0.5);
+    Cos = (int) (COS * 4096 + 0.5);
 
-	Sin = (int) (SIN * 4096 + 0.5);
-	Cos = (int) (COS * 4096 + 0.5);
+    const int maxY = coring ? 235 : 255;
+    const int minY = coring ? 16 : 0;
 
-	int maxY = coring ? 235 : 255;
-	int minY = coring ? 16 : 0;
+    const int maxUV = coring ? 240 : 255;
+    const int minUV = coring ? 16 : 0;
 
-	const int maxUV = coring ? 240 : 255;
-	const int minUV = coring ? 16 : 0;
+    for (int i = 0; i < 256; i++)
+    {
+        /* brightness and contrast */
+        int y = int((i - 16)*_cont + _bright + 16.5);
+        map[i] = min(max(y,minY),maxY);
+    }
 
-	for (int i = 0; i < 256; i++)
-	{
-		/* brightness and contrast */
-		int y = int((i - 16)*_cont + _bright + 16.5);
-		map[i] = min(max(y,minY),maxY);
-
-		/* hue and saturation */
-		mapCos[i] = int((i - 128) * COS * 256);
-		mapSin[i] = int((i - 128) * SIN * 256);
-	}
-
-	if (!allPixels) {		
-
-		// Precalc hue for all U/V combos
-		for (int x = 0; x<256; x++) {
-			for (int y = 0; y<256; y++) {
-				theta = atan2((double)x-128, (double)y-128) * 180.0 / 3.1415926;
-				deg[x][y] = (int) ((theta > 0) ? theta: 360+theta);
-			}
-		}
-
-		// Precalc all squares because U^2 + V^2 = sat^2
-		for (int i = 0; i<182; i++) {
-			sq[i] = i*i;
-		}
-
-		// are we going clockwise or counter clockwise
-		if (startHue > endHue) {
-			clockwise = true;
-		} else {
-			clockwise = false;
-		}
-
-		// 100% equals sat=119 (= maximal saturation of valid RGB (R=255,G=B=0)
-		// 150% (=180) - 100% (=119) overshoot
-		minSat = (int) ((119 * _minSat / 100) + 0.5);
-		maxSat = (int) ((119 * _maxSat / 100) + 0.5);
-	}
+    // 100% equals sat=119 (= maximal saturation of valid RGB (R=255,G=B=0)
+    // 150% (=180) - 100% (=119) overshoot
+    int minSat = (int) ((119 * _minSat / 100) + 0.5);
+    int maxSat = (int) ((119 * _maxSat / 100) + 0.5);
 
     for (int u = 0; u < 256; u++) {
+      const int destu = u-128;
       for (int v = 0; v < 256; v++) {
-        int destu = u-128;
-        int destv = v-128;
-		int iSat = Sat;
-		if (ProcessPixel(destv, destu, Sat, allPixels, clockwise, startHue, endHue, maxSat, minSat, p, deg, sq, &iSat)) {
-          destu = int ( (mapCos[u] + mapSin[v]) * iSat ) >> 17;
-          destv = int ( (mapCos[v] - mapSin[u]) * iSat ) >> 17;
-          destu = min(max(destu+128,minUV),maxUV);
-          destv = min(max(destv+128,minUV),maxUV);
-          mapUV[(u<<8)|v]  = (unsigned short)(destu | (destv<<8));
-		} else {
+        const int destv = v-128;
+        int iSat = Sat;
+        if (allPixels || ProcessPixel(destv, destu, Sat, startHue, endHue, maxSat, minSat, p, iSat)) {
+          int du = int ( (destu*COS + destv*SIN) * iSat ) >> 9;
+          int dv = int ( (destv*COS - destu*SIN) * iSat ) >> 9;
+          du = min(max(du+128,minUV),maxUV);
+          dv = min(max(dv+128,minUV),maxUV);
+          mapUV[(u<<8)|v]  = (unsigned short)(du | (dv<<8));
+        } else {
           mapUV[(u<<8)|v]  = (unsigned short)(min(max(u,minUV),maxUV) | ((min(max(v,minUV),maxUV))<<8));
-		}
-	  }
-	}
+        }
+      }
+    }
 
-	}
-	catch (...) { throw; }
+  }
+  catch (...) { throw; }
 }
 
 
@@ -535,29 +501,24 @@ PVideoFrame __stdcall Tweak::GetFrame(int n, IScriptEnvironment* env)
 	int row_size = src->GetRowSize();
 	
 	if (vi.IsYUY2()) {
-		for (int y = 0; y < height; y++) {
-			for (int x = 0; x < row_size; x+=4)	{
+		for (int y = 0; y < height; y++)
+        {
+			for (int x = 0; x < row_size; x+=4)
+            {
 				/* brightness and contrast */
 				srcp[x] = map[srcp[x]];
 				srcp[x+2] = map[srcp[x+2]];
 
 				/* hue and saturation */
-				int u = srcp[x+1];
-				int v = srcp[x+3];
-				int mapped = mapUV[(u<<8) | v];
+				const int u = srcp[x+1];
+				const int v = srcp[x+3];
+				const int mapped = mapUV[(u<<8) | v];
 			    srcp[x+1] = (BYTE)(mapped&0xff);
 				srcp[x+3] = (BYTE)(mapped>>8);
 			}
 			srcp += src_pitch;
 		}
 	} else if (vi.IsPlanar()) {
-		int srcu_pitch = src->GetPitch(PLANAR_U);
-		BYTE * srcpu = src->GetWritePtr(PLANAR_U);
-		BYTE * srcpv = src->GetWritePtr(PLANAR_V);
-		int row_sizeu = src->GetRowSize(PLANAR_U);
-		int heightu = src->GetHeight(PLANAR_U);
-		int swidth = vi.GetPlaneWidthSubsampling(PLANAR_U);
-		int sheight = vi.GetPlaneHeightSubsampling(PLANAR_U);
 		int y;  // VC6 scoping sucks - Yes!
 		for (y=0; y<height; ++y) {
 			for (int x=0; x<row_size; ++x) {
@@ -567,17 +528,22 @@ PVideoFrame __stdcall Tweak::GetFrame(int n, IScriptEnvironment* env)
 			srcp += src_pitch;
 		}
 
-		for (y=0; y<heightu; ++y) {
-			for (int x=0; x<row_sizeu; ++x) {
+		src_pitch = src->GetPitch(PLANAR_U);
+		BYTE * srcpu = src->GetWritePtr(PLANAR_U);
+		BYTE * srcpv = src->GetWritePtr(PLANAR_V);
+		row_size = src->GetRowSize(PLANAR_U);
+		height = src->GetHeight(PLANAR_U);
+		for (y=0; y<height; ++y) {
+			for (int x=0; x<row_size; ++x) {
 				/* hue and saturation */
-				int u = srcpu[x];
-				int v = srcpv[x];
-				int mapped = mapUV[(u<<8) | v];
+				const int u = srcpu[x];
+				const int v = srcpv[x];
+				const int mapped = mapUV[(u<<8) | v];
 				srcpu[x] = (BYTE)(mapped&0xff);
 				srcpv[x] = (BYTE)(mapped>>8);
 			}
-			srcpu += srcu_pitch;
-			srcpv += srcu_pitch;
+			srcpu += src_pitch;
+			srcpv += src_pitch;
 		}
 	}
 
@@ -609,74 +575,47 @@ AVSValue __cdecl Tweak::Create(AVSValue args, void* user_data, IScriptEnvironmen
 ******   MaskHS   *****
 **********************/
 
-MaskHS::MaskHS( PClip _child, int _startHue, int _endHue, int _maxSat, int _minSat, bool _coring, 
+MaskHS::MaskHS( PClip _child, int startHue, int endHue, int _maxSat, int _minSat, bool coring, 
 							IScriptEnvironment* env ) 
-  : GenericVideoFilter(_child), startHue(_startHue), endHue(_endHue), coring(_coring)
+  : GenericVideoFilter(_child)
 {
-	try {	// HIDE DAMN SEH COMPILER BUG!!!
-  if (vi.IsRGB())
-		env->ThrowError("MaskHS: YUV data only (no RGB)");
+  try {	// HIDE DAMN SEH COMPILER BUG!!!
+    if (vi.IsRGB())
+          env->ThrowError("MaskHS: YUV data only (no RGB)");
 
-  if (vi.IsY8()) {
-      env->ThrowError("MaskHS: clip should contain chroma.");
-  }
+    if (vi.IsY8()) {
+        env->ThrowError("MaskHS: clip should contain chroma.");
+    }
 
-  if (startHue > 359 || startHue < 0 || endHue > 359 || endHue < 0)
-		env->ThrowError("MaskHS: startHue and endHue must be between 0 and 359.");
+    if (startHue > 359 || startHue < 0 || endHue > 359 || endHue < 0)
+          env->ThrowError("MaskHS: startHue and endHue must be between 0 and 359.");
 
-  if (_minSat > _maxSat)
-		env->ThrowError("MaskHS: make sure that MinSat =< MaxSat");
+    if (_minSat > _maxSat)
+          env->ThrowError("MaskHS: make sure that MinSat =< MaxSat");
 
-  if (_maxSat > 150 || _maxSat < 1 || _minSat > 149 || _minSat < 0)
-		env->ThrowError("MaskHS: maxSat and minSat must be between 0 and 150.");
+    if (_maxSat > 150 || _maxSat < 1 || _minSat > 149 || _minSat < 0)
+          env->ThrowError("MaskHS: maxSat and minSat must be between 0 and 150.");
 
 
-  // If defaults, don't check for ranges, just do all
-  if (startHue == 0 && endHue == 359 && _maxSat == 115 && _minSat == 0) {
-	  allPixels = true;
-  } else {
-	  allPixels = false;
-  }
-
-	double theta;
+    // Flag to skip special processing if doing all pixels
+    // If defaults, don't check for ranges, just do all
+    bool allPixels = (startHue == 0 && endHue == 359 && _maxSat == 115 && _minSat == 0);
 
 	int maxY = coring ? 235 : 255;
 	int minY = coring ? 16 : 0;
 
-	if (!allPixels) {		
-		// Precalc hue for all U/V combos
-		for (int x = 0; x<256; x++) {
-			for (int y = 0; y<256; y++) {
-				theta = atan2((float)x-128.0f, (float)y-128.0f) * 180.0 / 3.1415926;
-				deg[x][y] = (int) ((theta > 0) ? theta: 360+theta);
-			}
-		}
-
-		// Precalc all squares because U^2 + V^2 = sat^2
-		for (int i = 0; i<182; i++) {
-			sq[i] = i*i;
-		}
-
-		// are we going clockwise or counter clockwise
-		if (startHue > endHue) {
-			clockwise = true;
-		} else {
-			clockwise = false;
-		}
-
-		// 100% equals sat=119 (= maximal saturation of valid RGB (R=255,G=B=0)
-		// 150% (=180) - 100% (=119) overshoot
-		minSat = (int) ((119 * _minSat / 100) + 0.5);
-		maxSat = (int) ((119 * _maxSat / 100) + 0.5);
-	}
+    // 100% equals sat=119 (= maximal saturation of valid RGB (R=255,G=B=0)
+    // 150% (=180) - 100% (=119) overshoot
+    int minSat = (int) ((119 * _minSat / 100) + 0.5);
+    int maxSat = (int) ((119 * _maxSat / 100) + 0.5);
 
 	// apply mask
 	for (int u = 0; u < 256; u++) {
+      const int destu = u-128;
       for (int v = 0; v < 256; v++) {
-        int destu = u-128;
-        int destv = v-128;
+        const int destv = v-128;
 		int iSat = 0; // won't be used in MaskHS; interpolation is skipped since p==0:
-		if (ProcessPixel(destv, destu, 0, allPixels, clockwise, startHue, endHue, maxSat, minSat, 0, deg, sq, &iSat)) {
+		if (allPixels || ProcessPixel(destv, destu, 0, startHue, endHue, maxSat, minSat, 0, iSat)) {
 		  mapY[(u<<8)|v] = maxY;
 		} else {
           mapY[(u<<8)|v] = minY;
@@ -685,8 +624,8 @@ MaskHS::MaskHS( PClip _child, int _startHue, int _endHue, int _maxSat, int _minS
 	}
 
 	vi.pixel_type = VideoInfo::CS_Y8;
-	}
-	catch (...) { throw; }
+  }
+  catch (...) { throw; }
 }
 
 
@@ -703,9 +642,6 @@ PVideoFrame __stdcall MaskHS::GetFrame(int n, IScriptEnvironment* env)
 	int dst_pitch = dst->GetPitch();
 	int height = src->GetHeight();
 	int row_size = src->GetRowSize();
-
-	int maxY = coring ? 235 : 255;
-	int minY = coring ? 16 : 0;
 
 	// show mask
 	if (child->GetVideoInfo().IsYUY2()) {
@@ -727,16 +663,20 @@ PVideoFrame __stdcall MaskHS::GetFrame(int n, IScriptEnvironment* env)
 		int heightu = src->GetHeight(PLANAR_U);
 		int swidth = child->GetVideoInfo().GetPlaneWidthSubsampling(PLANAR_U);
 		int sheight = child->GetVideoInfo().GetPlaneHeightSubsampling(PLANAR_U);
+        int sw = 1<<swidth;
+        int sh = 1<<sheight;
 		for (int y=0; y<heightu; ++y) {
 			for (int x=0; x<row_sizeu; ++x) {
-				for (int lumh=0; lumh<(1<<swidth); ++lumh) {
-					for (int lumv=0; lumv<(1<<sheight); ++lumv) {
-						dstp[lumv*src_pitch+(x<<swidth)+lumh] = mapY[( (srcpu[x])<<8 ) | srcpv[x]];
+				const BYTE mapped = mapY[( (srcpu[x])<<8 ) | srcpv[x]];
+                const int sx = x<<swidth;
+				// ::FIXME:: Should we really be PointResizing the mask here?
+				for (int lumv=0; lumv<sh; ++lumv) {
+					for (int lumh=0; lumh<sw; ++lumh) {
+						dstp[sx+lumh] = mapped;
 					}
+					dstp += dst_pitch;
 				}
 			}
-			srcp += (src_pitch<<sheight);
-			dstp += (dst_pitch<<sheight);
 			srcpu += srcu_pitch;
 			srcpv += srcu_pitch;
 		}
@@ -1040,7 +980,7 @@ PVideoFrame __stdcall Limiter::GetFrame(int n, IScriptEnvironment* env) {
       // Prepare for chroma
       row_size = frame->GetRowSize(PLANAR_U_ALIGNED);
       pitch = frame->GetPitch(PLANAR_U);
-      if (!row_size)
+      if (!pitch)
         return frame;
       
       if (!chroma_emulator) {
@@ -1070,11 +1010,15 @@ PVideoFrame __stdcall Limiter::GetFrame(int n, IScriptEnvironment* env) {
       }
       srcp += pitch;
     }
+    // Prepare for chroma
     srcp = frame->GetWritePtr(PLANAR_U);
     unsigned char* srcpV = frame->GetWritePtr(PLANAR_V);
     row_size = frame->GetRowSize(PLANAR_U);
     height = frame->GetHeight(PLANAR_U);
     pitch = frame->GetPitch(PLANAR_U);
+    if (!pitch)
+      return frame;
+
     for(y = 0; y < height; y++) {
       for(int x = 0; x < row_size; x++) {
         if(srcp[x] < min_chroma)
