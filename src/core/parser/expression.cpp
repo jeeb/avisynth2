@@ -36,6 +36,8 @@
 #include "stdafx.h"
 
 #include "expression.h"
+#include "../cache.h"
+#include "../cacheMT.h"
 #include "../cliplocalstorage.h"
 
 
@@ -490,7 +492,7 @@ AVSValue ExpVariableReference::Evaluate(IScriptEnvironment* env)
   }
   // Add cache to Bracketless call of argless function
   if (result.IsClip()) { // Tritical Jan 2006
-    return Cache::Create_Cache(AVSValue(&result, 1), 0, env);
+    return Cache::Create_Cache(result, 0, env);
   }
   return result;
 }
@@ -542,8 +544,7 @@ AVSValue ExpFunctionCall::Call(IScriptEnvironment* env)
   try {
     env->SaveClipLocalStorage();
     result = env->Invoke(name, AVSValue(args+1, arg_expr_count), arg_expr_names+1);
-	if(result.IsClip())
-      InsertCache(result,args,env,false);
+    InsertCache(result, args, env, false);
     delete[] args;
     return result;
   }
@@ -554,8 +555,7 @@ AVSValue ExpFunctionCall::Call(IScriptEnvironment* env)
         args[0] = env->GetVar("last");
 		env->SaveClipLocalStorage();
         result = env->Invoke(name, AVSValue(args, arg_expr_count+1), arg_expr_names);
-        if(result.IsClip())
-          InsertCache(result,args,env,true);
+        InsertCache(result, args, env, true);
         delete[] args;
         return result;
       }
@@ -590,7 +590,7 @@ AVSValue ExpFunctionCall::Evaluate(IScriptEnvironment* env)
 {
   AVSValue result = Call(env);
   if (result.IsClip()) {
-    return Cache::Create_Cache(AVSValue(&result, 1), 0, env);
+    return Cache::Create_Cache(result, 0, env);
   }
   return result;
 }
@@ -598,6 +598,8 @@ AVSValue ExpFunctionCall::Evaluate(IScriptEnvironment* env)
 
 void ExpFunctionCall::InsertCache(AVSValue &result,AVSValue *args,IScriptEnvironment* env,bool implicit_last)
 {
+  if (!result.IsClip()) return;
+
   switch(env->GetMTMode(false))
   {
     case -1:
@@ -606,7 +608,7 @@ void ExpFunctionCall::InsertCache(AVSValue &result,AVSValue *args,IScriptEnviron
     }
     case 0:
     {
-      result=new Cache(result.AsClip());
+      result = Cache::Create_Cache(result, 0, env);
       break;
     }
     case 1:
@@ -662,7 +664,7 @@ void ExpFunctionCall::InsertCache(AVSValue &result,AVSValue *args,IScriptEnviron
 	   for(int i=0;i<=arg_expr_count;i++)
 		   if(args[i].IsClip())  {
 			void* q=args[i].AsClip();
-			if(static_cast<CacheMT5*>(q)->signature!=('cach'+'eMT '+5))
+			if(static_cast<CacheMT5*>(q)->signature!=('cach'^'eMT '+5))
 				args[i]=new Mode5Gate(args[i].AsClip(),env);
 		   }
       result=new CacheMT5((env->Invoke(name, AVSValue(args+!implicit_last, arg_expr_count+implicit_last), arg_expr_names+!implicit_last)).AsClip(),env);

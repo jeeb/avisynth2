@@ -36,8 +36,6 @@
 #define __Expression_H__
 
 #include "../../internal.h"
-#include "../cache.h"
-#include "../cacheMT.h"
 
 
 /********************************************************************
