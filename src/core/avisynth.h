@@ -1,4 +1,6 @@
-// Avisynth v2.6.  Copyright 2002, 2005 Ben Rudiak-Gould et al.
+// Avisynth v2.5.  Copyright 2002, 2005 Ben Rudiak-Gould et al.
+// Avisynth v2.6.  Copyright 2006 Klaus Post.
+// Avisynth v2.6.  Copyright 2007 Ian Brabham.
 // http://www.avisynth.org
 
 // This program is free software; you can redistribute it and/or modify
@@ -19,19 +21,18 @@
 // Linking Avisynth statically or dynamically with other modules is making a
 // combined work based on Avisynth.  Thus, the terms and conditions of the GNU
 // General Public License cover the whole combination.
-//
-// As a special exception, the copyright holders of Avisynth give you
-// permission to link Avisynth with independent modules that communicate with
-// Avisynth solely through the interfaces defined in avisynth.h, regardless of
-// the license terms of these independent modules, and to copy and distribute
-// the resulting combined work under terms of your choice, provided that
-// every copy of the combined work is accompanied by a complete copy of
-// the source code of Avisynth (the version of Avisynth used to produce the
-// combined work), being distributed under the terms of the GNU General
-// Public License plus this exception.  An independent module is a module
-// which is not derived from or based on Avisynth, such as 3rd-party filters,
-// import and export plugins, or graphical user interfaces.
 
+
+/*
+Please NOTE! This version of avisynth.h DOES NOT have any special exemption!
+
+         While this version is under development you are fully
+       constrained by the terms of the GNU General Public License.
+
+ Any derivative software you may publish MUST include the full source code.
+
+    Normal licence conditions will be reapplied in a future version.
+*/
 
 
 
@@ -39,7 +40,7 @@
 #ifndef __AVISYNTH_H__
 #define __AVISYNTH_H__
 
-enum { AVISYNTH_INTERFACE_VERSION = 4 };
+enum { AVISYNTH_INTERFACE_VERSION = 5 };
 
 
 /* Define all types necessary for interfacing with avisynth.dll
