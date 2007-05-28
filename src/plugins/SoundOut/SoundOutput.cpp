@@ -116,7 +116,7 @@ SoundOutput::SoundOutput(PClip _child, IScriptEnvironment* _env) :
   params["nofilename"] = AVSValue(false);  // Setting this will disable prompt when Save is selected.
   params["useFilename"] = AVSValue("");  // Setting this will disable prompt when Save is selected, and use this filename instead.
   params["showProgress"] = AVSValue(true);  // Setting this will disable output progress window
-  params["overwriteFile"] = AVSValue("Always");  // Overwrite setting "Always", "Never", "Ask", "Newer"
+  params["overwriteFile"] = AVSValue("Ask");  // Overwrite setting "Yes", "No", "Ask"
   params["autoCloseWindow"] = AVSValue(false);
   input = new SampleFetcher(child, env);
   lastUpdateTick = GetTickCount();
@@ -198,6 +198,20 @@ void SoundOutput::startEncoding() {
       strcat_s(szFile,MAX_PATH+1,params["extension"].AsString());
 
     outputFile = _strdup(szFile);
+
+    HANDLE tmp = CreateFile(outputFile, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (INVALID_HANDLE_VALUE != tmp) {  // File exists
+      CloseHandle(tmp);
+      if (0 != _stricmp(params["overwriteFile"].AsString(), "Yes")) {  // If yes, just move on
+        if (0 == _stricmp(params["overwriteFile"].AsString(), "Ask")) {
+          int result = MessageBox(wnd, "The file you are trying to create, already exists, Overwrite?", "SoundOut: Overwrite File?", MB_YESNO|MB_ICONWARNING|MB_TOPMOST);
+          if (IDYES != result)
+            return;
+        } else {  // Then it must be no, or something else.
+          return;
+        }
+      }
+    }
   }
 
   if (!initEncoder())

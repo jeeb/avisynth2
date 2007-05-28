@@ -246,7 +246,7 @@ bool AC3Output::initEncoder() {
   aften.lfe = params["islfe"].AsBool();
 
   if (params["acmod"].AsInt() == -1) {
-    aften_plain_wav_to_acmod(vi.AudioChannels(), &aften.acmod, &aften.lfe);
+    aften_wav_channels_to_acmod(vi.AudioChannels(),0xFFFFFFFF, &aften.acmod, &aften.lfe);
   } else {
     aften.acmod = params["acmod"].AsInt();
     for (int i = 0; i<AC3_ChannelSize; i++) {
@@ -275,7 +275,7 @@ bool AC3Output::initEncoder() {
 
 void AC3Output::encodeBlock(unsigned char* in) {
   unsigned char frame[A52_MAX_CODED_FRAME_SIZE];
-  aften_remap_wav_to_a52(in,A52_FRAME_SIZE,aften.channels, aften.sample_format,aften.acmod);
+  aften_remap_wav_to_a52(in,A52_SAMPLES_PER_FRAME,aften.channels, aften.sample_format,aften.acmod);
   int out = aften_encode_frame(&aften, frame, in);
   if (out<0) {
     MessageBox(NULL,"Encoder error.","AC3 Encoder",MB_OK);
@@ -286,7 +286,7 @@ void AC3Output::encodeBlock(unsigned char* in) {
     MessageBox(NULL,"A Disk write error occured.","AC3 Encoder",MB_OK);
     exitThread = true;
   }
-  encodedSamples += A52_FRAME_SIZE;
+  encodedSamples += A52_SAMPLES_PER_FRAME;
   this->updateSampleStats(encodedSamples, vi.num_audio_samples);
 }
 
@@ -294,19 +294,19 @@ void AC3Output::encodeLoop() {
   fopen_s(&f, outputFile, "wbS");
   encodedSamples = 0;
   int sampleSize = vi.BytesPerAudioSample();
-  unsigned char* fwav = (unsigned char*)malloc(A52_FRAME_SIZE * sampleSize);  // Block sent to encoder
+  unsigned char* fwav = (unsigned char*)malloc(A52_SAMPLES_PER_FRAME * sampleSize);  // Block sent to encoder
   int fwav_n = 0;
   SampleBlock* sb;
   do {
     sb = input->GetNextBlock();
     char* inSamples = (char*)sb->getSamples();
-    while (sb->numSamples > A52_FRAME_SIZE - fwav_n && !exitThread) {  // We have enough to fill a frame
-      int cpBytes = (A52_FRAME_SIZE - fwav_n) * sampleSize;
+    while (sb->numSamples > A52_SAMPLES_PER_FRAME - fwav_n && !exitThread) {  // We have enough to fill a frame
+      int cpBytes = (A52_SAMPLES_PER_FRAME - fwav_n) * sampleSize;
       memcpy(&fwav[fwav_n*sampleSize], inSamples, cpBytes);
 
       encodeBlock(fwav);
       inSamples += cpBytes;
-      sb->numSamples -= A52_FRAME_SIZE - fwav_n;
+      sb->numSamples -= A52_SAMPLES_PER_FRAME - fwav_n;
       fwav_n = 0;
     }
     if (sb->numSamples && !exitThread) {  // We still have some samples left
@@ -318,7 +318,7 @@ void AC3Output::encodeLoop() {
   this->updateSampleStats(encodedSamples, vi.num_audio_samples, true);
 
   if (fwav_n && !exitThread) {
-    memset(&fwav[fwav_n*sampleSize], 0, (A52_FRAME_SIZE - fwav_n) * sampleSize);
+    memset(&fwav[fwav_n*sampleSize], 0, (A52_SAMPLES_PER_FRAME - fwav_n) * sampleSize);
     encodeBlock(fwav);
   }
 
