@@ -55,8 +55,6 @@ HWND hDlg;  // Windowhandle
 
 TCPServer::TCPServer(PClip _child, int port, IScriptEnvironment* env) : GenericVideoFilter(_child) {
 
-  if (vi.IsY8())
-    env->ThrowError("TCPServer: Cannot serve Y8 material");
 
   _RPT0(0, "TCPServer: Opening instance\n");
   s = new TCPServerListener(port, child, env);
@@ -232,7 +230,7 @@ void TCPServerListener::Listen() {
 
     bool anyconnected = false;
 	  bool anydatapending = false;
-    bool updateStats = (abs((int)(GetTickCount() - tick)) > 500);
+    bool updateStats = (abs((int)(GetTickCount() - tick)) > 100);
 
     for (i = 0; i < FD_SETSIZE; i++) {
       if (s_list[i].isConnected) {
@@ -349,7 +347,7 @@ void TCPServerListener::UpdateStatWindow(DWORD sinceLast) {
     StatClientsConnected, StatClientsTotalConnected,
     StatRequested, StatPrerequested,
     ((float)StatFramesLast * 1000.0f / (float)sinceLast), (int)(((float)StatBytesLast * 1000.0f) / ((float)sinceLast * 1024.0f)),
-    (int)(StatImgTransferred>>20), (int)(StatImgTransferredUC>>20), (int)(100.0f*(float)StatImgTransferred / (float)StatImgTransferredUC),
+    (int)(StatImgTransferred>>20), (int)(StatImgTransferredUC>>20), (int)(100.0f*(float)(StatImgTransferredUC - StatImgTransferred) / (float)StatImgTransferredUC),
     (int)(StatAudTransferred>>10)
     );
 
@@ -539,6 +537,9 @@ void TCPServerListener::CheckClientVersion(ServerReply* s, const char* request) 
   } else if (ccv->compression_supported & ServerFrameInfo::COMPRESSION_DELTADOWN_LZO) {
     delete s->client->compression;
     s->client->compression = new PredictDownLZO();
+  } else if (ccv->compression_supported & ServerFrameInfo::COMPRESSION_DELTADOWN_RLE) {
+    delete s->client->compression;
+    s->client->compression = new PredictDownRLE();
   }
 }
 
@@ -600,7 +601,7 @@ void TCPServerListener::SendFrameInfo(ServerReply* s, const char* request) {
   sfi.data_size = data_size;
 
   // Compress the data.
-  if (!child->GetVideoInfo().IsPlanar()) {
+  if (!child->GetVideoInfo().IsPlanar() || child->GetVideoInfo().IsY8()) {
     
     sfi.compression = s->client->compression->compression_type;
     sfi.compressed_bytes = s->client->compression->CompressImage(src->GetWritePtr(), src_rowsize, src_height, src_pitch);
@@ -648,7 +649,7 @@ void TCPServerListener::SendFrameInfo(ServerReply* s, const char* request) {
   s->setType(SERVER_SENDING_FRAME);
   // Send Reply
   memcpy(s->data, &sfi, sizeof(ServerFrameInfo));  
-  s->client->setStatus("Sending Frame %u Compression: %u of %ukB (%d%%)", f->n, sfi.compressed_bytes>>10,  sfi.data_size>>10, (int)(100.0f*sfi.compressed_bytes/sfi.data_size));
+  s->client->setStatus("Sending Frame %u Compression: %u of %ukB (%d%%)", f->n, sfi.compressed_bytes>>10,  sfi.data_size>>10, (int)(100.0f*(sfi.data_size-sfi.compressed_bytes)/sfi.data_size));
 
   // Update stats
   StatRequested++;

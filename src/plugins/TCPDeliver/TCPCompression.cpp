@@ -389,3 +389,100 @@ yloopback:
 }
 
 
+PredictDownRLE::PredictDownRLE() {
+  compression_type = ServerFrameInfo::COMPRESSION_DELTADOWN_RLE;
+}
+
+PredictDownRLE::~PredictDownRLE(void) {
+}
+/******************************
+ * Downwards deltaencoded.
+ ******************************/
+
+int PredictDownRLE::CompressImage(BYTE* image, int rowsize, int h, int pitch) {
+  // Pitch mod 16
+  // Height > 2
+  inplace = false;    
+  rowsize = (rowsize+15)&~15;
+    
+  __asm {
+    xor eax, eax        // x offset
+    mov ecx, [pitch]
+    mov edx, rowsize
+xloopback:
+    mov ebx, [h]
+    mov esi, [image]    // src
+    pxor mm4, mm4   // left
+    pxor mm5, mm5   // left2
+yloopback:
+    movq mm0, [esi+eax]   // temp
+    movq mm1, [esi+eax+8]   // temp
+    movq mm2, mm0
+    movq mm3, mm1
+    psubb mm0, mm4  // left - temp
+    psubb mm1, mm5  // left - temp
+    movq [esi+eax], mm0
+    movq [esi+eax+8], mm1
+    movq mm4, mm2  // left = temp
+    movq mm5, mm3  // left = temp
+    add esi, ecx  // Next line
+    dec ebx
+    jnz yloopback
+
+    add eax, 16
+    cmp eax, edx
+    jl xloopback
+
+    emms
+  }
+
+  int in_size = pitch*h;
+  unsigned int out_size = in_size*2;
+  dst = (BYTE*)_aligned_malloc(out_size, 16);
+  out_size = RLE_Compress(image, dst, in_size );
+
+  _RPT2(0, "TCPCompression: Compressed %d bytes into %d bytes.(RLE)\n", in_size, out_size);
+  return out_size;
+}
+ 
+int PredictDownRLE::DeCompressImage(BYTE* image, int rowsize, int h, int pitch, int in_size) {
+  // Pitch mod 16
+  // Height > 2
+  inplace = false;    
+  unsigned int dst_size = pitch*h;
+  dst = (BYTE*)_aligned_malloc(dst_size, 64);
+
+  RLE_Uncompress(image, dst, in_size);
+
+  rowsize = (rowsize+15)&~15;
+  image = dst;
+    
+  __asm {
+    xor eax, eax        // x offset
+    mov ecx, [pitch]
+    mov edx, rowsize
+xloopback:
+    mov ebx, [h]
+    mov esi, [image]    // src
+    pxor mm4, mm4   // left
+    pxor mm5, mm5   // left2
+yloopback:
+    movq mm0, [esi+eax]   // src
+    movq mm1, [esi+eax+8]   // src2
+    paddb mm4, mm0  // left + src
+    paddb mm5, mm1  // left + src
+    movq [esi+eax], mm4
+    movq [esi+eax+8], mm5
+    add esi, ecx  // Next line
+    dec ebx
+    jnz yloopback
+
+    add eax, 16
+    cmp eax, edx
+    jl xloopback
+
+    emms
+  }
+  _RPT2(0, "TCPCompression: Decompressed %d bytes into %d bytes.(RLE)\n", in_size, dst_size);
+  return dst_size;
+}

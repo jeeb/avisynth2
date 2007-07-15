@@ -145,11 +145,15 @@ PVideoFrame __stdcall TCPClient::GetFrame(int n, IScriptEnvironment* env) {
           t = (TCPCompression*)new PredictDownGZip();
           break;
         }
+      case ServerFrameInfo::COMPRESSION_DELTADOWN_RLE: {
+          t = (TCPCompression*)new PredictDownRLE();
+          break;
+        }
       default:
         env->ThrowError("TCPClient: Unknown compression.");
     }
 
-    if (!vi.IsPlanar()) {
+    if (!vi.IsPlanar() || vi.IsY8()) {
       t->DeCompressImage(srcp, fi->row_size, fi->height, fi->pitch, fi->compressed_bytes);
       env->BitBlt(dstp, frame->GetPitch(), t->dst, incoming_pitch, frame->GetRowSize(), frame->GetHeight());
       if (!t->inplace) {
@@ -331,6 +335,7 @@ TCPClientThread::TCPClientThread(const char* hostname, int port, const char* com
   ccv.minor = TCPDELIVER_MINOR;
   ccv.compression_supported = ServerFrameInfo::COMPRESSION_DELTADOWN_LZO |
     ServerFrameInfo::COMPRESSION_DELTADOWN_HUFFMAN |
+    ServerFrameInfo::COMPRESSION_DELTADOWN_RLE |
     ServerFrameInfo::COMPRESSION_DELTADOWN_GZIP;
 
   if (compression) {  // Override compression if specified.
@@ -342,6 +347,8 @@ TCPClientThread::TCPClientThread(const char* hostname, int port, const char* com
       ccv.compression_supported = ServerFrameInfo::COMPRESSION_DELTADOWN_HUFFMAN;
     } else if (!lstrcmpi(compression, "gzip")) {
       ccv.compression_supported = ServerFrameInfo::COMPRESSION_DELTADOWN_GZIP;
+    } else if (!lstrcmpi(compression, "rle")) {
+      ccv.compression_supported = ServerFrameInfo::COMPRESSION_DELTADOWN_RLE;
     } else {
       env->ThrowError("TCPSource: Unknown Compression type specified.");
     }

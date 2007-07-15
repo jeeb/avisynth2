@@ -40,6 +40,7 @@
 #include "lzo/include/lzo1x.h"
 #include "lzo/include/lzo_asm.h"
 #include "huffman.h"
+#include "rle.h"
 #include "TCPCommon.h"
 #include "avisynth.h"
 #include <malloc.h>
@@ -74,7 +75,7 @@ public:
 
   virtual int CompressImage(BYTE* image, int rowsize, int h, int pitch);  // returns new size
   virtual int DeCompressImage(BYTE* image, int rowsize, int h, int pitch, int data_size); // returns new size
-
+  virtual char* GetName() {return "No Compression";}
 
   BYTE* dst;      // Must always be deallocated using _aligned_free().
   int compression_type;
@@ -89,6 +90,7 @@ public:
 
   int CompressImage(BYTE* image, int rowsize, int h, int pitch);
   int DeCompressImage(BYTE* image, int rowsize, int h, int pitch, int data_size);
+  virtual char* GetName() {return "Delta+LZO";}
 private:
   lzo_bytep wrkmem; 
 
@@ -101,6 +103,7 @@ public:
 
   int CompressImage(BYTE* image, int rowsize, int h, int pitch);
   int DeCompressImage(BYTE* image, int rowsize, int h, int pitch, int data_size);
+  virtual char* GetName() {return "Delta+Huffman";}
 };
 
 class PredictDownGZip : public TCPCompression {
@@ -110,8 +113,19 @@ public:
 
   int CompressImage(BYTE* image, int rowsize, int h, int pitch);
   int DeCompressImage(BYTE* image, int rowsize, int h, int pitch, int data_size);
+  virtual char* GetName() {return "Delta+GZip";}
 private:
   z_stream_s *z;
+};
+
+class PredictDownRLE : public TCPCompression {
+public:
+  PredictDownRLE();
+  virtual ~PredictDownRLE(void);
+
+  int CompressImage(BYTE* image, int rowsize, int h, int pitch);
+  int DeCompressImage(BYTE* image, int rowsize, int h, int pitch, int data_size);
+  virtual char* GetName() {return "Delta+RLE";}
 };
 
 #endif

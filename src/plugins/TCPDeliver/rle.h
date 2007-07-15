@@ -1,7 +1,7 @@
 /*************************************************************************
-* Name:        huffman.h
+* Name:        rle.h
 * Author:      Marcus Geelnard
-* Description: Huffman coder/decoder interface.
+* Description: RLE coder/decoder interface.
 * Reentrant:   Yes
 *-------------------------------------------------------------------------
 * Copyright (c) 2003-2006 Marcus Geelnard
@@ -29,8 +29,8 @@
 * marcus.geelnard at home.se
 *************************************************************************/
 
-#ifndef _huffman_h_
-#define _huffman_h_
+#ifndef _rle_h_
+#define _rle_h_
 
 #ifdef __cplusplus
 extern "C" {
@@ -41,14 +41,14 @@ extern "C" {
 * Function prototypes
 *************************************************************************/
 
-int Huffman_Compress( unsigned char *in, unsigned char *out,
-                      unsigned int insize );
-void Huffman_Uncompress( unsigned char *in, unsigned char *out,
-                         unsigned int insize, unsigned int outsize );
+int RLE_Compress( unsigned char *in, unsigned char *out,
+                  unsigned int insize );
+void RLE_Uncompress( unsigned char *in, unsigned char *out,
+                     unsigned int insize );
 
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* _huffman_h_ */
+#endif /* _rle_h_ */

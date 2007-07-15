@@ -244,6 +244,10 @@
 				</FileConfiguration>
 			</File>
 			<File
+				RelativePath=".\rle.c"
+				>
+			</File>
+			<File
 				RelativePath="StdAfx.cpp"
 				>
 				<FileConfiguration
@@ -382,6 +386,10 @@
 			</File>
 			<File
 				RelativePath=".\resource.h"
+				>
+			</File>
+			<File
+				RelativePath=".\rle.h"
 				>
 			</File>
 			<File
