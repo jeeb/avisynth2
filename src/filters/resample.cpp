@@ -134,6 +134,7 @@ FilteredResizeH::FilteredResizeH( PClip _child, double subrange_left, double sub
 	catch (...) { throw; }
 }
 
+
 /***********************************
  * Dynamically Assembled Resampler
  *
@@ -153,10 +154,14 @@ FilteredResizeH::FilteredResizeH( PClip _child, double subrange_left, double sub
 
 
 DynamicAssembledCode FilteredResizeH::GenerateResizer(int gen_plane, IScriptEnvironment* env) {
-  __declspec(align(8))static const __int64 FPround = 0x0000200000002000; // 16384/2
-  __declspec(align(8)) static const __int64 Mask1 =  0x00000000ffff0000;
-  __declspec(align(8)) static const __int64 Mask3 =  0x000000000000ffff;
-
+  __declspec(align(8))static const __int64 FPround = 0x0000200000002000; // 16384/2  
+  __declspec(align(8)) static const __int64 Mask1_pix =  0x00000000000000ff;
+  __declspec(align(8)) static const __int64 Mask2_pix =  0x000000000000ffff;
+  __declspec(align(8)) static const __int64 Mask3_pix =  0x0000000000ffffff;
+  __declspec(align(8)) static const __int64 Mask1_pix_inv =  0xffffffffffffff00;
+  __declspec(align(8)) static const __int64 Mask2_pix_inv =  0xffffffffffff0000;
+  __declspec(align(8)) static const __int64 Mask3_pix_inv =  0xffffffffff000000;
+  
   Assembler x86;   // This is the class that assembles the code.
 
   // Set up variables for this plane.
@@ -209,6 +214,8 @@ DynamicAssembledCode FilteredResizeH::GenerateResizer(int gen_plane, IScriptEnvi
   int filter_offset=fir_filter_size*8+8;  // This is the length from one pixel pair to another
   int* cur_luma = array+2;
 
+  int six_loops = (vi_dst_width-2)/6;  // How many loops can we do safely, with 6 pixels.
+
   if (true) {
     // Store registers
     x86.push(eax);
@@ -231,8 +238,8 @@ DynamicAssembledCode FilteredResizeH::GenerateResizer(int gen_plane, IScriptEnvi
 
     x86.mov(eax,dword_ptr [&gen_dstp]);
     x86.mov(dword_ptr [&gen_temp_destp],eax);
-
-    x86.mov(dword_ptr [&gen_x],(1+vi_dst_width)/6);
+   
+    x86.mov(dword_ptr [&gen_x],six_loops);
     x86.mov(edi, dword_ptr[&tempY]);
     x86.mov(esi, dword_ptr[&gen_srcp]);
 
@@ -362,50 +369,75 @@ DynamicAssembledCode FilteredResizeH::GenerateResizer(int gen_plane, IScriptEnvi
 
     // Process any remaining pixels
 
-    int remainy = vi_dst_width%6;
-    if (remainy==1)
-      remainy=0;
+    int remainy = vi_dst_width-(six_loops*6);
 
-    if (remainy) {
-      remainy++;
-      remainy/=2;  // This will be either 1 or 2.
-      remainy--;   // 0 if two pixels 1 if four.
-      x86.mov(eax,dword_ptr [edi]);
-      x86.mov(ebx,dword_ptr [edi+4]);
-      x86.pxor(mm3,mm3);
-      if (remainy) {
-        x86.mov(ecx,dword_ptr [edi+filter_offset]);
-        x86.mov(edx,dword_ptr [edi+filter_offset+4]);
-        x86.pxor(mm4,mm4);
+    while (remainy) {
+      switch (remainy) {
+        default: // Treat >4 as 4, must loop again to process remaining pixel
+        case 4:
+          x86.mov(edx,dword_ptr [edi+filter_offset+4]);
+        case 3:
+          x86.mov(ecx,dword_ptr [edi+filter_offset]);
+          x86.pxor(mm4,mm4);  // Used for pix 3+4
+        case 2:
+          x86.mov(ebx,dword_ptr [edi+4]);
+        case 1:
+        x86.mov(eax,dword_ptr [edi]);
+        x86.pxor(mm3,mm3);  // Used for pix 1+2
       }
+
       x86.add(edi,8); // cur_luma++
       for (i=0;i<fir_filter_size;i++) {
         x86.movd(mm0, dword_ptr [eax+i*4]);
-        if (remainy) x86.movd(mm1, dword_ptr [ecx+i*4]);
+        if (remainy>2) 
+          x86.movd(mm1, dword_ptr [ecx+i*4]);
         x86.punpckldq(mm0, qword_ptr[ebx+i*4]);
-        if (remainy) x86.punpckldq(mm1, qword_ptr[edx+i*4]);
+        if (remainy>2) 
+          x86.punpckldq(mm1, qword_ptr[edx+i*4]);
         x86.pmaddwd(mm0, qword_ptr[edi+i*8]);
-        if (remainy) x86.pmaddwd(mm1, qword_ptr[edi+filter_offset+(i*8)]);
+        if (remainy>2) 
+          x86.pmaddwd(mm1, qword_ptr[edi+filter_offset+(i*8)]);
         x86.paddd(mm3, mm0);
-        if (remainy) x86.paddd(mm4, mm1);
+        if (remainy>2) 
+          x86.paddd(mm4, mm1);
       }
       x86.paddd(mm3,mm7);
-      if (remainy) x86.paddd(mm4,mm7);
+      if (remainy>2) x86.paddd(mm4,mm7);
       x86.psrad(mm3,14);
-      if (remainy) { // Four pixels
-        x86.psrad(mm4,14);
+      x86.mov(eax,dword_ptr[&gen_temp_destp]);
+
+      if (remainy>3) { //Four pixels or more
+	      x86.psrad(mm4,14);
         x86.packssdw(mm3, mm4);      // [...3 ...2] [...1 ...0] => [.3 .2 .1 .0]
-        x86.mov(eax,dword_ptr[&gen_temp_destp]);
         x86.packuswb(mm3, mm6);      // [.. .. .. ..] [.3 .2 .1 .0] => [....3210]
-      } else { // Two pixels
-        x86.packssdw(mm3, mm6);      // [.... ....] [...1 ...0] => [.. .. .1 .0]
-        x86.mov(eax,dword_ptr[&gen_temp_destp]);
+	    } else  { // Less than 4 pixels
+        if (remainy>2) {
+	        x86.psrad(mm4,14);
+          x86.packssdw(mm3, mm4);      // [...3 ...2] [...1 ...0] => [.3 .2 .1 .0]
+        } else {
+          x86.packssdw(mm3, mm6);      // [.... ....] [...1 ...0] => [.. .. .1 .0]
+        }
         x86.packuswb(mm3, mm6);      // [.. .. .. ..] [.. .. .1 .0] => [......10]
         x86.movd(mm0,dword_ptr[eax]);
-        x86.pand(mm0,qword_ptr[(int)&Mask1]);
+        if (remainy == 3) {
+          x86.pand(mm0,qword_ptr[(int)&Mask3_pix_inv]);
+          x86.pand(mm3,qword_ptr[(int)&Mask3_pix]);
+        } else if (remainy == 2) {
+          x86.pand(mm0,qword_ptr[(int)&Mask2_pix_inv]);
+          x86.pand(mm3,qword_ptr[(int)&Mask2_pix]);
+        } else {
+          x86.pand(mm0,qword_ptr[(int)&Mask1_pix_inv]);
+          x86.pand(mm3,qword_ptr[(int)&Mask1_pix]);
+        }
         x86.por(mm3,mm0);
       }
-      x86.movd(dword_ptr[eax],mm3);
+      
+      x86.movd(dword_ptr[eax],mm3); 
+      remainy = max(0,remainy-4);
+      if (remainy) {
+        x86.add(dword_ptr [&gen_temp_destp],4);
+        x86.add(edi,filter_offset*2-8);
+      }
     }
     // End remaining pixels
 
@@ -442,26 +474,16 @@ PVideoFrame __stdcall FilteredResizeH::GetFrame(int n, IScriptEnvironment* env)
   int src_pitch = src->GetPitch();
   int dst_pitch = dst->GetPitch();
   if (vi.IsPlanar()) {
-    int plane = 0;
-    if (use_dynamic_code) {  // Use dynamic compilation?
-      gen_src_pitch = src_pitch;
-      gen_dst_pitch = dst_pitch;
-      gen_srcp = (BYTE*)srcp;
-      gen_dstp = dstp;
-      assemblerY.Call();
-      if (src->GetRowSize(PLANAR_U)) {  // Y8 is finished here
-        gen_src_pitch = src->GetPitch(PLANAR_U);
-        gen_dst_pitch = dst->GetPitch(PLANAR_U);
-
-        if (vi.IsVPlaneFirst()) {  // Process in order - also to avoid 2 byte overwrite, when rowsize=pitch=(mod6 rowsize).
-          gen_srcp = (BYTE*)src->GetReadPtr(PLANAR_V);
-          gen_dstp = dst->GetWritePtr(PLANAR_V);
-          assemblerUV.Call();
-
-          gen_srcp = (BYTE*)src->GetReadPtr(PLANAR_U);
-          gen_dstp = dst->GetWritePtr(PLANAR_U);
-          assemblerUV.Call();
-        } else {
+      int plane = 0;
+      if (use_dynamic_code) {  // Use dynamic compilation?
+        gen_src_pitch = src_pitch;
+        gen_dst_pitch = dst_pitch;
+        gen_srcp = (BYTE*)srcp;
+        gen_dstp = dstp;
+        assemblerY.Call();
+        if (src->GetRowSize(PLANAR_U)) { // Y8 is finished here
+          gen_src_pitch = src->GetPitch(PLANAR_U);
+          gen_dst_pitch = dst->GetPitch(PLANAR_U);
           gen_srcp = (BYTE*)src->GetReadPtr(PLANAR_U);
           gen_dstp = dst->GetWritePtr(PLANAR_U);
           assemblerUV.Call();
@@ -469,7 +491,6 @@ PVideoFrame __stdcall FilteredResizeH::GetFrame(int n, IScriptEnvironment* env)
           gen_srcp = (BYTE*)src->GetReadPtr(PLANAR_V);
           gen_dstp = dst->GetWritePtr(PLANAR_V);
           assemblerUV.Call();
-        }
       }
       return dst;
     }
