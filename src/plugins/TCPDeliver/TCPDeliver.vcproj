@@ -120,7 +120,7 @@
 			IntermediateDirectory=".\Release"
 			ConfigurationType="2"
 			InheritedPropertySheets="$(VCInstallDir)VCProjectDefaults\UpgradeFromVC60.vsprops"
-			UseOfMFC="0"
+			UseOfMFC="2"
 			ATLMinimizesCRunTimeLibraryUsage="false"
 			CharacterSet="2"
 			>
@@ -148,10 +148,10 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="2"
-				InlineFunctionExpansion="1"
+				InlineFunctionExpansion="2"
 				EnableIntrinsicFunctions="true"
 				FavorSizeOrSpeed="1"
-				OmitFramePointers="true"
+				OmitFramePointers="false"
 				EnableFiberSafeOptimizations="true"
 				WholeProgramOptimization="true"
 				PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_USRDLL;TCPDELIVER_EXPORTS"
@@ -180,9 +180,9 @@
 				Name="VCLinkerTool"
 				AdditionalDependencies="odbc32.lib odbccp32.lib ws2_32.lib lzo/lzo2.lib zlib/lib/zlibstat.lib User32.lib"
 				OutputFile=".\Release/TCPDeliver.dll"
-				LinkIncremental="2"
+				LinkIncremental="1"
 				SuppressStartupBanner="true"
-				IgnoreDefaultLibraryNames="libcmt.lib;libc.lib"
+				IgnoreDefaultLibraryNames="libc.lib;MSVCRT.lib"
 				ProgramDatabaseFile=".\Release/TCPDeliver.pdb"
 				LinkTimeCodeGeneration="1"
 				ImportLibrary=".\Release/TCPDeliver.lib"
@@ -428,6 +428,14 @@
 			<File
 				RelativePath=".\ClientGUI.rc"
 				>
+				<FileConfiguration
+					Name="Release|Win32"
+					>
+					<Tool
+						Name="VCResourceCompilerTool"
+						Culture="0"
+					/>
+				</FileConfiguration>
 			</File>
 		</Filter>
 	</Files>
