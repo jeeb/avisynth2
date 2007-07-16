@@ -12,10 +12,9 @@ namespace SoftWire
 	public:
 		InstructionSet();
 
-		~InstructionSet();
+		virtual ~InstructionSet();
 
 		const Instruction *instruction(int i);
-		Instruction *query(const char *mnemonic) const;
 
 	private:
 		struct Entry
@@ -27,18 +26,14 @@ namespace SoftWire
 			Instruction *instruction;
 		};
 
-		Entry *instructionMap;
-		Instruction **intrinsicMap;
+		Instruction *intrinsicMap;
 
-		static int compareSyntax(const void *syntax1, const void *syntax2);
-		static int compareEntry(const void *mnemonic, const void *entry);
-
-		static Instruction::Syntax instructionSet[];
-
-		static int numInstructions();
-		static int numMnemonics();
+		static const Instruction::Syntax instructionSet[];
+		static const int numInstructions;
 
 		void generateIntrinsics();
+
+		static int strcmp(const char *string1, const char *string2);
 	};
 }
 

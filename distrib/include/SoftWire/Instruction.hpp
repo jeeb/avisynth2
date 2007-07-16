@@ -36,6 +36,7 @@ namespace SoftWire
 		BYTE_IMM	= ('i' << 8) | 'b',
 		WORD_IMM	= ('i' << 8) | 'w',
 		DWORD_IMM	= ('i' << 8) | 'd',
+		QWORD_IMM	= ('i' << 8) | 'q',
 		BYTE_REL	= ('-' << 8) | 'b',
 		DWORD_REL	= ('-' << 8) | 'i',
 		LOCK_PRE	= ('p' << 8) | '0',
@@ -79,7 +80,10 @@ namespace SoftWire
 			CPU_SMM			= 0x00040000,   // System Management Mode, standby mode
 
 			CPU_UNDOC		= 0x00080000,   // Undocumented, also not supported by Visual Studio inline assembler
-			CPU_PRIV		= 0x00100000    // Priviledged, run-time compiled OS kernel anyone?
+			CPU_PRIV		= 0x00100000,   // Priviledged
+
+			CPU_X64			= 0x00200000 | CPU_SSE2,    // x86-64
+			CPU_INVALID64	= 0x00400000    // Invalid instruction in x86-64 long mode
 		};
 
 		struct Syntax
@@ -90,23 +94,13 @@ namespace SoftWire
 			int flags;
 		};
 
-		Instruction(const Syntax &instruction);
+		Instruction();
+		Instruction(const Syntax *syntax);
 
 		~Instruction();
 
-		Instruction *getNext() const;
-
-		void attach(Instruction *instruction);
-		void attachNew(const Syntax &instruction);
+		Instruction &operator=(const Instruction &instruction);
 		
-		void resetMatch();
-		bool matchSyntax() const;
-		void matchMnemonic(const char *mnemonic);
-		void matchSpecifier(Specifier::Type sizeSpecifier);
-		void matchFirstOperand(const Operand &operand);
-		void matchSecondOperand(const Operand &operand);
-		void matchThirdOperand(const Operand &operand);
-
 		Operand::Type getFirstOperand() const;
 		Operand::Type getSecondOperand() const;
 		Operand::Type getThirdOperand() const;
@@ -115,21 +109,19 @@ namespace SoftWire
 		const char *getOperandSyntax() const;
 		const char *getEncoding() const;
 		
+		bool is16Bit() const;
 		bool is32Bit() const;
+		bool is64Bit() const;
+		bool isInvalid64() const;
 
 		int approximateSize() const;
 
 	private:
-		bool syntaxMatch;
-
-		const Syntax &syntax;
+		const Syntax *syntax;
 		Specifier::Type specifier;
 		Operand::Type firstOperand;
 		Operand::Type secondOperand;
 		Operand::Type thirdOperand;
-		int flags;
-
-		Instruction *next;
 
 		void extractOperands(const char *syntax);
 	};

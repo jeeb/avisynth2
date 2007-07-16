@@ -11,9 +11,9 @@ namespace SoftWire
 	class Loader
 	{
 	public:
-		Loader(const Linker &linker);
+		Loader(const Linker &linker, bool x64);
 
-		~Loader();
+		virtual ~Loader();
 
 		void (*callable(const char *entryLabel = 0))();
 		void (*finalize(const char *entryLabel = 0))();
@@ -23,6 +23,8 @@ namespace SoftWire
 
 		const char *getListing();
 		void clearListing();
+		void reset();
+		int instructionCount();
 
 	private:
 		const Linker &linker;
@@ -32,6 +34,7 @@ namespace SoftWire
 		unsigned char *machineCode;
 		char *listing;
 
+		const bool x64;   // Long mode
 		bool possession;
 		bool finalized;
 
