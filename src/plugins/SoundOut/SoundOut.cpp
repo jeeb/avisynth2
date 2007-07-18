@@ -97,7 +97,6 @@ extern "C" __declspec(dllexport) const char* __stdcall AvisynthPluginInit2(IScri
   p.erase("extension");
   p.erase("useFilename");
   p.erase("showProgress");
-  p.erase("overwriteFile");
 
   memset(buf,0,sizeof(buf));
   strcat_s(buf,4096,"c[output]s[filename]s[showprogress]b[autoclose]b[silentblock]b[addvideo]b");
@@ -156,12 +155,12 @@ const char* t_GB="GB";
 SoundOut::SoundOut(AVSValue args, IScriptEnvironment* _env) : GenericVideoFilter(args[0].AsClip()), currentOut(0), env(_env) {
   guiThread = 0;
   wnd = 0;
-  blockRequests = false;
   generateVideo = false;
   if (!vi.HasAudio()) {
     MessageBox(NULL,"No audio found in clip. I will just go away!","SoundOut",MB_OK);
     return;
   }
+  blockRequests = true;
 
   if (args[2].Defined()) {
     xferParams["useFilename"] = args[2];
@@ -233,14 +232,17 @@ void SoundOut::startUp() {
     if (!_stricmp(type,"ogg"))
       out = new VorbisOutput(child,env);
 
-    if (!out)
+    if (!out) {
+      blockRequests = false;  // Error - let allow it to destroy itself.
       env->ThrowError("SoundOut: Output type not recognized.");
+    }
     out->parent = this;
     passSettings(out);
     disableControls();
     out->startEncoding();
   } else {
     openGUI();
+    blockRequests = false;  // We open GUI, so now we no longer need to block requests.
   }
 }
 

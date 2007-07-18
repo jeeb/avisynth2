@@ -42,5 +42,6 @@ public:
   virtual bool setParamsToGUI();
 private:
   twolame_options* encodeOptions;
+  FILE *f;
 
 };

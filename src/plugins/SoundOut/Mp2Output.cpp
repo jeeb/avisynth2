@@ -314,12 +314,14 @@ bool Mp2Output::initEncoder() {
     MessageBox(NULL,"An encoder error occured while setting 'twolame_init_params'","MP2 Encoder",MB_OK);
     return false;
   }
+  if (fopen_s(&f, outputFile, "wbS")) {
+    MessageBox(NULL,"Could not open file for writing","MP2 Encoder",MB_OK);
+    return false;
+  }
   return true;
 }
 
 void Mp2Output::encodeLoop() {
-  FILE *f;
-  fopen_s(&f, outputFile, "wbS");
   unsigned char *outbuffer = (unsigned char*)malloc(BLOCKSAMPLES);
   __int64 encodedBytes = 0;
   __int64 encodedSamples = 0;

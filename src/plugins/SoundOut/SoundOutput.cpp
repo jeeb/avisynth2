@@ -203,7 +203,7 @@ void SoundOutput::startEncoding() {
     if (INVALID_HANDLE_VALUE != tmp) {  // File exists
       CloseHandle(tmp);
       if (0 != _stricmp(params["overwriteFile"].AsString(), "Yes")) {  // If yes, just move on
-        if (0 == _stricmp(params["overwriteFile"].AsString(), "Ask")) {
+        if (0 == _stricmp(params["overwriteFile"].AsString(), "Ask") || (!params["nofilename"].AsBool())) {
           int result = MessageBox(wnd, "The file you are trying to create, already exists, Overwrite?", "SoundOut: Overwrite File?", MB_YESNO|MB_ICONWARNING|MB_TOPMOST);
           if (IDYES != result)
             return;
