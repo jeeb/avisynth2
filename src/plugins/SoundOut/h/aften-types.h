@@ -1,6 +1,6 @@
 /**
  * Aften: A/52 audio encoder
- * Copyright (c) 2006-2007 Justin Ruggles <justinruggles@bellsouth.net>
+ * Copyright (c) 2006-2007 Justin Ruggles
  *               2006-2007 Prakash Punnoor <prakash@punnoor.de>
  *
  * Based on "The simplest AC3 encoder" from FFmpeg
@@ -97,17 +97,47 @@ enum {
 };
 
 /**
+ * SIMD instruction sets
+ */
+typedef struct {
+    int mmx;
+    int sse;
+    int sse2;
+    int sse3;
+    int ssse3;
+    int amd_3dnow;
+    int amd_3dnowext;
+    int amd_sse_mmx;
+    int altivec;
+} AftenSimdInstructions;
+
+/**
+ * Performance related parameters
+ */
+typedef struct {
+    /**
+     * Number of threads
+     * How many threads should be used.
+     * Default value is 0, which indicates detecting number of CPUs.
+     * Maximum value is AFTEN_MAX_THREADS.
+     */
+    int n_threads;
+
+    /**
+     * Available SIMD instruction sets; shouldn't be modified
+     */
+    AftenSimdInstructions available_simd_instructions;
+
+    /**
+     * Wanted SIMD instruction sets
+     */
+    AftenSimdInstructions wanted_simd_instructions;
+} AftenSystemParams;
+
+/**
  * Parameters which affect encoded audio output
  */
 typedef struct {
-
-    /**
-     * Verbosity level.
-     * 0 is quiet mode. 1 and 2 are more verbose.
-     * default is 1
-     */
-    int verbose;
-
     /**
      * Bitrate selection mode.
      * AFTEN_ENC_MODE_CBR : constant bitrate
@@ -218,14 +248,6 @@ typedef struct {
     DynRngProfile dynrng_profile;
 
     /**
-     * Number of threads
-     * How many threads should be used.
-     * Default value is 0, which indicates detecting number of CPUs.
-     * Maximum value is AFTEN_MAX_THREADS.
-     */
-    int n_threads;
-
-    /**
      * Minimum bandwidth code.
      * For use with variable bandwidth mode, this option determines the
      * minimum value for the bandwidth code.
@@ -248,7 +270,6 @@ typedef struct {
  * See the A/52 specification for details regarding the metadata.
  */
 typedef struct {
-
     /** Center mix level */
     int cmixlev;
 
@@ -307,10 +328,17 @@ typedef struct {
  * libaften public encoding context
  */
 typedef struct {
-
     AftenEncParams params;
     AftenMetadata meta;
     AftenStatus status;
+    AftenSystemParams system;
+
+    /**
+     * Verbosity level.
+     * 0 is quiet mode. 1 and 2 are more verbose.
+     * default is 1
+     */
+    int verbose;
 
     /**
      * Total number of channels in the input stream.

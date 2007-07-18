@@ -315,12 +315,12 @@ void AC3Output::encodeLoop() {
       sb->numSamples = 0;
     }
  } while (!sb->lastBlock && !exitThread);
-  this->updateSampleStats(encodedSamples, vi.num_audio_samples, true);
 
   if (fwav_n && !exitThread) {
     memset(&fwav[fwav_n*sampleSize], 0, (A52_SAMPLES_PER_FRAME - fwav_n) * sampleSize);
     encodeBlock(fwav);
   }
+  this->updateSampleStats(encodedSamples, vi.num_audio_samples, true);
 
 	aften_encode_close(&aften);
   fclose(f);
