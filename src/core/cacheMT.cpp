@@ -687,19 +687,19 @@ void __stdcall CacheMT::GetAudio(void* buf, __int64 start, __int64 count, IScrip
 
   if ( (!vi.HasAudio()) || (start+count <= 0) || (start >= vi.num_audio_samples)) {
     // Complely skip.
-    FillZeros(buf, 0, count);
+    FillZeros(buf, 0, (int)count);
     return;
   }
 
   if (start < 0) {  // Partial initial skip
-    FillZeros(buf, 0, -start);  // Fill all samples before 0 with silence.
+    FillZeros(buf, 0, (int)-start);  // Fill all samples before 0 with silence.
     count += start;  // Subtract start bytes from count.
     buf = ((BYTE*)buf) - (int)(start*vi.BytesPerAudioSample());   
     start = 0;
   }
 
   if (start+count >= vi.num_audio_samples) {  // Partial ending skip
-    FillZeros(buf, 0 , count);  // Fill all samples
+    FillZeros(buf, 0 , (int)count);  // Fill all samples
     count = (vi.num_audio_samples - start);
   }
 
@@ -750,7 +750,7 @@ void __stdcall CacheMT::GetAudio(void* buf, __int64 start, __int64 count, IScrip
 
     if (ac_too_small_count > 2 && (maxsamplecount < vi.AudioSamplesFromBytes(4095*1024))) {  // Max size = 4MB!
       //automatically upsize cache!
-      int new_size = vi.BytesFromAudioSamples(count)+1024;
+      int new_size = (int)vi.BytesFromAudioSamples(count)+1024;
       new_size = min(4096*1024, new_size);
       _RPT2(0, "CacheAudio:%x: Autoupsizing buffer to %d bytes!", this, new_size);
       SetCacheHints(CACHE_AUDIO, new_size); // updates maxsamplecount!!
@@ -762,7 +762,7 @@ void __stdcall CacheMT::GetAudio(void* buf, __int64 start, __int64 count, IScrip
     cache_start = start+count-cache_count;
     BYTE *buff=(BYTE *)buf;
     buff += vi.BytesFromAudioSamples(cache_start - start);
-    memcpy(cache, buff, vi.BytesFromAudioSamples(cache_count));
+    memcpy(cache, buff, (size_t)vi.BytesFromAudioSamples(cache_count));
     return;
   }
 
@@ -777,14 +777,14 @@ void __stdcall CacheMT::GetAudio(void* buf, __int64 start, __int64 count, IScrip
   } else {  //at least start sample is in cache
     if ( start + count > cache_start + cache_count ) {//cache is too short. Else all is already in the cache
       if ((start - cache_start + count)>maxsamplecount) {  //cache shifting is necessary
-        shiftsamples = start - cache_start + count - maxsamplecount;
+        shiftsamples = (int)(start - cache_start + count - maxsamplecount);
 
 // Q. Why this test? - A. To make the most of having to do a memmove
         if ( (start - cache_start)/2 > shiftsamples ) {  //shift half cache if possible
-          shiftsamples = (start - cache_start)/2;
+          shiftsamples = (int)((start - cache_start)/2);
         }
 
-        memmove(cache, cache+shiftsamples*samplesize,(cache_count-shiftsamples)*samplesize);
+        memmove(cache, cache+shiftsamples*samplesize,(size_t)((cache_count-shiftsamples)*samplesize));
 
         cache_start = cache_start + shiftsamples;
         cache_count = cache_count - shiftsamples;
@@ -798,7 +798,7 @@ void __stdcall CacheMT::GetAudio(void* buf, __int64 start, __int64 count, IScrip
   }
 
   //copy cache to buf
-  memcpy(buf,cache + (start - cache_start)*samplesize, count*samplesize);
+  memcpy(buf,cache + (start - cache_start)*samplesize, (size_t)(count*samplesize));
 
 }
 

@@ -141,12 +141,12 @@ void __stdcall ConvertToMono::GetAudio(void* buf, __int64 start, __int64 count, 
   if (tempbuffer_size) {
     if (tempbuffer_size < count) {
       delete[] tempbuffer;
-      tempbuffer = new char[count * channels * vi.BytesPerChannelSample()];
-      tempbuffer_size = count;
+      tempbuffer = new char[(unsigned int)(count * channels * vi.BytesPerChannelSample())];
+      tempbuffer_size = (int)count;
     }
   } else {
-    tempbuffer = new char[count * channels * vi.BytesPerChannelSample()];
-    tempbuffer_size = count;
+    tempbuffer = new char[(unsigned int)(count * channels * vi.BytesPerChannelSample())];
+    tempbuffer_size = (int)count;
   }
 
   child->GetAudio(tempbuffer, start, count, env);
@@ -296,11 +296,11 @@ MergeChannels::~MergeChannels() {
 void __stdcall MergeChannels::GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) {
   if (tempbuffer_size < count) {
     if (tempbuffer_size) delete[] tempbuffer;
-    tempbuffer = new signed char[count * vi.BytesPerAudioSample()];
-    tempbuffer_size = count;
+    tempbuffer = new signed char[(unsigned int)(count * vi.BytesPerAudioSample())];
+    tempbuffer_size = (int)count;
   }
   // Get audio:
-  const int channel_offset = count * vi.BytesPerChannelSample();  // Offset per channel
+  const int channel_offset = (int)(count * vi.BytesPerChannelSample());  // Offset per channel
   int i, c_channel = 0;
 
   for (i = 0;i < num_children;i++) {
@@ -430,8 +430,8 @@ GetChannel::GetChannel(PClip _clip, int* _channel, int _numchannels)
 void __stdcall GetChannel::GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) {
   if (tempbuffer_size < count) {
     if (tempbuffer_size) delete[] tempbuffer;
-    tempbuffer = new char[count * src_bps];
-    tempbuffer_size = count;
+    tempbuffer = new char[(unsigned int)(count * src_bps)];
+    tempbuffer_size = (int)count;
   }
   child->GetAudio(tempbuffer, start, count, env);
   
@@ -608,7 +608,7 @@ Amplify::~Amplify()
 void __stdcall Amplify::GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) {
   child->GetAudio(buf, start, count, env);
   int channels = vi.AudioChannels();
-  int countXchannels = count*channels; 
+  int countXchannels = (int)(count*channels); 
 
   if (vi.SampleType() == SAMPLE_INT16) {
 // Talk about crap assembler code, who taught this compiler how to do 64bits!
@@ -725,7 +725,7 @@ AVSValue __cdecl Amplify::Create(AVSValue args, void*, IScriptEnvironment* env) 
   float* child_array = new float[ch];
   int* i_child_array = new int[ch];
   for (int i = 0; i < ch; ++i) {
-    child_array[i] = args_c[min(i, num_args - 1)].AsFloat();
+    child_array[i] = (float)(args_c[min(i, num_args - 1)].AsFloat());
     i_child_array[i] = int(child_array[i] * 131072.0f + 0.5f);
   }
   return new Amplify(args[0].AsClip(), child_array, i_child_array);
@@ -743,7 +743,7 @@ AVSValue __cdecl Amplify::Create_dB(AVSValue args, void*, IScriptEnvironment* en
   float* child_array = new float[ch];
   int* i_child_array = new int[ch];
   for (int i = 0; i < ch; ++i) {
-    child_array[i] = dBtoScaleFactor(args_c[min(i, num_args - 1)].AsFloat());
+    child_array[i] = (float)(dBtoScaleFactor(args_c[min(i, num_args - 1)].AsFloat()));
     i_child_array[i] = int(child_array[i] * 131072.0f + 0.5f);
   }
   return new Amplify(args[0].AsClip(), child_array, i_child_array);
@@ -788,7 +788,7 @@ void __stdcall Normalize::GetAudio(void* buf, __int64 start, __int64 count, IScr
 	  __int64 negpeaksampleno=-1, pospeaksampleno=-1;
       short i_pos_volume = 0;
       short i_neg_volume = 0;
-      const int chanXbcount = bcount * vi.AudioChannels();
+      const int chanXbcount = (int)bcount * vi.AudioChannels();
 
       for (__int64 i = 0; i < passes; i++) {
         child->GetAudio(samples, bcount*i, bcount, env);
@@ -815,7 +815,7 @@ void __stdcall Normalize::GetAudio(void* buf, __int64 start, __int64 count, IScr
 	  // Remaining samples
 	  if ((i_pos_volume != 32767) && (i_neg_volume > -32767)) {
 		const __int64 rem_samples = vi.num_audio_samples % bcount;
-		const int chanXremcount = rem_samples * vi.AudioChannels();
+		const int chanXremcount = (int)rem_samples * vi.AudioChannels();
 
 		child->GetAudio(samples, bcount*passes, rem_samples, env);
 		for (int j = 0; j < chanXremcount; j++) {
@@ -859,7 +859,7 @@ void __stdcall Normalize::GetAudio(void* buf, __int64 start, __int64 count, IScr
 	    }
 	  }
 
-      const int chanXbcount = bcount * vi.AudioChannels();
+      const int chanXbcount = (int)bcount * vi.AudioChannels();
       const __int64 passes = vi.num_audio_samples / bcount;
 	  __int64 peaksampleno=-1;
 	  
@@ -875,7 +875,7 @@ void __stdcall Normalize::GetAudio(void* buf, __int64 start, __int64 count, IScr
       }
       // Remaining samples
       const __int64 rem_samples = vi.num_audio_samples % bcount;
-      const int chanXremcount = rem_samples * vi.AudioChannels();
+      const int chanXremcount = (int)rem_samples * vi.AudioChannels();
 
       child->GetAudio(samples, bcount*passes, rem_samples, env);
       for (int j = 0;j < chanXremcount;j++) {
@@ -892,7 +892,7 @@ void __stdcall Normalize::GetAudio(void* buf, __int64 start, __int64 count, IScr
     }
   }
 
-  const int chanXcount = count * vi.AudioChannels();
+  const int chanXcount = (int)count * vi.AudioChannels();
 
   if (vi.SampleType() == SAMPLE_INT16) {
     const int factor = (int)(max_factor * 131072.0f + 0.5f);
@@ -964,7 +964,7 @@ PVideoFrame __stdcall Normalize::GetFrame(int n, IScriptEnvironment* env) {
 
 AVSValue __cdecl Normalize::Create(AVSValue args, void*, IScriptEnvironment* env) {
 
-  return new Normalize(args[0].AsClip(), args[1].AsFloat(1.0), args[2].AsBool(false));
+  return new Normalize(args[0].AsClip(), (float)args[1].AsFloat(1.0), args[2].AsBool(false));
 }
 
 
@@ -996,12 +996,12 @@ void __stdcall MixAudio::GetAudio(void* buf, __int64 start, __int64 count, IScri
   if (tempbuffer_size) {
     if (tempbuffer_size < count) {
       delete[] tempbuffer;
-      tempbuffer = new signed char[count * vi.BytesPerAudioSample()];
-      tempbuffer_size = count;
+      tempbuffer = new signed char[(unsigned int)(count * vi.BytesPerAudioSample())];
+      tempbuffer_size = (int)count;
     }
   } else {
-    tempbuffer = new signed char[count * vi.BytesPerAudioSample()];
-    tempbuffer_size = count;
+    tempbuffer = new signed char[(unsigned int)(count * vi.BytesPerAudioSample())];
+    tempbuffer_size = (int)count;
   }
 
   child->GetAudio(buf, start, count, env);
@@ -1390,6 +1390,8 @@ AVSValue __cdecl ResampleAudio::Create(AVSValue args, void*, IScriptEnvironment*
  *
  * Uses MM0, MM1
  */
+#pragma warning (disable: 4799)   //function '...' has no EMMS instruction
+
 void FilterUD_mmx(short *Xp, unsigned Ph, int _inc, int _dhb, short *p_Imp, unsigned End) {
 
   unsigned Ho  = (Ph * (unsigned)_dhb) >> Np;
@@ -1643,7 +1645,7 @@ int makeFilter( SFLOAT fImp[], double dLpScl, unsigned short Nwing, double Froll
   if (ImpR[0] < 0)                /* Need pos 1st value for LpScl storage */
     Scl = -Scl;
   for (i = 0; i < Nwing; i++)         /* Scale them */
-    fImp[i] = ImpR[i] * Scl;
+    fImp[i] = (SFLOAT)(ImpR[i] * Scl);
 
   return (0);
 }

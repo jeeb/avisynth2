@@ -69,7 +69,7 @@ static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
 
 AVSsoundtouch(PClip _child, double _tempo, double _rate, double _pitch, const AVSValue* args, IScriptEnvironment* env)
 : GenericVideoFilter(ConvertAudio::Create(_child, SAMPLE_FLOAT, SAMPLE_FLOAT)), 
-  tempo(_tempo/100.0), rate(_rate/100.0), pitch(_pitch/100.0)
+  tempo((float)(_tempo/100.0)), rate((float)(_rate/100.0)), pitch((float)(_pitch/100.0))
 {
 	try {	// HIDE DAMN SEH COMPILER BUG!!!
   last_nch = vi.AudioChannels();
@@ -80,7 +80,7 @@ AVSsoundtouch(PClip _child, double _tempo, double _rate, double _pitch, const AV
   sample_multiplier  = tempo / pitch;  // Do it the same way the library does it!
   sample_multiplier *= pitch * rate;
 
-  for(int n=0;n<last_nch;n++) 
+  for(UINT n=0;n<last_nch;n++) 
     samplers.add_item(new SoundTouch());
 
   for(n=0;n<last_nch;n++) {
@@ -92,7 +92,7 @@ AVSsoundtouch(PClip _child, double _tempo, double _rate, double _pitch, const AV
     setSettings(samplers[n], args, env);
   }
 
-  vi.num_audio_samples = vi.num_audio_samples / sample_multiplier;
+  vi.num_audio_samples = (__int64)((double)(vi.num_audio_samples) / sample_multiplier);
 
   next_sample = 0;  // Next output sample
   inputReadOffset = 0;  // Next input sample
@@ -128,11 +128,11 @@ void __stdcall AVSsoundtouch::GetAudio(void* buf, __int64 start, __int64 count, 
 {
 
   if (start != next_sample) {  // Reset on seek
-    for(int n=0;n<last_nch;n++)  // Clear all resamplers
+    for(UINT n=0;n<last_nch;n++)  // Clear all resamplers
       samplers[n]->clear();
 
     next_sample = start;
-    inputReadOffset = sample_multiplier * start;  // Reset at new read position (NOT sample exact :( ).
+    inputReadOffset = (__int64)(sample_multiplier * start);  // Reset at new read position (NOT sample exact :( ).
     dst_samples_filled=0;
   }
 
@@ -144,7 +144,7 @@ void __stdcall AVSsoundtouch::GetAudio(void* buf, __int64 start, __int64 count, 
     if (dst_samples_filled) {
       int copysamples = min((int)count-samples_filled, dst_samples_filled);
       // Copy finished samples
-      memcpy((BYTE*)buf+vi.BytesFromAudioSamples(samples_filled), (BYTE*)dstbuffer, vi.BytesFromAudioSamples(copysamples));
+      memcpy((BYTE*)buf+vi.BytesFromAudioSamples(samples_filled), (BYTE*)dstbuffer, (size_t)vi.BytesFromAudioSamples(copysamples));
 
       dst_samples_filled -= copysamples;
 
@@ -162,7 +162,7 @@ void __stdcall AVSsoundtouch::GetAudio(void* buf, __int64 start, __int64 count, 
       int samples_out = 0;
       int gotsamples = 0;
       do {
-        for(int n=0;n<last_nch;n++)  // Copies back samples from individual filters
+        for(UINT n=0;n<last_nch;n++)  // Copies back samples from individual filters
         {
           int old_g = gotsamples;
           gotsamples = samplers[n]->receiveSamples(passbuffer, BUFFERSIZE - samples_out);
@@ -187,7 +187,7 @@ void __stdcall AVSsoundtouch::GetAudio(void* buf, __int64 start, __int64 count, 
         child->GetAudio(dstbuffer, inputReadOffset, BUFFERSIZE, env);
         inputReadOffset += BUFFERSIZE;
 
-        for(int n=0;n<last_nch;n++)  // Copies n channels to separate buffers to individual filters
+        for(UINT n=0;n<last_nch;n++)  // Copies n channels to separate buffers to individual filters
         {
           UINT s;
           for(s=0;s<BUFFERSIZE;s++)
@@ -230,7 +230,7 @@ private:
 public:
 AVSStereoSoundTouch(PClip _child, double _tempo, double _rate, double _pitch, const AVSValue* args, IScriptEnvironment* env)
 : GenericVideoFilter(ConvertAudio::Create(_child, SAMPLE_FLOAT, SAMPLE_FLOAT)), 
-  tempo(_tempo/100.0), rate(_rate/100.0), pitch(_pitch/100.0)
+  tempo((float)(_tempo/100.0)), rate((float)(_rate/100.0)), pitch((float)(_pitch/100.0))
 {
 //  last_nch = vi.AudioChannels();
   
@@ -248,7 +248,7 @@ AVSStereoSoundTouch(PClip _child, double _tempo, double _rate, double _pitch, co
   sampler->setSampleRate(vi.audio_samples_per_second);
   AVSsoundtouch::setSettings(sampler, args, env);
 
-  vi.num_audio_samples = vi.num_audio_samples / sample_multiplier;
+  vi.num_audio_samples = (__int64)((double)vi.num_audio_samples / sample_multiplier);
 
   next_sample = 0;  // Next output sample
   inputReadOffset = 0;  // Next input sample
@@ -262,7 +262,7 @@ void __stdcall AVSStereoSoundTouch::GetAudio(void* buf, __int64 start, __int64 c
   if (start != next_sample) {  // Reset on seek
     sampler->clear();
     next_sample = start;
-    inputReadOffset = sample_multiplier * start;  // Reset at new read position (NOT sample exact :( ).
+    inputReadOffset = (__int64)(sample_multiplier * start);  // Reset at new read position (NOT sample exact :( ).
     dst_samples_filled=0;
   }
 
@@ -275,12 +275,12 @@ void __stdcall AVSStereoSoundTouch::GetAudio(void* buf, __int64 start, __int64 c
       int copysamples = min((int)count-samples_filled, dst_samples_filled);
       // Copy finished samples
       if (copysamples) { 
-        memcpy((BYTE*)buf+vi.BytesFromAudioSamples(samples_filled), (BYTE*)dstbuffer, vi.BytesFromAudioSamples(copysamples));
+        memcpy((BYTE*)buf+vi.BytesFromAudioSamples(samples_filled), (BYTE*)dstbuffer, (size_t)vi.BytesFromAudioSamples(copysamples));
         samples_filled += copysamples;
 
         dst_samples_filled -= copysamples;
         // Move non-used samples
-        memcpy(dstbuffer, &dstbuffer[copysamples*2], vi.BytesFromAudioSamples(dst_samples_filled));
+        memcpy(dstbuffer, &dstbuffer[copysamples*2], (size_t)vi.BytesFromAudioSamples(dst_samples_filled));
       }
       if (samples_filled >= count)
         buffer_full = true;

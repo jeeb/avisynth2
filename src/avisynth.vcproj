@@ -302,6 +302,7 @@
 				IgnoreDefaultLibraryNames="LIBC"
 				ModuleDefinitionFile=".\core\avisynth.def"
 				ProgramDatabaseFile=".\Release/avisynth.pdb"
+				LinkTimeCodeGeneration="1"
 				ImportLibrary=".\Release/avisynth.lib"
 				TargetMachine="1"
 			/>

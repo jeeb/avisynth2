@@ -1025,6 +1025,8 @@ EXCEPTION_DISPOSITION __cdecl _Exp_except_handler2(struct _EXCEPTION_RECORD *Exc
   return ExceptionContinueSearch;
 }
 
+#pragma warning (disable: 4733)   // Inline asm assigning to 'FS:0' : handler not registered as safe handler
+
 void CAVIStreamSynth::ReadHelper(void* lpBuffer, int lStart, int lSamples, unsigned code[4]) {
 
   DWORD handler = (DWORD)_Exp_except_handler2;

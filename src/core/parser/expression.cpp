@@ -133,6 +133,8 @@ static const char * const StringSystemError(const unsigned code)
  * av alias to Evaluate in it's returned object argument, and I wouldn't
  * need all the trickey calls within calls to do this simple job.
  */
+#pragma warning (disable: 4733)   // Inline asm assigning to 'FS:0' : handler not registered as safe handler
+
 void ExpExceptionTranslator::ChainEval(AVSValue &av, IScriptEnvironment* env) 
 {
   av = exp->Evaluate(env);

@@ -445,7 +445,7 @@ void __stdcall SelectRangeEvery::GetAudio(void* buf, __int64 start, __int64 coun
   BYTE* samples = (BYTE*)buf;
   const int bps = vi.BytesPerAudioSample();
   int startframe = vi.FramesFromAudioSamples(start);
-  int general_offset = start - vi.AudioSamplesFromFrames(startframe);  // General compensation for startframe rounding.
+  int general_offset = (int)(start - vi.AudioSamplesFromFrames(startframe));  // General compensation for startframe rounding.
 
   while (samples_filled < count) {
     const int iteration = startframe / length;                    // Which iteration is this.
@@ -457,7 +457,7 @@ void __stdcall SelectRangeEvery::GetAudio(void* buf, __int64 start, __int64 coun
     const __int64 start_offset = vi.AudioSamplesFromFrames(iteration * every + iteration_into) + general_offset;
 
     child->GetAudio(&samples[samples_filled*bps], start_offset, getsamples, env);
-    samples_filled += getsamples;
+    samples_filled += (int)getsamples;
     startframe = (iteration+1) * every;
     general_offset = 0; // On the following loops, general offset should be 0, as we are either skipping.
   }

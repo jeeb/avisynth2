@@ -40,6 +40,7 @@
 #include "stdafx.h"
 
 #include "layer.h"
+#pragma warning (disable: 4731)   // ebx modified by inline assembly code
 
 
 

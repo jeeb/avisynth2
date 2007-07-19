@@ -61,7 +61,7 @@ public:
     : vi(_vi), frame(_frame), parity(_parity) {}
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env) { return frame; }
   void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) {
-    memset(buf, 0, vi.BytesFromAudioSamples(count));
+    memset(buf, 0, (size_t)vi.BytesFromAudioSamples(count));
   }
   const VideoInfo& __stdcall GetVideoInfo() { return vi; }
   bool __stdcall GetParity(int n) { return (vi.IsFieldBased() ? (n&1) : false) ^ parity; }
@@ -87,7 +87,7 @@ static PVideoFrame CreateBlankFrame(const VideoInfo& vi, int color, int mode, IS
     size = frame->GetPitch(PLANAR_U) * frame->GetHeight(PLANAR_U);
     Cval = (color_yuv>>8)&0xff;
     Cval |= (Cval<<8)|(Cval<<16)|(Cval<<24);
-    for (i=0; i<size; i+=4)
+    for (int i=0; i<size; i+=4)
       *(unsigned*)(p+i) = Cval;
     size = frame->GetPitch(PLANAR_V) * frame->GetHeight(PLANAR_V);
     p = frame->GetWritePtr(PLANAR_V);
@@ -494,8 +494,8 @@ public:
 
 	  const double add_per_sample=ncycles/(double)nsamples;
 	  double second_offset=0.0;
-	  for (int i=0;i<nsamples;i++) {
-		  audio[i] = sin(3.1415926535897932384626433832795*2.0*second_offset);
+	  for (unsigned int i=0;i<nsamples;i++) {
+		  audio[i] = (SFLOAT)sin(3.1415926535897932384626433832795*2.0*second_offset);
 		  second_offset+=add_per_sample;
 	  }
 	}
@@ -511,7 +511,7 @@ public:
     const int d_mod = vi.audio_samples_per_second*2;
     float* samples = (float*)buf;
 
-	int j = start % nsamples;
+	unsigned int j = (unsigned int)(start % nsamples);
     for (int i=0;i<count;i++) {
 	  samples[i*2]=audio[j];
 	  if (((start+i)%d_mod)>vi.audio_samples_per_second) {
@@ -648,7 +648,7 @@ public:
 class SineGenerator : public SampleGenerator {
 public:
   SineGenerator() {}
-  SFLOAT getValueAt(double where) {return sinf(PI * where* 2.0);}
+  SFLOAT getValueAt(double where) {return sinf((float)(PI * where* 2.0));}
 };
 
 
@@ -680,11 +680,11 @@ public:
 
   SFLOAT getValueAt(double where) {
     if (where<=0.25) {
-      return (where*4.0);
+      return (SFLOAT)(where*4.0);
     } else if (where<=0.75) {
-      return ((-4.0*(where-0.50)));
+      return (SFLOAT)((-4.0*(where-0.50)));
     } else {
-      return ((4.0*(where-1.00)));
+      return (SFLOAT)((4.0*(where-1.00)));
     }
   }
 };
@@ -694,10 +694,18 @@ public:
   SawtoothGenerator() {}
 
   SFLOAT getValueAt(double where) {
-    return 2.0*(where-0.5);
+    return (SFLOAT)(2.0*(where-0.5));
   }
 };
 
+class PinkNoiseGenerator : public SampleGenerator {
+public:
+  PinkNoiseGenerator() {}
+
+  SFLOAT getValueAt(double where) {
+    return (SFLOAT)(2.0*(where-0.5));
+  }
+};
 
 class Tone : public IClip {
   VideoInfo vi;
@@ -755,8 +763,8 @@ public:
 
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env) {
 	try {	// HIDE DAMN SEH COMPILER BUG!!!
-	    return new Tone(args[0].AsFloat(10.0), args[1].AsFloat(440), args[2].AsInt(48000),
-		                args[3].AsInt(2), args[4].AsString("Sine"), args[5].AsFloat(1.0), env);
+	    return new Tone((float)args[0].AsFloat(10.0), args[1].AsFloat(440), args[2].AsInt(48000),
+		                args[3].AsInt(2), args[4].AsString("Sine"), (float)args[5].AsFloat(1.0), env);
 	}
 	catch (...) { throw; }
   }

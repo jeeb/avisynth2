@@ -741,7 +741,7 @@ PVideoFrame __stdcall ShowSMPTE::GetFrame(int n, IScriptEnvironment* env)
   }
   else {
     int ms = (int)(((__int64)n * vi.fps_denominator * 1000 / (__int64)vi.fps_numerator)%1000);
-    int sec = (__int64)n * vi.fps_denominator / vi.fps_numerator;
+    int sec = (int)((__int64)n * vi.fps_denominator / vi.fps_numerator);
     int min = sec/60;
     int hour = sec/3600;
 
@@ -765,9 +765,9 @@ AVSValue __cdecl ShowSMPTE::CreateSMTPE(AVSValue args, void*, IScriptEnvironment
   const char* offset = args[2].AsString(0);
   const int offset_f = args[3].AsInt(0);
   const int xreal = args[0].AsClip()->GetVideoInfo().width;
-  const int x = args[4].AsInt(xreal*0.5);
+  const int x = args[4].AsInt((int)(xreal*0.5));
   const int yreal = args[0].AsClip()->GetVideoInfo().height;
-  const int y = args[5].AsInt(yreal);
+  const int y = args[5].AsInt((int)(yreal));
   const char* font = args[6].AsString("Arial");
   const int size = args[7].AsInt(24);
   const int text_color = args[8].AsInt(0xFFFF00);
@@ -780,7 +780,7 @@ AVSValue __cdecl ShowSMPTE::CreateTime(AVSValue args, void*, IScriptEnvironment*
   PClip clip = args[0].AsClip();
   const int offset_f = args[1].AsInt(0);
   const int xreal = args[0].AsClip()->GetVideoInfo().width;
-  const int x = args[2].AsInt(xreal*0.5);
+  const int x = args[2].AsInt((int)(xreal*0.5));
   const int yreal = args[0].AsClip()->GetVideoInfo().height;
   const int y = args[3].AsInt(yreal);
   const char* font = args[4].AsString("Arial");

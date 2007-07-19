@@ -262,7 +262,7 @@ PVideoFrame __stdcall RGBAdjust::GetFrame(int n, IScriptEnvironment* env)
 			p += pitch;
 		}
 	
-		float pixels = vi.width*vi.height;
+		float pixels = (float)(vi.width*vi.height);
 		float avg_r=0, avg_g=0, avg_b=0;
 		float st_r=0, st_g=0, st_b=0;
 		int min_r=0, min_g=0, min_b=0;
@@ -711,7 +711,9 @@ Limiter::Limiter(PClip _child, int _min_luma, int _max_luma, int _min_chroma, in
   max_luma(_max_luma),
   min_chroma(_min_chroma),
   max_chroma(_max_chroma),
-  show(enum SHOW(_show)) {
+  show(enum SHOW(_show)),
+  SoftWire::CodeGenerator(false) {
+
   if (!vi.IsYUV())
       env->ThrowError("Limiter: Source must be YUV");
 
@@ -1069,7 +1071,7 @@ DynamicAssembledCode Limiter::create_emulator(int row_size, int height, IScriptE
   }
 
 
-  Assembler x86;   // This is the class that assembles the code.
+  Assembler x86 = Assembler(false);   // This is the class that assembles the code.
 
   if (env->GetCPUFlags() & CPUF_INTEGER_SSE) {
     x86.push(eax);

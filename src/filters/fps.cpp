@@ -103,7 +103,7 @@ static bool float_to_frac(float input, unsigned &num, unsigned &den)
 
   // if too small try to pull result from the reciprocal
   if (exponent < -31) {
-    return float_to_frac(1.0/input, den, num);
+    return float_to_frac((float)(1.0/input), den, num);
   }
 
   // if exponent is too large try removing leading 0's of mantissa
@@ -269,28 +269,28 @@ void FloatToFPS(const char *name, double n, unsigned &num, unsigned &den, IScrip
   unsigned u = (unsigned)(n*1001+0.5);
 
   // Check for the 30000/1001 multiples
-  x = (u/30000*30000)/1001.0;
+  x = (float)((u/30000*30000)/1001.0);
   if (x == (float)n) { num = u; den= 1001; return; }
 
   // Check for the 24000/1001 multiples
-  x = (u/24000*24000)/1001.0;
+  x = (float)((u/24000*24000)/1001.0);
   if (x == (float)n) { num = u; den= 1001; return; }
 
   if (n < 14.986) {
     // Check for the 30000/1001 factors
     u = (unsigned)(30000/n+0.5);
-    x = 30000.0/(u/1001*1001);
+    x = (float)(30000.0/(u/1001*1001));
     if (x == (float)n) { num = 30000; den= u; return; }
 
     // Check for the 24000/1001 factors
     u = (unsigned)(24000/n+0.5);
-    x = 24000.0/(u/1001*1001);
+    x = (float)(24000.0/(u/1001*1001));
     if (x == (float)n) { num = 24000; den= u; return; }
   }
 
   // Find the rational pair with the smallest denominator
   // that is equal to n within the accuracy of an IEEE float.
-  if (reduce_float(n, num, den))
+  if (reduce_float((float)n, num, den))
     env->ThrowError("%s: FPS value is out of range.\n", name);
 
 }

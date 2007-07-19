@@ -309,17 +309,17 @@ public:
 
   void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) {
     if (start < 0) {
-      int bytes = vi.BytesFromAudioSamples(-start);
+      int bytes = (int)vi.BytesFromAudioSamples(-start);
       memset(buf, 0, bytes);
       buf = (char*)buf + bytes;
       count += start;
       start = 0;
     }
-    VF_ReadData_Audio vfrda = { sizeof(VF_ReadData_Audio), start, 0, count, 0, vi.BytesFromAudioSamples(count), buf };
+    VF_ReadData_Audio vfrda = { sizeof(VF_ReadData_Audio), (int)start, 0, (int)count, 0, (int)vi.BytesFromAudioSamples(count), buf };
     CheckHresult(env, plugin_func->ReadData(h, VF_STREAM_AUDIO, &vfrda));
     if (int(vfrda.dwReadedSampleCount) < count) {
       memset((char*)buf + vi.BytesFromAudioSamples(vfrda.dwReadedSampleCount),
-        0, vi.BytesFromAudioSamples(count - vfrda.dwReadedSampleCount));
+        0, (size_t)vi.BytesFromAudioSamples(count - vfrda.dwReadedSampleCount));
     }
   }
 

@@ -36,6 +36,8 @@
 #include "stdafx.h"
 
 #include "conditional_functions.h"
+#pragma warning (disable: 4731)   // ebx modified by inline assembly code
+
 
 AVSFunction Conditional_funtions_filters[] = {
   {  "AverageLuma","c", AveragePlane::Create_y },
@@ -292,7 +294,7 @@ AVSValue ComparePlane::CmpPlane(AVSValue clip, AVSValue clip2, void* user_data, 
 		if (!b) b=1;
 		float f = (float)b / (float)(h * w);
     if (vi.IsRGB32()) 
-      f = f * 4.0 / 3.0;
+      f = f * 4.0f / 3.0f;
 
 		return (AVSValue)f;
 }
@@ -350,7 +352,7 @@ AVSValue ComparePlane::CmpPlaneSame(AVSValue clip, void* user_data, int offset, 
 		float f = (float)b / (float)(h * w);
 
     if (vi.IsRGB32()) 
-      f = f * 4.0 / 3.0;
+      f = f * 4.0f / 3.0f;
 
 		return (AVSValue)f;
 }
@@ -359,11 +361,11 @@ AVSValue ComparePlane::CmpPlaneSame(AVSValue clip, void* user_data, int offset, 
 // Y Planes functions
 
 AVSValue __cdecl MinMaxPlane::Create_max_y(AVSValue args, void* user_data, IScriptEnvironment* env) {
-	return MinMax(args[0],user_data, args[1].AsFloat(0.0f), PLANAR_Y, MAX, env);
+	return MinMax(args[0],user_data, (float)args[1].AsFloat(0.0f), PLANAR_Y, MAX, env);
 }
 
 AVSValue __cdecl MinMaxPlane::Create_min_y(AVSValue args, void* user_data, IScriptEnvironment* env) {
-	return MinMax(args[0],user_data, args[1].AsFloat(0.0f), PLANAR_Y, MIN, env);
+	return MinMax(args[0],user_data, (float)args[1].AsFloat(0.0f), PLANAR_Y, MIN, env);
 }
 
 AVSValue __cdecl MinMaxPlane::Create_median_y(AVSValue args, void* user_data, IScriptEnvironment* env) {
@@ -371,17 +373,17 @@ AVSValue __cdecl MinMaxPlane::Create_median_y(AVSValue args, void* user_data, IS
 }
 
 AVSValue __cdecl MinMaxPlane::Create_minmax_y(AVSValue args, void* user_data, IScriptEnvironment* env) {
-	return MinMax(args[0],user_data, args[1].AsFloat(0.0f), PLANAR_Y, MINMAX_DIFFERENCE, env);
+	return MinMax(args[0],user_data, (float)args[1].AsFloat(0.0f), PLANAR_Y, MINMAX_DIFFERENCE, env);
 }
 
 // U Planes functions
 
 AVSValue __cdecl MinMaxPlane::Create_max_u(AVSValue args, void* user_data, IScriptEnvironment* env) {
-	return MinMax(args[0],user_data, args[1].AsFloat(0.0f), PLANAR_U, MAX, env);
+	return MinMax(args[0],user_data, (float)args[1].AsFloat(0.0f), PLANAR_U, MAX, env);
 }
 
 AVSValue __cdecl MinMaxPlane::Create_min_u(AVSValue args, void* user_data, IScriptEnvironment* env) {
-	return MinMax(args[0],user_data, args[1].AsFloat(0.0f), PLANAR_U, MIN, env);
+	return MinMax(args[0],user_data, (float)args[1].AsFloat(0.0f), PLANAR_U, MIN, env);
 }
 
 AVSValue __cdecl MinMaxPlane::Create_median_u(AVSValue args, void* user_data, IScriptEnvironment* env) {
@@ -389,16 +391,16 @@ AVSValue __cdecl MinMaxPlane::Create_median_u(AVSValue args, void* user_data, IS
 }
 
 AVSValue __cdecl MinMaxPlane::Create_minmax_u(AVSValue args, void* user_data, IScriptEnvironment* env) {
-	return MinMax(args[0],user_data, args[1].AsFloat(0.0f), PLANAR_U, MINMAX_DIFFERENCE, env);
+	return MinMax(args[0],user_data, (float)args[1].AsFloat(0.0f), PLANAR_U, MINMAX_DIFFERENCE, env);
 }
 // V Planes functions
 
 AVSValue __cdecl MinMaxPlane::Create_max_v(AVSValue args, void* user_data, IScriptEnvironment* env) {
-	return MinMax(args[0],user_data, args[1].AsFloat(0.0f), PLANAR_V, MAX, env);
+	return MinMax(args[0],user_data, (float)args[1].AsFloat(0.0f), PLANAR_V, MAX, env);
 }
 
 AVSValue __cdecl MinMaxPlane::Create_min_v(AVSValue args, void* user_data, IScriptEnvironment* env) {
-	return MinMax(args[0],user_data, args[1].AsFloat(0.0f), PLANAR_V, MIN, env);
+	return MinMax(args[0],user_data, (float)args[1].AsFloat(0.0f), PLANAR_V, MIN, env);
 }
 
 AVSValue __cdecl MinMaxPlane::Create_median_v(AVSValue args, void* user_data, IScriptEnvironment* env) {
@@ -406,7 +408,7 @@ AVSValue __cdecl MinMaxPlane::Create_median_v(AVSValue args, void* user_data, IS
 }
 
 AVSValue __cdecl MinMaxPlane::Create_minmax_v(AVSValue args, void* user_data, IScriptEnvironment* env) {
-	return MinMax(args[0],user_data, args[1].AsFloat(0.0f), PLANAR_V, MINMAX_DIFFERENCE, env);
+	return MinMax(args[0],user_data, (float)args[1].AsFloat(0.0f), PLANAR_V, MINMAX_DIFFERENCE, env);
 }
 
 

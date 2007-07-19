@@ -151,10 +151,10 @@ PVideoFrame __stdcall ConditionalFilter::GetFrame(int n, IScriptEnvironment* env
       e2 = e2_result.IsInt() ? e2_result.AsInt() : e2_result.AsBool();
 
     } else if (e1_result.IsFloat()) {
-      f1 = e1_result.AsFloat();
+      f1 = (float)e1_result.AsFloat();
       if (!e2_result.IsFloat()) 
         env->ThrowError("Conditional filter: Second expression did not return a float or an integer, as first expression.");
-      f2 = e2_result.AsFloat();
+      f2 = (float)e2_result.AsFloat();
     } else {
       env->ThrowError("ConditionalFilter: First condition did not return an int, bool or float!");
     }

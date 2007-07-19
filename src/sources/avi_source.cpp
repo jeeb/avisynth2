@@ -612,7 +612,7 @@ void AVISource::GetAudio(void* buf, __int64 start, __int64 count, IScriptEnviron
   __int64 bytes_read=0, samples_read=0;
 
   if (start < 0) {
-    int bytes = vi.BytesFromAudioSamples(min(-start, count));
+    int bytes = (int)vi.BytesFromAudioSamples(min(-start, count));
     memset(buf, 0, bytes);
     buf = (char*)buf + bytes;
     count -= vi.AudioSamplesFromBytes(bytes);
@@ -622,12 +622,12 @@ void AVISource::GetAudio(void* buf, __int64 start, __int64 count, IScriptEnviron
   if (audioStreamSource) {
     if (start != audio_stream_pos)
         audioStreamSource->Seek(start);
-    samples_read = audioStreamSource->Read(buf, count, (long *)&bytes_read);
+    samples_read = audioStreamSource->Read(buf, (long)count, (long *)&bytes_read);
     audio_stream_pos = start + samples_read;
   }
 
   if (samples_read < count)
-    memset((char*)buf + bytes_read, 0, vi.BytesFromAudioSamples(count) - bytes_read);
+    memset((char*)buf + bytes_read, 0, (size_t)(vi.BytesFromAudioSamples(count) - bytes_read));
 }
 
 bool AVISource::GetParity(int n) { return false; }

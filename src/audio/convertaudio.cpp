@@ -90,14 +90,14 @@ void __stdcall ConvertAudio::GetAudio(void* buf, __int64 start, __int64 count, I
     if (tempbuffer_size<count) {
       _aligned_free(tempbuffer);
       _aligned_free(floatbuffer);
-      tempbuffer = (char *) _aligned_malloc(count*src_bps*channels, 16);
-      floatbuffer = (SFLOAT*) _aligned_malloc(count*channels*sizeof(SFLOAT), 16);
-      tempbuffer_size=count;
+      tempbuffer = (char *) _aligned_malloc((size_t)(count*src_bps*channels), 16);
+      floatbuffer = (SFLOAT*) _aligned_malloc((size_t)(count*channels*sizeof(SFLOAT)), 16);
+      tempbuffer_size=(int)count;
     }
   } else {
-    tempbuffer = (char *) _aligned_malloc(count*src_bps*channels, 16);
-    floatbuffer = (SFLOAT*)_aligned_malloc(count*channels*sizeof(SFLOAT),16);
-    tempbuffer_size=count;
+    tempbuffer = (char *) _aligned_malloc((size_t)(count*src_bps*channels), 16);
+    floatbuffer = (SFLOAT*)_aligned_malloc((size_t)(count*channels*sizeof(SFLOAT)),16);
+    tempbuffer_size=(int)count;
   }
 
   child->GetAudio(tempbuffer, start, count, env);
@@ -111,13 +111,13 @@ void __stdcall ConvertAudio::GetAudio(void* buf, __int64 start, __int64 count, I
   if (src_format != SAMPLE_FLOAT) {  // Skip initial copy, if samples are already float
 // Someone with an AMD beast decide which code runs better SSE2 or 3DNow   :: FIXME
     if ((env->GetCPUFlags() & CPUF_3DNOW_EXT)) {
-      convertToFloat_3DN(tempbuffer, tmp_fb, src_format, count*channels);
+      convertToFloat_3DN(tempbuffer, tmp_fb, src_format, (int)count*channels);
     } else if (((((int)tmp_fb) & 3) == 0) && (env->GetCPUFlags() & CPUF_SSE2)) {
-      convertToFloat_SSE2(tempbuffer, tmp_fb, src_format, count*channels);
+      convertToFloat_SSE2(tempbuffer, tmp_fb, src_format, (int)count*channels);
     } else if ((env->GetCPUFlags() & CPUF_SSE)) {
-      convertToFloat_SSE(tempbuffer, tmp_fb, src_format, count*channels);
+      convertToFloat_SSE(tempbuffer, tmp_fb, src_format, (int)count*channels);
     } else {
-      convertToFloat(tempbuffer, tmp_fb, src_format, count*channels);
+      convertToFloat(tempbuffer, tmp_fb, src_format, (int)count*channels);
     }
   } else {
     tmp_fb = (float*)tempbuffer;
@@ -126,13 +126,13 @@ void __stdcall ConvertAudio::GetAudio(void* buf, __int64 start, __int64 count, I
   if (dst_format != SAMPLE_FLOAT) {  // Skip final copy, if samples are to be float
 // Someone with an AMD beast decide which code runs better SSE2 or 3DNow   :: FIXME
 	if ((env->GetCPUFlags() & CPUF_3DNOW_EXT)) {
-	  convertFromFloat_3DN(tmp_fb, buf, dst_format, count*channels);
+	  convertFromFloat_3DN(tmp_fb, buf, dst_format, (int)count*channels);
 	} else if ((env->GetCPUFlags() & CPUF_SSE2)) {
-	  convertFromFloat_SSE2(tmp_fb, buf, dst_format, count*channels);
+	  convertFromFloat_SSE2(tmp_fb, buf, dst_format, (int)count*channels);
 	} else if ((env->GetCPUFlags() & CPUF_SSE)) {
-	  convertFromFloat_SSE(tmp_fb, buf, dst_format, count*channels);
+	  convertFromFloat_SSE(tmp_fb, buf, dst_format, (int)count*channels);
 	} else {
-	  convertFromFloat(tmp_fb, buf, dst_format, count*channels);
+	  convertFromFloat(tmp_fb, buf, dst_format, (int)count*channels);
 	}
   }
 }
@@ -1029,7 +1029,7 @@ __inline int ConvertAudio::Saturate_int24(float n) {
 __inline int ConvertAudio::Saturate_int32(float n) {
     if (n <= (float)MIN_INT) return MIN_INT;  
     if (n >= (float)MAX_INT) return MAX_INT;
-    return (int)(n)+0.5f;
+    return (int)(n+0.5f);
 }
 
 
