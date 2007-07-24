@@ -37,7 +37,7 @@ public:
   SoundOutput(PClip _child, IScriptEnvironment* env);
 public:
   virtual ~SoundOutput(void);
-  void startEncoding();
+  bool startEncoding();   // Returns if encoding was succesfully started.
   virtual void encodeLoop() = 0;  // Called as loop for encoding.
   void encodingFinished();
   HANDLE encodeThread;

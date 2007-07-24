@@ -22,6 +22,7 @@ void RegistryIO::StoreSettings(Param &params) {
   ignoreParams.push_back("showProgress");
   ignoreParams.push_back("overwriteFile");
   ignoreParams.push_back("autoCloseWindow");
+  ignoreParams.push_back("wait");
 
   char FilterKey[200];
   sprintf_s(FilterKey,200,"%s\\%s",RegAvisynthKey,params["filterID"].AsString());
@@ -62,6 +63,7 @@ void RegistryIO::RetrieveSettings(Param &params, IScriptEnvironment* env) {
   ignoreParams.push_back("showProgress");
   ignoreParams.push_back("overwriteFile");
   ignoreParams.push_back("autoCloseWindow");
+  ignoreParams.push_back("wait");
   char FilterKey[200];
   sprintf_s(FilterKey,200,"%s\\%s",RegAvisynthKey,params["filterID"].AsString());
   HKEY AvisynthKey;

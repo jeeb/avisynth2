@@ -263,6 +263,8 @@ bool AC3Output::initEncoder() {
   if (vi.AudioChannels() == 2) 
     aften.meta.dsurmod = params["dolbysurround"].AsBool()+1;
 
+  aften.system.n_threads = 1;  // Temporary fix to avoid hanging.
+
   if (aften_encode_init(&aften)) {
      MessageBox(NULL,"Could not initialize encoder. Probably invalid input.","AC3 Encoder",MB_OK);
      try {
@@ -270,6 +272,11 @@ bool AC3Output::initEncoder() {
      } catch (...) {}
     return false;
   }
+  if (fopen_s(&f, outputFile, "wbS")) {
+    MessageBox(NULL,"Could not open file for writing","AC3 Encoder",MB_OK);
+    return false;
+  }
+
   return true;
 }
 
@@ -280,18 +287,19 @@ void AC3Output::encodeBlock(unsigned char* in) {
   if (out<0) {
     MessageBox(NULL,"Encoder error.","AC3 Encoder",MB_OK);
     exitThread = true;
+    return;
   }
   int written = (int)fwrite(frame, 1, out, f);
   if (written<0) {
     MessageBox(NULL,"A Disk write error occured.","AC3 Encoder",MB_OK);
     exitThread = true;
+    return;
   }
   encodedSamples += A52_SAMPLES_PER_FRAME;
   this->updateSampleStats(encodedSamples, vi.num_audio_samples);
 }
 
 void AC3Output::encodeLoop() {
-  fopen_s(&f, outputFile, "wbS");
   encodedSamples = 0;
   int sampleSize = vi.BytesPerAudioSample();
   unsigned char* fwav = (unsigned char*)malloc(A52_SAMPLES_PER_FRAME * sampleSize);  // Block sent to encoder

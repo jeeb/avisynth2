@@ -102,7 +102,8 @@ DWORD WINAPI StartExitTimer(LPVOID p) {
   SoundOutput* t = (SoundOutput*)p;
   char buf[20];
   HWND wnd = t->wnd;
-  for (int i = 5; i>0; i--) {
+  int wait = max(1,t->params["wait"].AsInt());
+  for (int i = wait; i>0; i--) {
     sprintf_s(buf, 20, "Close [%d]", i);
     SetDlgItemText(wnd,IDC_BTN_CONVERTABORT, buf);
     Sleep(1000);
@@ -118,6 +119,7 @@ SoundOutput::SoundOutput(PClip _child, IScriptEnvironment* _env) :
   params["showProgress"] = AVSValue(true);  // Setting this will disable output progress window
   params["overwriteFile"] = AVSValue("Ask");  // Overwrite setting "Yes", "No", "Ask"
   params["autoCloseWindow"] = AVSValue(false);
+  params["wait"] = AVSValue(5);
   input = new SampleFetcher(child, env);
   lastUpdateTick = GetTickCount();
   quietExit = false;  
@@ -159,10 +161,10 @@ SoundOutput::~SoundOutput(void)
   autoCloseThread = 0;
 }
 
-void SoundOutput::startEncoding() {
+bool SoundOutput::startEncoding() {
   if (wnd) {
     if (!this->getParamsFromGUI()) {
-      return;
+      return false;
     }
   }
 
@@ -185,7 +187,7 @@ void SoundOutput::startEncoding() {
       ofn.nMaxFile = sizeof( szFile );
 
       if (!GetSaveFileName(&ofn))
-        return;
+        return false;
 
     } else {  // We have filename override.
       const char* fileN = params["useFilename"].AsString();
@@ -203,19 +205,19 @@ void SoundOutput::startEncoding() {
     if (INVALID_HANDLE_VALUE != tmp) {  // File exists
       CloseHandle(tmp);
       if (0 != _stricmp(params["overwriteFile"].AsString(), "Yes")) {  // If yes, just move on
-        if (0 == _stricmp(params["overwriteFile"].AsString(), "Ask") || (!params["nofilename"].AsBool())) {
+        if (0 == _stricmp(params["overwriteFile"].AsString(), "Ask") || (!params["nofilename"].AsBool() && !strlen(params["useFilename"].AsString()) )) {
           int result = MessageBox(wnd, "The file you are trying to create, already exists, Overwrite?", "SoundOut: Overwrite File?", MB_YESNO|MB_ICONWARNING|MB_TOPMOST);
           if (IDYES != result)
-            return;
+            return false;
         } else {  // Then it must be no, or something else.
-          return;
+          return false;
         }
       }
     }
   }
 
   if (!initEncoder())
-    return;
+    return false;
   if (wnd) {
     RegistryIO::StoreSettings(params);
     DestroyWindow(wnd);
@@ -232,6 +234,8 @@ void SoundOutput::startEncoding() {
   encodeThread = CreateThread(NULL,NULL,StartEncoder,this, NULL,NULL);
   SetThreadPriority(encodeThread,THREAD_PRIORITY_BELOW_NORMAL);
   encodingStartedTick = GetTickCount();
+
+  return true;
 }
 
 void SoundOutput::encodingFinished() {
@@ -348,9 +352,15 @@ SampleFetcher::~SampleFetcher() {
 
 SampleBlock* SampleFetcher::GetNextBlock() {
    HRESULT wait_result = WAIT_TIMEOUT;
-   if (prev_sb && !exitThread)
-     delete prev_sb;
-   prev_sb = NULL;
+   if (prev_sb) {
+     if (prev_sb->lastBlock) {   // Shouldn't happend, but let's play nice in Release mode
+       _ASSERT(false);
+       return prev_sb;
+     }
+     if (!exitThread)
+      delete prev_sb;
+     prev_sb = NULL;
+   }
 
    while (wait_result == WAIT_TIMEOUT && !exitThread) {
       wait_result = WaitForSingleObject(evtNextBlockReady, 1000);

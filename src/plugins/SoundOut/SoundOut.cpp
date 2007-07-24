@@ -239,7 +239,9 @@ void SoundOut::startUp() {
     out->parent = this;
     passSettings(out);
     disableControls();
-    out->startEncoding();
+	if (!out->startEncoding()) {
+      blockRequests = false;  // Error - let allow it to destroy itself.
+	}
   } else {
     openGUI();
     blockRequests = false;  // We open GUI, so now we no longer need to block requests.
