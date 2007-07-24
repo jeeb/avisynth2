@@ -42,4 +42,5 @@ public:
   bool GUI_ready;
 protected:
   lame_global_struct* lame;
+  FILE *f;
 };

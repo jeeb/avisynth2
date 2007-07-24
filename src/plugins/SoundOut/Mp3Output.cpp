@@ -269,12 +269,14 @@ bool Mp3Output::initEncoder() {
   if (ret_code) {
     MessageBox(NULL,"An encoder error occured while initializing encoder","MP3 Encoder",MB_OK);
   }
+  if (fopen_s(&f, outputFile, "wbS")) {
+    MessageBox(NULL,"Could not open file for writing","MP3 Encoder",MB_OK);
+    return false;
+  }
   return true;
 }
 
 void Mp3Output::encodeLoop() {
-  FILE *f;
-  fopen_s(&f, outputFile, "wb+S");
   unsigned char *outbuffer = (unsigned char*)malloc(BLOCKSAMPLES);
   __int64 encodedBytes = 0;
   __int64 encodedSamples = 0;

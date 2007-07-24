@@ -1,7 +1,8 @@
 #define IDD_DLG_MAIN            1000
-#define IDC_BTN_SAVEWAV         1001
 #define IDC_GRP1                1002
 #define IDC_GRP2                1003
+#define IDC_GRP9                1012
+#define IDC_BTN_SAVEWAV         1001
 #define IDC_STC_INFOTEXT        1004
 #define IDC_BTN_SAVEMP3         1005
 #define IDC_BTN_SAVEFLAC        1006
@@ -10,7 +11,6 @@
 #define IDC_BTN_SAVEAPE         1009
 #define IDC_BTN_SAVEAC3         1010
 #define IDC_BTN_COMMANDOUT      1011
-#define IDC_GRP9                1012
 #define IDC_CBO1                1013
 #define IDC_BTN_ANALYZE         1014
 #define IDC_BTN3                1015

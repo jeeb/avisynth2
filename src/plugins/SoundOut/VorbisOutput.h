@@ -41,4 +41,5 @@ public:
   virtual bool setParamsToGUI();
 protected:
   vorbis_info      vorbis; /* struct that stores all the static vorbis bitstream */
+  FILE *f;
 };

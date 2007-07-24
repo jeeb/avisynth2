@@ -107,12 +107,15 @@ bool VorbisOutput::initEncoder() {
     MessageBox(NULL,"An encoder error occured while initializing encoder","Vorbis Encoder",MB_OK);
     return false;
   }
+  if (fopen_s(&f, outputFile, "wbS")) {
+    MessageBox(NULL,"Could not open file for writing","Vorbis Encoder",MB_OK);
+    return false;
+  }
+
   return true;
 }
 
 void VorbisOutput::encodeLoop() {
-  FILE *f;
-  fopen_s(&f, outputFile, "wbS");
   ogg_stream_state os; /* take physical pages, weld into a logical
                        stream of packets */
   ogg_page         og; /* one Ogg bitstream page.  Vorbis packets are inside */
