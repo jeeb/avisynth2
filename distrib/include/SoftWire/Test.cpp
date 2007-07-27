@@ -17,14 +17,14 @@ void testIntrinsics()
 {
 	printf("Testing run-time intrinsics.\n\n");
 	printf("Press any key to start assembling.\n\n");
-	getch();
+	_getch();
 
-	SoftWire::Assembler x86;
+	SoftWire::Assembler x86(false);
 
 	static char string[] = "All working!";
 
-	x86.push((int)string);
-	x86.call((int)printf);
+	x86.push((unsigned int)string);
+	x86.call((unsigned int )printf);
 	x86.add(x86.esp, 4);
 	x86.ret();
 
@@ -36,7 +36,7 @@ void testIntrinsics()
 	int c;
 	do
 	{
-		c = getch();
+		c = _getch();
 	}
 	while(c != 'y' && c != 'n');
 
@@ -51,7 +51,7 @@ void testIntrinsics()
 class TestRegisterAllocator : public SoftWire::CodeGenerator
 {
 public:
-	TestRegisterAllocator()
+	TestRegisterAllocator() : CodeGenerator(false)
 	{
 		x1 = 1;
 		x2 = 2;
@@ -113,7 +113,7 @@ void testRegisterAllocator()
 {
 	printf("Testing register allocator. SoftWire will swap nine numbers using nine virtual general-purpose registers.\n\n");
 	printf("Press any key to start assembling.\n\n");
-	getch();
+	_getch();
 
 	TestRegisterAllocator x86;
 
@@ -125,7 +125,7 @@ void testRegisterAllocator()
 	int c;
 	do
 	{
-		c = getch();
+		c = _getch();
 	}
 	while(c != 'y' && c != 'n');
 
@@ -141,7 +141,7 @@ void testRegisterAllocator()
 class StressTest : public SoftWire::CodeGenerator
 {
 public:
-	StressTest(int seed, int tests, int level, bool copyProp, bool loadElim, bool spillElim)
+	StressTest(int seed, int tests, int level, bool copyProp, bool loadElim, bool spillElim) : CodeGenerator(false)
 	{
 		if(copyProp) enableCopyPropagation(); else disableCopyPropagation();
 		if(loadElim) enableLoadElimination(); else disableLoadElimination();
@@ -336,7 +336,7 @@ void testOptimizations()
 {
 	printf("Optimization stress test.\n\n");
 	printf("Press any key to start assembling.\n\n");
-	getch();
+	_getch();
 
 	StressTest a(0, 1024, 0xFF, false, false, false);
 	StressTest b(0, 1024, 0xFF, true, true, true);
@@ -385,10 +385,8 @@ void testOptimizations()
 class BackEnd : public SoftWire::CodeGenerator
 {
 public:
-	BackEnd()
+	BackEnd() : CodeGenerator(false)
 	{
-		static int r;
-
 		prologue(0);
 
 		Int a = 11;
@@ -413,7 +411,7 @@ void testBackEnd()
 {
 	printf("Compiler back-end test.\n\n");
 	printf("Press any key to start assembling.\n\n");
-	getch();
+	_getch();
 
 	BackEnd backEnd;
 	int x = ((int(*)())backEnd.callable())();
@@ -440,12 +438,74 @@ void testBackEnd()
 	}
 }
 
+class X64 : public SoftWire::CodeGenerator
+{
+public:
+	X64() : CodeGenerator(true)
+	{
+		prologue(0);
+
+		static __int64 x;
+
+		// Simple operations
+		mov(r10, r11);
+		mov(r0, r1);
+		mov(r0d, r1d);
+		mov(r0b, r1b);
+		xor(rax, rax);
+		xor(rbx, rbx);
+		mov(qword_ptr [&x+rax+4*rbx], 1);
+		mov(qword_ptr [&x], 2);   // RIP-relative addressing
+		push(r14);
+		pop(r14);
+
+		const char *string = "Good luck with your 64-bit processor!";
+
+		mov(rcx, (unsigned int)string);
+		call((unsigned int)printf);
+
+		epilogue();
+	}
+};
+
+void testX64()
+{
+	printf("X64 test.\n\n");
+	printf("Press any key to start assembling.\n\n");
+	getch();
+
+	X64 x64;
+
+	void (*function)() = (void(*)())x64.callable();
+
+	printf("%s\n\n", x64.getListing());
+	printf("Execute code (y/n)?\n\n");
+
+	int c;
+	do
+	{
+		c = _getch();
+	}
+	while(c != 'y' && c != 'n');
+
+	if(c == 'y')
+	{
+		printf("output: ");
+		function();
+		printf("\n\n");
+	}
+}
+
 int main()
 {
+#if 0
 	testIntrinsics();
 	testRegisterAllocator();
 	testOptimizations();
 	testBackEnd();
+#else   // 64-bit platform
+	testX64();
+#endif
 
 	printf("Press any key to continue\n");
 	getch();

@@ -8,7 +8,7 @@ namespace SoftWire
 
 	bool Emulator::emulateSSE = false;
 
-	Emulator::Emulator()
+	Emulator::Emulator(bool x64) : Optimizer(x64)
 	{
 	}
 
@@ -1102,7 +1102,7 @@ namespace SoftWire
 		return Optimizer::cvtpi2ps(xmm, mem64);
 	}
 
-	Encoding *Emulator::cvtpi2ps(OperandXMMREG xmm, OperandR_M64 r_m64)
+	Encoding *Emulator::cvtpi2ps(OperandXMMREG xmm, OperandMM64 r_m64)
 	{
 		if(r_m64.type == Operand::OPERAND_MMREG) return cvtpi2ps(xmm, (OperandMMREG)r_m64);
 		else                                     return cvtpi2ps(xmm, (OperandMEM64)r_m64);
@@ -1185,7 +1185,7 @@ namespace SoftWire
 
 			fstcw(word_ptr [&fpuCW1]);
 			fstcw(word_ptr [&fpuCW2]);
-			or(word_ptr [&fpuCW2], (short)0x0C00);
+			or(word_ptr [&fpuCW2], (unsigned short)0x0C00);
 			fldcw(word_ptr [&fpuCW2]);
 
 			fld(dword_ptr [&sse[i][0]]);
@@ -1214,7 +1214,7 @@ namespace SoftWire
 
 			fstcw(word_ptr [&fpuCW1]);
 			fstcw(word_ptr [&fpuCW2]);
-			or(word_ptr [&fpuCW2], (short)0x0C00);
+			or(word_ptr [&fpuCW2], (unsigned short)0x0C00);
 			fldcw(word_ptr [&fpuCW2]);
 
 			fld((OperandMEM32)(mem64+0));
@@ -1348,7 +1348,7 @@ namespace SoftWire
 
 			fstcw(word_ptr [&fpuCW1]);
 			fstcw(word_ptr [&fpuCW2]);
-			or(word_ptr [&fpuCW2], (short)0x0C00);
+			or(word_ptr [&fpuCW2], (unsigned short)0x0C00);
 			fldcw(word_ptr [&fpuCW2]);
 
 			fld(dword_ptr [&sse[i][0]]);
@@ -1374,7 +1374,7 @@ namespace SoftWire
 
 			fstcw(word_ptr [&fpuCW1]);
 			fstcw(word_ptr [&fpuCW2]);
-			or(word_ptr [&fpuCW2], (short)0x0C00);
+			or(word_ptr [&fpuCW2], (unsigned short)0x0C00);
 			fldcw(word_ptr [&fpuCW2]);
 
 			fld(mem32);
@@ -2563,7 +2563,7 @@ namespace SoftWire
 		return Optimizer::pavgb(mm, m64);
 	}
 
-	Encoding *Emulator::pavgb(OperandMMREG mm, OperandR_M64 r_m64)
+	Encoding *Emulator::pavgb(OperandMMREG mm, OperandMM64 r_m64)
 	{
 		if(r_m64.type == Operand::OPERAND_MMREG) return pavgb(mm, (OperandMMREG)r_m64);
 		else                                     return pavgb(mm, (OperandMEM64)r_m64);
@@ -2655,7 +2655,7 @@ namespace SoftWire
 		return Optimizer::pavgw(mm, m64);
 	}
 
-	Encoding *Emulator::pavgw(OperandMMREG mm, OperandR_M64 r_m64)
+	Encoding *Emulator::pavgw(OperandMMREG mm, OperandMM64 r_m64)
 	{
 		if(r_m64.type == Operand::OPERAND_MMREG) return pavgw(mm, (OperandMMREG)r_m64);
 		else                                     return pavgw(mm, (OperandMEM64)r_m64);
@@ -2737,7 +2737,7 @@ namespace SoftWire
 		return Optimizer::pmaxsw(mm, m64);
 	}
 
-	Encoding *Emulator::pmaxsw(OperandMMREG mm, OperandR_M64 r_m64)
+	Encoding *Emulator::pmaxsw(OperandMMREG mm, OperandMM64 r_m64)
 	{
 		if(emulateSSE)
 		{
@@ -2767,7 +2767,7 @@ namespace SoftWire
 		return Optimizer::pmaxub(mm, m64);
 	}
 
-	Encoding *Emulator::pmaxub(OperandMMREG mm, OperandR_M64 r_m64)
+	Encoding *Emulator::pmaxub(OperandMMREG mm, OperandMM64 r_m64)
 	{
 		if(emulateSSE)
 		{
@@ -2797,7 +2797,7 @@ namespace SoftWire
 		return Optimizer::pminsw(mm, m64);
 	}
 
-	Encoding *Emulator::pminsw(OperandMMREG mm, OperandR_M64 r_m64)
+	Encoding *Emulator::pminsw(OperandMMREG mm, OperandMM64 r_m64)
 	{
 		if(emulateSSE)
 		{
@@ -2827,7 +2827,7 @@ namespace SoftWire
 		return Optimizer::pminub(mm, m64);
 	}
 
-	Encoding *Emulator::pminub(OperandMMREG mm, OperandR_M64 r_m64)
+	Encoding *Emulator::pminub(OperandMMREG mm, OperandMM64 r_m64)
 	{
 		if(emulateSSE)
 		{
@@ -2914,7 +2914,7 @@ namespace SoftWire
 		return Optimizer::pmulhuw(mm, m64);
 	}
 
-	Encoding *Emulator::pmulhuw(OperandMMREG mm, OperandR_M64 r_m64)
+	Encoding *Emulator::pmulhuw(OperandMMREG mm, OperandMM64 r_m64)
 	{
 		if(r_m64.type == Operand::OPERAND_MMREG) return pmulhuw(mm, (OperandMMREG)r_m64);
 		else                                     return pmulhuw(mm, (OperandMEM64)r_m64);
@@ -3017,7 +3017,7 @@ namespace SoftWire
 		return Optimizer::pshufw(mm, m64, c);
 	}
 
-	Encoding *Emulator::pshufw(OperandMMREG mm, OperandR_M64 r_m64, unsigned char c)
+	Encoding *Emulator::pshufw(OperandMMREG mm, OperandMM64 r_m64, unsigned char c)
 	{
 		if(r_m64.type == Operand::OPERAND_MMREG) return pshufw(mm, (OperandMMREG)r_m64, c);
 		else                                     return pshufw(mm, (OperandMEM64)r_m64, c);

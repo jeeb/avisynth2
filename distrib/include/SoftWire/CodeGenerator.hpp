@@ -39,7 +39,7 @@ namespace SoftWire
 		{
 		public:
 			Char();
-			Char(char c);
+			Char(unsigned char c);
 			Char(const Char &c);
 
 			Char &operator=(const Char &c);
@@ -66,27 +66,27 @@ namespace SoftWire
 			Char operator^(const Char &c);
 			Char operator|(const Char &c);
 
-			Char &operator+=(char c);
-			Char &operator-=(char c);
-			Char &operator*=(char c);
-			Char &operator/=(char c);
-			Char &operator%=(char c);
-			Char &operator<<=(char c);
-			Char &operator>>=(char c);
-			Char &operator&=(char c);
-			Char &operator^=(char c);
-			Char &operator|=(char c);
+			Char &operator+=(unsigned char c);
+			Char &operator-=(unsigned char c);
+			Char &operator*=(unsigned char c);
+			Char &operator/=(unsigned char c);
+			Char &operator%=(unsigned char c);
+			Char &operator<<=(unsigned char c);
+			Char &operator>>=(unsigned char c);
+			Char &operator&=(unsigned char c);
+			Char &operator^=(unsigned char c);
+			Char &operator|=(unsigned char c);
 
-			Char operator+(char c);
-			Char operator-(char c);
-			Char operator*(char c);
-			Char operator/(char c);
-			Char operator%(char c);
-			Char operator<<(char c);
-			Char operator>>(char c);
-			Char operator&(char c);
-			Char operator^(char c);
-			Char operator|(char c);
+			Char operator+(unsigned char c);
+			Char operator-(unsigned char c);
+			Char operator*(unsigned char c);
+			Char operator/(unsigned char c);
+			Char operator%(unsigned char c);
+			Char operator<<(unsigned char c);
+			Char operator>>(unsigned char c);
+			Char operator&(unsigned char c);
+			Char operator^(unsigned char c);
+			Char operator|(unsigned char c);
 		};
 
 		class Word : public Variable
@@ -101,7 +101,7 @@ namespace SoftWire
 		{
 		public:
 			Short();
-			Short(short s);
+			Short(unsigned short s);
 			Short(const Short &s);
 
 			Short &operator=(const Short &s);
@@ -128,27 +128,27 @@ namespace SoftWire
 			Short operator^(const Short &s);
 			Short operator|(const Short &s);
 
-			Short &operator+=(short s);
-			Short &operator-=(short s);
-			Short &operator*=(short s);
-			Short &operator/=(short s);
-			Short &operator%=(short s);
-			Short &operator<<=(short s);
-			Short &operator>>=(short s);
-			Short &operator&=(short s);
-			Short &operator^=(short s);
-			Short &operator|=(short s);
+			Short &operator+=(unsigned short s);
+			Short &operator-=(unsigned short s);
+			Short &operator*=(unsigned short s);
+			Short &operator/=(unsigned short s);
+			Short &operator%=(unsigned short s);
+			Short &operator<<=(unsigned short s);
+			Short &operator>>=(unsigned short s);
+			Short &operator&=(unsigned short s);
+			Short &operator^=(unsigned short s);
+			Short &operator|=(unsigned short s);
 
-			Short operator+(short s);
-			Short operator-(short s);
-			Short operator*(short s);
-			Short operator/(short s);
-			Short operator%(short s);
-			Short operator<<(short s);
-			Short operator>>(short s);
-			Short operator&(short s);
-			Short operator^(short s);
-			Short operator|(short s);
+			Short operator+(unsigned short s);
+			Short operator-(unsigned short s);
+			Short operator*(unsigned short s);
+			Short operator/(unsigned short s);
+			Short operator%(unsigned short s);
+			Short operator<<(unsigned short s);
+			Short operator>>(unsigned short s);
+			Short operator&(unsigned short s);
+			Short operator^(unsigned short s);
+			Short operator|(unsigned short s);
 		};
 
 		class Dword : public Variable
@@ -163,7 +163,7 @@ namespace SoftWire
 		{
 		public:
 			Int();
-			Int(int i);
+			Int(unsigned int i);
 			Int(const Int &i);
 
 			Int &operator=(const Int &i);
@@ -190,27 +190,27 @@ namespace SoftWire
 			Int operator^(const Int &i);
 			Int operator|(const Int &i);
 
-			Int &operator+=(int i);
-			Int &operator-=(int i);
-			Int &operator*=(int i);
-			Int &operator/=(int i);
-			Int &operator%=(int i);
-			Int &operator<<=(int i);
-			Int &operator>>=(int i);
-			Int &operator&=(int i);
-			Int &operator^=(int i);
-			Int &operator|=(int i);
+			Int &operator+=(unsigned int i);
+			Int &operator-=(unsigned int i);
+			Int &operator*=(unsigned int i);
+			Int &operator/=(unsigned int i);
+			Int &operator%=(unsigned int i);
+			Int &operator<<=(unsigned int i);
+			Int &operator>>=(unsigned int i);
+			Int &operator&=(unsigned int i);
+			Int &operator^=(unsigned int i);
+			Int &operator|=(unsigned int i);
 
-			Int operator+(int i);
-			Int operator-(int i);
-			Int operator*(int i);
-			Int operator/(int i);
-			Int operator%(int i);
-			Int operator<<(int i);
-			Int operator>>(int i);
-			Int operator&(int i);
-			Int operator^(int i);
-			Int operator|(int i);
+			Int operator+(unsigned int i);
+			Int operator-(unsigned int i);
+			Int operator*(unsigned int i);
+			Int operator/(unsigned int i);
+			Int operator%(unsigned int i);
+			Int operator<<(unsigned int i);
+			Int operator>>(unsigned int i);
+			Int operator&(unsigned int i);
+			Int operator^(unsigned int i);
+			Int operator|(unsigned int i);
 		};
 
 		class Word4;
@@ -378,7 +378,7 @@ namespace SoftWire
 			Float4 operator|(const Float4 &float4);
 		};
 
-		CodeGenerator();
+		CodeGenerator(bool x64);
 
 		virtual ~CodeGenerator();
 
