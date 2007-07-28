@@ -102,7 +102,7 @@ void Convert444FromYV12::ConvertImage(PVideoFrame src, Image444* dst, IScriptEnv
 
   int dstUVpitch = dst->pitch;
 
-  int w = src->GetRowSize(PLANAR_U_ALIGNED);
+  int w = ((src->GetRowSize(PLANAR_U)+7)/8)*8;
   int h = src->GetHeight(PLANAR_U);
 
   ConvertYV12ChromaTo444(dstU, srcU, dstUVpitch, srcUVpitch, w, h);
@@ -386,7 +386,7 @@ PVideoFrame Convert444ToYV12::ConvertImage(Image444* src, PVideoFrame dst, IScri
 
   int dstUVpitch = dst->GetPitch(PLANAR_U);
 
-  int w = dst->GetRowSize(PLANAR_U_ALIGNED);
+  int w = ((dst->GetRowSize(PLANAR_U)+7)/8)*8;
   int h = dst->GetHeight(PLANAR_U);
 
   if (GetCPUFlags() & CPUF_INTEGER_SSE) {
