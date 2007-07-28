@@ -60,7 +60,7 @@
 				AssemblerListingLocation=".\Debug/"
 				ObjectFile=".\Debug/"
 				ProgramDataBaseFileName=".\Debug/"
-				BrowseInformation="2"
+				BrowseInformation="1"
 				BrowseInformationFile=".\Debug/"
 				WarningLevel="3"
 				SuppressStartupBanner="true"
@@ -79,7 +79,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="../distrib/lib/debug/SoundTouch8D.lib ../distrib/lib/debug/pfc.lib ../distrib/lib/debug/devil-d.lib ../distrib/lib/softwire.lib msacm32.lib vfw32.lib version.lib winmm.lib Advapi32.lib User32.lib Ole32.lib Gdi32.lib"
+				AdditionalDependencies="debug/SoundTouch.lib debug/pfc.lib ../distrib/lib/debug/devil-d.lib debug/softwire.lib msacm32.lib vfw32.lib version.lib winmm.lib Advapi32.lib User32.lib Ole32.lib Gdi32.lib"
 				OutputFile=".\Debug/avisynth.dll"
 				LinkIncremental="2"
 				SuppressStartupBanner="true"
@@ -259,7 +259,7 @@
 				InlineFunctionExpansion="2"
 				EnableIntrinsicFunctions="true"
 				FavorSizeOrSpeed="1"
-				OmitFramePointers="true"
+				OmitFramePointers="false"
 				EnableFiberSafeOptimizations="true"
 				WholeProgramOptimization="true"
 				PreprocessorDefinitions="NDEBUG;INC_OLE2;STRICT;WIN32;_WIN32;_MT;_DLL;_USRDLL;AVISYNTH_C_EXPORTS"
@@ -295,7 +295,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="../distrib/lib/SoundTouch8.lib ../distrib/lib/pfc.lib ../distrib/lib/devil.lib ../distrib/lib/softwire.lib msacm32.lib vfw32.lib version.lib winmm.lib Advapi32.lib User32.lib Ole32.lib Gdi32.lib"
+				AdditionalDependencies="Release/SoundTouch.lib Release/pfc.lib ../distrib/lib/devil.lib Release/softwire.lib msacm32.lib vfw32.lib version.lib winmm.lib Advapi32.lib User32.lib Ole32.lib Gdi32.lib"
 				OutputFile=".\Release/avisynth.dll"
 				LinkIncremental="1"
 				SuppressStartupBanner="true"
