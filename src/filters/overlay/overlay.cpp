@@ -139,7 +139,7 @@ GenericVideoFilter(_child) {
     }
 
   }
-   
+  inputCS = vi.pixel_type;
   inputConv = SelectInputCS(inputVi, env);
 
   if (!inputConv) {
@@ -180,8 +180,10 @@ Overlay::~Overlay() {
   }
   overlayImg->free();
   delete overlayImg;
-  img->free();
-  delete img;
+  if (img) {
+    img->free();
+    delete img;
+  }
   free(inputVi);
   delete func;
   delete outputConv;
@@ -196,7 +198,17 @@ PVideoFrame __stdcall Overlay::GetFrame(int n, IScriptEnvironment *env) {
 
     // Fetch current frame and convert it.
   PVideoFrame frame = child->GetFrame(n, env);
-  inputConv->ConvertImage(frame, img, env);
+  if (vi.IsYV24() && inputCS == vi.pixel_type) {  // Fast path
+    // This will be used to avoid two unneeded blits if input and output is yv24
+    // Note however, that this will break, if for some reason AviSynth in the future
+    // will choose different alignment on YV24 planes.
+    if (img)
+      delete img;
+    img = new Image444(frame->GetWritePtr(PLANAR_Y), frame->GetWritePtr(PLANAR_U), frame->GetWritePtr(PLANAR_U),
+      frame->GetRowSize(PLANAR_Y), frame->GetHeight(PLANAR_Y), frame->GetPitch(PLANAR_Y));
+  } else {
+    inputConv->ConvertImage(frame, img, env);
+  }
 
   // Fetch current overlay and convert it
   PVideoFrame Oframe = overlay->GetFrame(n, env);
@@ -245,6 +257,11 @@ PVideoFrame __stdcall Overlay::GetFrame(int n, IScriptEnvironment *env) {
     maskImg->ReturnOriginal(true);
 
   // Convert output image back
+  if (vi.IsYV24() && inputCS == vi.pixel_type) {  // Fast path
+    delete img;
+    img = NULL;
+    return frame;
+  } 
 
   PVideoFrame f = env->NewVideoFrame(vi);
   f = outputConv->ConvertImage(img, f, env);
