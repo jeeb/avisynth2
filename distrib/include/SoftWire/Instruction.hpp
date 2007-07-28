@@ -83,7 +83,11 @@ namespace SoftWire
 			CPU_PRIV		= 0x00100000,   // Priviledged
 
 			CPU_X64			= 0x00200000 | CPU_SSE2,    // x86-64
-			CPU_INVALID64	= 0x00400000    // Invalid instruction in x86-64 long mode
+			CPU_INVALID64	= 0x00400000,    // Invalid instruction in x86-64 long mode
+
+			CPU_SSSE3		= 0x00800000 | CPU_PNI,
+			CPU_SSE4_1		= 0x01000000 | CPU_SSSE3,
+			CPU_SSE4_2	= 0x02000000 | CPU_SSE4_1
 		};
 
 		struct Syntax
