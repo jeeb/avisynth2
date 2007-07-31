@@ -1,8 +1,0 @@
-loadplugin("debug/soundout.dll")
-colorbars()
-audiodub(wavsource("dplii_1.wav"))
-#trim(0,5000)
-#ssrc(44100)
-#amplifydb(-10)
-convertaudiotofloat()
-soundout( last,  filename="out",mode =2, autoclose = true, showprogress=true)
