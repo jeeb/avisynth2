@@ -261,7 +261,7 @@
 				FavorSizeOrSpeed="1"
 				OmitFramePointers="false"
 				EnableFiberSafeOptimizations="true"
-				WholeProgramOptimization="true"
+				WholeProgramOptimization="false"
 				PreprocessorDefinitions="NDEBUG;INC_OLE2;STRICT;WIN32;_WIN32;_MT;_DLL;_USRDLL;AVISYNTH_C_EXPORTS"
 				StringPooling="true"
 				MinimalRebuild="false"
@@ -302,7 +302,7 @@
 				IgnoreDefaultLibraryNames="LIBC"
 				ModuleDefinitionFile=".\core\avisynth.def"
 				ProgramDatabaseFile=".\Release/avisynth.pdb"
-				LinkTimeCodeGeneration="1"
+				LinkTimeCodeGeneration="0"
 				ImportLibrary=".\Release/avisynth.lib"
 				TargetMachine="1"
 			/>

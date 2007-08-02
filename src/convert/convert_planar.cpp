@@ -38,7 +38,6 @@
 #include "stdafx.h"
 
 #include "convert_planar.h"
-#include "../filters/resample.h"
 #include "../filters/planeswap.h"
 #include "../filters/field.h"
 
@@ -821,7 +820,8 @@ AVSValue __cdecl ConvertYV16ToYUY2::Create(AVSValue args, void*, IScriptEnvironm
 
 
 ConvertToPlanarGeneric::ConvertToPlanarGeneric(PClip src, int dst_space, bool interlaced,
-                                               AVSValue* UsubSampling, AVSValue* VsubSampling,
+                                               AVSValue* UsubSampling, AVSValue* VsubSampling, 
+                                               int cp,  const AVSValue* chromaResampler,
                                                IScriptEnvironment* env) : GenericVideoFilter(src) {
   Y8input = vi.IsY8();
 
@@ -851,6 +851,21 @@ ConvertToPlanarGeneric::ConvertToPlanarGeneric(PClip src, int dst_space, bool in
   case VideoInfo::CS_I420:
       uv_width /= 2; 
       uv_height /=  2;
+      switch (cp) {
+        case PLACEMENT_MPEG2:
+          UsubSampling[1] = AVSValue(0.5); // Override U chroma placement if source is YV12
+          VsubSampling[1] = AVSValue(0.5); // Override V chroma placement if source is YV12
+          break;
+        case PLACEMENT_DV:
+          UsubSampling[1] = AVSValue(0.5); // Override U chroma placement if source is YV12
+          VsubSampling[1] = AVSValue(1.5); // Override V chroma placement if source is YV12
+          break;
+        case PLACEMENT_MPEG1:
+          UsubSampling[0] = AVSValue(0.5); // Override U chroma placement if source is YV12
+          VsubSampling[0] = AVSValue(0.5); // Override V chroma placement if source is YV12
+          UsubSampling[1] = AVSValue(0.5); // Override U chroma placement if source is YV12
+          VsubSampling[1] = AVSValue(0.5); // Override V chroma placement if source is YV12
+      }
       break;
     case VideoInfo::CS_YV24:
       uv_width /= 1; uv_height /= 1;
@@ -866,23 +881,19 @@ ConvertToPlanarGeneric::ConvertToPlanarGeneric(PClip src, int dst_space, bool in
 
   }
 
-  if (vi.IsYV12()) {
-    UsubSampling[1] = AVSValue(0.5); // Override Y chroma placement if destination is YV12
-    VsubSampling[1] = AVSValue(0.5); // Override Y chroma placement if destination is YV12
-  }
-
   vi.pixel_type = dst_space;
 
   if (!Y8input) {
-    MitchellNetravaliFilter filter(1./3., 1./3.);
-    UsubSampling[2] = AVSValue(Usource->GetVideoInfo().width+UsubSampling[0].AsFloat(0.0));
-    UsubSampling[3] = AVSValue(Usource->GetVideoInfo().height+UsubSampling[1].AsFloat(0.0));
-    VsubSampling[2] = AVSValue(Vsource->GetVideoInfo().width+VsubSampling[0].AsFloat(0.0));
-    VsubSampling[3] = AVSValue(Vsource->GetVideoInfo().height+VsubSampling[1].AsFloat(0.0));
-    Usource = FilteredResize::CreateResize(Usource, uv_width, uv_height, UsubSampling, &filter, env);
-    Vsource = FilteredResize::CreateResize(Vsource, uv_width, uv_height, VsubSampling, &filter, env);
+    ResamplingFunction *filter = getResampler(chromaResampler->AsString("bicubic"), env);
+    UsubSampling[2] = AVSValue(Usource->GetVideoInfo().width+UsubSampling[0].AsFloat());
+    UsubSampling[3] = AVSValue(Usource->GetVideoInfo().height+UsubSampling[1].AsFloat());
+    VsubSampling[2] = AVSValue(Vsource->GetVideoInfo().width+VsubSampling[0].AsFloat());
+    VsubSampling[3] = AVSValue(Vsource->GetVideoInfo().height+VsubSampling[1].AsFloat());
+    Usource = FilteredResize::CreateResize(Usource, uv_width, uv_height, UsubSampling, filter, env);
+    Vsource = FilteredResize::CreateResize(Vsource, uv_width, uv_height, VsubSampling, filter, env);
     if (interlaced) Usource = new SelectEvery(new DoubleWeaveFields(Usource), 2, 0);
     if (interlaced) Vsource = new SelectEvery(new DoubleWeaveFields(Vsource), 2, 0);
+    delete filter;
   }
 }
 
@@ -919,8 +930,23 @@ AVSValue __cdecl ConvertToPlanarGeneric::CreateYV12(AVSValue args, void*, IScrip
     env->ThrowError("ConvertToYV12: Can only convert from Planar YUV.");
 
   bool interlaced = args[1].AsBool(false);
-  AVSValue subs[4] = { 0.0, -0.5, 0.0, 0.0 }; // Move chroma down 0.5 lines
-  clip = new ConvertToPlanarGeneric(clip ,VideoInfo::CS_YV12,args[1].AsBool(false),subs, subs, env);
+  AVSValue Usubs[4] = { 0.0, -0.5/double(1<<(clip->GetVideoInfo().GetPlaneHeightSubsampling())), 0.0, 0.0 }; // Move chroma down 0.5 lines
+  AVSValue Vsubs[4] = { 0.0, -0.5/double(1<<(clip->GetVideoInfo().GetPlaneHeightSubsampling())), 0.0, 0.0 }; // Move chroma down 0.5 lines
+  int cp = getPlacement(args[3].AsString("MPEG2"), env);
+  switch (cp) {
+        case PLACEMENT_DV:
+          Usubs[1] = AVSValue(-0.5/double(1<<(clip->GetVideoInfo().GetPlaneHeightSubsampling()))); // Override U chroma placement if source is YV12
+          Vsubs[1] = AVSValue(-1.5/double(1<<(clip->GetVideoInfo().GetPlaneHeightSubsampling()))); // Override V chroma placement if source is YV12
+          break;
+        case PLACEMENT_MPEG1:
+          Usubs[0] = AVSValue(-0.5/double(1<<(clip->GetVideoInfo().GetPlaneWidthSubsampling()))); // Override U chroma placement if source is YV12
+          Vsubs[0] = AVSValue(-0.5/double(1<<(clip->GetVideoInfo().GetPlaneWidthSubsampling()))); // Override V chroma placement if source is YV12
+          Usubs[1] = AVSValue(-0.5/double(1<<(clip->GetVideoInfo().GetPlaneHeightSubsampling()))); // Override U chroma placement if source is YV12
+          Vsubs[1] = AVSValue(-0.5/double(1<<(clip->GetVideoInfo().GetPlaneHeightSubsampling()))); // Override V chroma placement if source is YV12
+        case PLACEMENT_MPEG2:
+          break;  // Already set (default)
+  }
+  clip = new ConvertToPlanarGeneric(clip ,VideoInfo::CS_YV12,args[1].AsBool(false),Usubs, Vsubs, cp, &args[4], env);
   return clip;
 }
 
@@ -939,8 +965,10 @@ AVSValue __cdecl ConvertToPlanarGeneric::CreateYV16(AVSValue args, void*, IScrip
   if (!clip->GetVideoInfo().IsPlanar())
     env->ThrowError("ConvertToYV16: Can only convert from Planar YUV.");
 
-  AVSValue subs[4] = { 0.0, 0.0, 0.0, 0.0 }; 
-  clip = new ConvertToPlanarGeneric(clip ,VideoInfo::CS_YV16,args[1].AsBool(false),subs, subs, env);
+  AVSValue Usubs[4] = { 0.0, 0.0, 0.0, 0.0 }; 
+  AVSValue Vsubs[4] = { 0.0, 0.0, 0.0, 0.0 }; 
+  int cp = getPlacement(args[3].AsString("MPEG2"), env);
+  clip = new ConvertToPlanarGeneric(clip ,VideoInfo::CS_YV16,args[1].AsBool(false),Usubs, Vsubs, cp, &args[4], env);
   return clip;
 }
 
@@ -959,8 +987,10 @@ AVSValue __cdecl ConvertToPlanarGeneric::CreateYV24(AVSValue args, void*, IScrip
   if (!clip->GetVideoInfo().IsPlanar())
     env->ThrowError("ConvertToYV24: Can only convert from Planar YUV.");
 
-  AVSValue subs[4] = { 0.0, 0.0, 0.0, 0.0 }; 
-  clip = new ConvertToPlanarGeneric(clip ,VideoInfo::CS_YV24,args[1].AsBool(false),subs, subs, env);
+  AVSValue Usubs[4] = { 0.0, 0.0, 0.0, 0.0 }; 
+  AVSValue Vsubs[4] = { 0.0, 0.0, 0.0, 0.0 }; 
+  int cp = getPlacement(args[3].AsString("MPEG2"), env);
+  clip = new ConvertToPlanarGeneric(clip ,VideoInfo::CS_YV24,args[1].AsBool(false),Usubs, Vsubs, cp, &args[4], env);
   return clip;
 }
 
@@ -979,7 +1009,9 @@ AVSValue __cdecl ConvertToPlanarGeneric::CreateYV411(AVSValue args, void*, IScri
   if (!clip->GetVideoInfo().IsPlanar())
     env->ThrowError("ConvertToYV411: Can only convert from Planar YUV.");
 
-  AVSValue subs[4] = { 0.0, 0.0, 0.0, 0.0 }; 
-  clip = new ConvertToPlanarGeneric(clip ,VideoInfo::CS_YV411,args[1].AsBool(false),subs, subs, env);
+  AVSValue Usubs[4] = { 0.0, 0.0, 0.0, 0.0 }; 
+  AVSValue Vsubs[4] = { 0.0, 0.0, 0.0, 0.0 }; 
+  int cp = getPlacement(args[3].AsString("MPEG2"), env);
+  clip = new ConvertToPlanarGeneric(clip ,VideoInfo::CS_YV411,args[1].AsBool(false),Usubs, Vsubs, cp, &args[4], env);
   return clip;
 }

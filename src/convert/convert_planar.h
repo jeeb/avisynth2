@@ -39,6 +39,7 @@
 
 #include "../internal.h"
 #include "convert_matrix.h"
+#include "../filters/resample.h"
 
 enum {Rec601=0, Rec709=1, PC_601=2, PC_709=3 };
 
@@ -61,6 +62,47 @@ static int getMatrix( const char* matrix, IScriptEnvironment* env) {
   return Rec601; // Default colorspace conversion for AviSynth
 }
 
+enum   {PLACEMENT_MPEG2, PLACEMENT_MPEG1, PLACEMENT_DV } ;
+
+static int getPlacement( const char* placement, IScriptEnvironment* env) {
+  if (placement) {
+    if (!lstrcmpi(placement, "mpeg2"))
+      return PLACEMENT_MPEG2;
+    if (!lstrcmpi(placement, "mpeg1"))
+      return PLACEMENT_MPEG1;
+    if (!lstrcmpi(placement, "dv"))
+      return PLACEMENT_DV;
+  }
+  env->ThrowError("Convert: Unknown chromaplacement");
+  return PLACEMENT_MPEG2;
+}
+
+static ResamplingFunction* getResampler( const char* resampler, IScriptEnvironment* env) {
+  if (resampler) {
+    if (!lstrcmpi(resampler, "point"))
+      return new PointFilter();
+    if (!lstrcmpi(resampler, "bilinear"))
+      return new TriangleFilter();
+    else if (!lstrcmpi(resampler, "bicubic"))
+      return new MitchellNetravaliFilter(1./3,1./3);
+    else if (!lstrcmpi(resampler, "lanczos"))
+      return new LanczosFilter(3);
+    else if (!lstrcmpi(resampler, "lanczos4"))
+      return new LanczosFilter(4);
+    else if (!lstrcmpi(resampler, "blackman"))
+      return new BlackmanFilter(4);
+    else if (!lstrcmpi(resampler, "spline16"))
+      return new Spline16Filter();
+    else if (!lstrcmpi(resampler, "spline36"))
+      return new Spline36Filter();
+    else if (!lstrcmpi(resampler, "splint64"))
+      return new Spline64Filter();
+    else if (!lstrcmpi(resampler, "gauss"))
+      return new GaussianFilter(30.0);
+  }
+  env->ThrowError("Convert: Unknown chroma resampler");
+  return new MitchellNetravaliFilter(1./3,1./3); // Default colorspace conversion for AviSynth
+}
 
 
 class ConvertToY8 : public GenericVideoFilter
@@ -135,7 +177,7 @@ private:
 class ConvertToPlanarGeneric : public GenericVideoFilter
 {
 public:
-  ConvertToPlanarGeneric(PClip src, int dst_space, bool interlaced, AVSValue* UsubsSampling, AVSValue* VsubsSampling, IScriptEnvironment* env);
+  ConvertToPlanarGeneric(PClip src, int dst_space, bool interlaced, AVSValue* UsubsSampling, AVSValue* VsubsSampling, int cp,  const AVSValue* ChromaResampler, IScriptEnvironment* env);
   ~ConvertToPlanarGeneric() {}
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
   static AVSValue __cdecl CreateYV12(AVSValue args, void*, IScriptEnvironment* env);   

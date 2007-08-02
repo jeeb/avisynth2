@@ -291,8 +291,8 @@ AVSValue __cdecl ConvertToYUY2::Create(AVSValue args, void*, IScriptEnvironment*
   if (clip->GetVideoInfo().IsYUY2())
     return clip;
   if (!clip->GetVideoInfo().IsYV12() && clip->GetVideoInfo().IsPlanar())  { // We have no direct conversions. Go to YV16.
-    AVSValue new_args[3] = { clip, args[1].AsBool(false), args[2].AsString("rec601") }; 
-    clip = ConvertToPlanarGeneric::CreateYV16(AVSValue(new_args, 3), NULL,  env).AsClip();
+    AVSValue new_args[5] = { clip, args[1].AsBool(false), args[2].AsString("rec601"), args[3].AsString("MPEG2"), args[4].AsString("Bicubic") }; 
+    clip = ConvertToPlanarGeneric::CreateYV16(AVSValue(new_args, 5), NULL,  env).AsClip();
   }
   if (clip->GetVideoInfo().IsYV16()) 
     return new ConvertYV16ToYUY2(clip,  env);
