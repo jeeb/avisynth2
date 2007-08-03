@@ -19,6 +19,7 @@ CFG=SoundTouch - Win32 Debug
 !MESSAGE 
 !MESSAGE "SoundTouch - Win32 Release" (based on "Win32 (x86) Static Library")
 !MESSAGE "SoundTouch - Win32 Debug" (based on "Win32 (x86) Static Library")
+!MESSAGE "SoundTouch - Win32 Relsym" (based on "Win32 (x86) Static Library")
 !MESSAGE 
 
 # Begin Project
@@ -37,23 +38,22 @@ RSC=rc.exe
 # PROP BASE Target_Dir ""
 # PROP Use_MFC 0
 # PROP Use_Debug_Libraries 0
-# PROP Output_Dir "Release"
+# PROP Output_Dir "..\..\..\src\Release"
 # PROP Intermediate_Dir "Release"
 # PROP Target_Dir ""
+MTL=midl.exe
+F90=df.exe
 # ADD BASE CPP /nologo /W3 /GX /O2 /D "WIN32" /D "NDEBUG" /D "_MBCS" /D "_LIB" /YX /FD /c
-# ADD CPP /nologo /W3 /GX /Zi /O2 /I "..\..\include" /D "WIN32" /D "NDEBUG" /D "_MBCS" /D "_LIB" /YX /FD /c
+# ADD CPP /nologo /G6 /MD /W3 /GX /Zi /O2 /D "WIN32" /D "NDEBUG" /D "_MBCS" /D "_LIB" /FR /FD /c
+# SUBTRACT CPP /YX
 # ADD BASE RSC /l 0x40b /d "NDEBUG"
-# ADD RSC /l 0x40b /d "NDEBUG"
+# ADD RSC /l 0x409 /d "NDEBUG"
 BSC32=bscmake.exe
 # ADD BASE BSC32 /nologo
 # ADD BSC32 /nologo
 LIB32=link.exe -lib
 # ADD BASE LIB32 /nologo
 # ADD LIB32 /nologo
-# Begin Special Build Tool
-SOURCE="$(InputPath)"
-PostBuild_Cmds=copy           .\Release\SoundTouch.lib           ..\..\lib\ 
-# End Special Build Tool
 
 !ELSEIF  "$(CFG)" == "SoundTouch - Win32 Debug"
 
@@ -64,23 +64,49 @@ PostBuild_Cmds=copy           .\Release\SoundTouch.lib           ..\..\lib\
 # PROP BASE Target_Dir ""
 # PROP Use_MFC 0
 # PROP Use_Debug_Libraries 1
-# PROP Output_Dir "Debug"
+# PROP Output_Dir "..\..\..\src\Debug"
 # PROP Intermediate_Dir "Debug"
 # PROP Target_Dir ""
+MTL=midl.exe
+F90=df.exe
 # ADD BASE CPP /nologo /W3 /Gm /GX /ZI /Od /D "WIN32" /D "_DEBUG" /D "_MBCS" /D "_LIB" /YX /FD /GZ /c
-# ADD CPP /nologo /W3 /Gm /GX /ZI /Od /I "..\..\include" /D "WIN32" /D "_DEBUG" /D "_MBCS" /D "_LIB" /FR /YX /FD /GZ /c
+# ADD CPP /nologo /G6 /MDd /W3 /Gm /Gi /GX /ZI /Od /D "WIN32" /D "_DEBUG" /D "_MBCS" /D "_LIB" /FR /FD /I /GZ /c
+# SUBTRACT CPP /YX
 # ADD BASE RSC /l 0x40b /d "_DEBUG"
-# ADD RSC /l 0x40b /d "_DEBUG"
+# ADD RSC /l 0x409 /d "_DEBUG"
 BSC32=bscmake.exe
 # ADD BASE BSC32 /nologo
 # ADD BSC32 /nologo
 LIB32=link.exe -lib
 # ADD BASE LIB32 /nologo
-# ADD LIB32 /nologo /out:"Debug\SoundTouchD.lib"
-# Begin Special Build Tool
-SOURCE="$(InputPath)"
-PostBuild_Cmds=copy           .\Debug\SoundTouchD.lib           ..\..\lib\ 
-# End Special Build Tool
+# ADD LIB32 /nologo
+
+!ELSEIF  "$(CFG)" == "SoundTouch - Win32 Relsym"
+
+# PROP BASE Use_MFC 0
+# PROP BASE Use_Debug_Libraries 0
+# PROP BASE Output_Dir "Relsym"
+# PROP BASE Intermediate_Dir "Relsym"
+# PROP BASE Target_Dir ""
+# PROP Use_MFC 0
+# PROP Use_Debug_Libraries 0
+# PROP Output_Dir "..\..\..\src\Relsym"
+# PROP Intermediate_Dir "Relsym"
+# PROP Target_Dir ""
+MTL=midl.exe
+F90=df.exe
+# ADD BASE CPP /nologo /G6 /MD /W3 /GX /Zi /O2 /D "WIN32" /D "NDEBUG" /D "_MBCS" /D "_LIB" /FR /FD /c
+# SUBTRACT BASE CPP /YX
+# ADD CPP /nologo /G6 /MD /W3 /GX /Zi /O2 /D "WIN32" /D "NDEBUG" /D "_MBCS" /D "_LIB" /FAs /FR /FD /c
+# SUBTRACT CPP /YX
+# ADD BASE RSC /l 0x409 /d "NDEBUG"
+# ADD RSC /l 0x409 /d "NDEBUG"
+BSC32=bscmake.exe
+# ADD BASE BSC32 /nologo
+# ADD BSC32 /nologo
+LIB32=link.exe -lib
+# ADD BASE LIB32 /nologo
+# ADD LIB32 /nologo
 
 !ENDIF 
 
@@ -88,6 +114,7 @@ PostBuild_Cmds=copy           .\Debug\SoundTouchD.lib           ..\..\lib\
 
 # Name "SoundTouch - Win32 Release"
 # Name "SoundTouch - Win32 Debug"
+# Name "SoundTouch - Win32 Relsym"
 # Begin Group "Source Files"
 
 # PROP Default_Filter "cpp;c;cxx;rc;def;r;odl;idl;hpj;bat"
@@ -145,11 +172,11 @@ SOURCE=.\cpu_detect.h
 # End Source File
 # Begin Source File
 
-SOURCE=..\..\include\FIFOSampleBuffer.h
+SOURCE=.\FIFOSampleBuffer.h
 # End Source File
 # Begin Source File
 
-SOURCE=..\..\include\FIFOSamplePipe.h
+SOURCE=.\FIFOSamplePipe.h
 # End Source File
 # Begin Source File
 
@@ -161,11 +188,11 @@ SOURCE=.\RateTransposer.h
 # End Source File
 # Begin Source File
 
-SOURCE=..\..\include\SoundTouch.h
+SOURCE=.\SoundTouch.h
 # End Source File
 # Begin Source File
 
-SOURCE=..\..\include\STTypes.h
+SOURCE=.\STTypes.h
 # End Source File
 # Begin Source File
 
