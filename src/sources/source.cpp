@@ -81,20 +81,23 @@ static PVideoFrame CreateBlankFrame(const VideoInfo& vi, int color, int mode, IS
     int color_yuv =(mode == COLOR_MODE_YUV) ? color : RGB2YUV(color);
     int Cval = (color_yuv>>16)&0xff;
     Cval |= (Cval<<8)|(Cval<<16)|(Cval<<24);
-    for (int i=0; i<size; i+=4)
+    {for (int i=0; i<size; i+=4)
       *(unsigned*)(p+i) = Cval;
+    }
     p = frame->GetWritePtr(PLANAR_U);
     size = frame->GetPitch(PLANAR_U) * frame->GetHeight(PLANAR_U);
     Cval = (color_yuv>>8)&0xff;
     Cval |= (Cval<<8)|(Cval<<16)|(Cval<<24);
-    for (int i=0; i<size; i+=4)
+    {for (int i=0; i<size; i+=4)
       *(unsigned*)(p+i) = Cval;
+    }
     size = frame->GetPitch(PLANAR_V) * frame->GetHeight(PLANAR_V);
     p = frame->GetWritePtr(PLANAR_V);
     Cval = (color_yuv)&0xff;
     Cval |= (Cval<<8)|(Cval<<16)|(Cval<<24);
-    for (i=0; i<size; i+=4)
+    {for (int i=0; i<size; i+=4)
       *(unsigned*)(p+i) = Cval;
+    }
   } else if (vi.IsYUY2()) {
     int color_yuv =(mode == COLOR_MODE_YUV) ? color : RGB2YUV(color);
     unsigned d = ((color_yuv>>16)&255) * 0x010001 + ((color_yuv>>8)&255) * 0x0100 + (color_yuv&255) * 0x01000000;
