@@ -77,8 +77,8 @@ AVSFunction Merge_filters[] = {
 ******   Merge Chroma   *****
 ****************************/
 
-MergeChroma::MergeChroma(PClip _child, PClip _clip, float _weight, int _test, IScriptEnvironment* env)
-  : GenericVideoFilter(_child), clip(_clip), weight(_weight), test(_test)
+MergeChroma::MergeChroma(PClip _child, PClip _clip, double _weight, int _test, IScriptEnvironment* env)
+  : GenericVideoFilter(_child), clip(_clip), weight((float)_weight), test(_test)
 {
   const VideoInfo& vi2 = clip->GetVideoInfo();
 
@@ -172,7 +172,7 @@ PVideoFrame __stdcall MergeChroma::GetFrame(int n, IScriptEnvironment* env)
 
 AVSValue __cdecl MergeChroma::Create(AVSValue args, void* user_data, IScriptEnvironment* env)
 {
-  return new MergeChroma(args[0].AsClip(), args[1].AsClip(), (float)args[2].AsFloat(1.0f), TESTARG(3), env);
+  return new MergeChroma(args[0].AsClip(), args[1].AsClip(), args[2].AsFloat(1.0f), TESTARG(3), env);
 }
 
 
@@ -181,8 +181,8 @@ AVSValue __cdecl MergeChroma::Create(AVSValue args, void* user_data, IScriptEnvi
 **************************/
 
 
-MergeLuma::MergeLuma(PClip _child, PClip _clip, float _weight, int _test, IScriptEnvironment* env)
-  : GenericVideoFilter(_child), clip(_clip), weight(_weight), test(_test)
+MergeLuma::MergeLuma(PClip _child, PClip _clip, double _weight, int _test, IScriptEnvironment* env)
+  : GenericVideoFilter(_child), clip(_clip), weight((float)_weight), test(_test)
 {
   const VideoInfo& vi2 = clip->GetVideoInfo();
 
@@ -190,7 +190,7 @@ MergeLuma::MergeLuma(PClip _child, PClip _clip, float _weight, int _test, IScrip
     env->ThrowError("MergeLuma: YUV data only (no RGB); use ConvertToYUY2 or ConvertToYV12");
 
   if (!vi.IsSameColorspace(vi2)) {  // Since this is luma we allow all planar formats to be merged.
-    if (!(vi.IsPlanar() && vi2.IsPlanar())) {
+    if (vi.IsPlanar() == vi2.IsPlanar()) {
       env->ThrowError("MergeLuma: YUV data is not same type. YUY2 and planar images doesn't mix.");
     }
   }
@@ -256,7 +256,7 @@ PVideoFrame __stdcall MergeLuma::GetFrame(int n, IScriptEnvironment* env)
 
     if ((TEST(4, 8) (env->GetCPUFlags() & CPUF_INTEGER_SSE)) && (weight>0.4999f) && (weight<0.5001f)) {
       isse_avg_plane(srcpY,lumapY,src->GetPitch(PLANAR_Y),luma->GetPitch(PLANAR_Y),src->GetRowSize(PLANAR_Y_ALIGNED),src->GetHeight(PLANAR_Y));
-    } 
+    }
     else if (TEST(4, 8) (env->GetCPUFlags() & CPUF_MMX)) {
       mmx_weigh_plane(srcpY,lumapY,src->GetPitch(PLANAR_Y),luma->GetPitch(PLANAR_Y),src->GetRowSize(PLANAR_Y_ALIGNED),src->GetHeight(PLANAR_Y),(int)(weight*32767.0f),32767-(int)(weight*32767.0f));
     }
@@ -271,7 +271,7 @@ PVideoFrame __stdcall MergeLuma::GetFrame(int n, IScriptEnvironment* env)
 
 AVSValue __cdecl MergeLuma::Create(AVSValue args, void* user_data, IScriptEnvironment* env)
 {
-  return new MergeLuma(args[0].AsClip(), args[1].AsClip(), (float)args[2].AsFloat(1.0f), TESTARG(3), env);
+  return new MergeLuma(args[0].AsClip(), args[1].AsClip(), args[2].AsFloat(1.0f), TESTARG(3), env);
 }
 
 
@@ -281,8 +281,8 @@ AVSValue __cdecl MergeLuma::Create(AVSValue args, void* user_data, IScriptEnviro
 *************************/
 
 
-MergeAll::MergeAll(PClip _child, PClip _clip, float _weight, int _test, IScriptEnvironment* env)
-  : GenericVideoFilter(_child), clip(_clip), weight(_weight), test(_test)
+MergeAll::MergeAll(PClip _child, PClip _clip, double _weight, int _test, IScriptEnvironment* env)
+  : GenericVideoFilter(_child), clip(_clip), weight((float)_weight), test(_test)
 {
   const VideoInfo& vi2 = clip->GetVideoInfo();
 
@@ -367,7 +367,7 @@ PVideoFrame __stdcall MergeAll::GetFrame(int n, IScriptEnvironment* env)
 
 AVSValue __cdecl MergeAll::Create(AVSValue args, void* user_data, IScriptEnvironment* env)
 {
-  return new MergeAll(args[0].AsClip(), args[1].AsClip(), (float)args[2].AsFloat(0.5f), TESTARG(3), env);
+  return new MergeAll(args[0].AsClip(), args[1].AsClip(), args[2].AsFloat(0.5f), TESTARG(3), env);
 }
 
 

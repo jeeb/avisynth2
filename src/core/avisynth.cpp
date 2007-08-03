@@ -460,6 +460,7 @@ public:
   void AddFunction(const char* name, const char* params, IScriptEnvironment::ApplyFunc apply, void* user_data) {
     if (prescanning && !plugins)
       env->ThrowError("FunctionTable in prescanning state but no plugin has been set");
+
     if (!IsValidParameterString(params))
       env->ThrowError("%s has an invalid parameter string (bug in filter)", name);
 
@@ -501,7 +502,7 @@ public:
       f2 = new LocalFunction;
       f2->name = strdup(result);     // needs to copy here since the plugin will be unloaded
       f2->param_types = strdup(params);     // needs to copy here since the plugin will be unloaded
-      alt_name =f2->name;
+      alt_name = f2->name;
       if (prescanning) {
         f2->prev = plugins->plugin_functions;
         plugins->plugin_functions = f2;
@@ -522,7 +523,7 @@ public:
       try {
         fnplugin = env->GetVar("$PluginFunctions$");
         int string_len = strlen(fnplugin.AsString())+1;
-          
+
         if (!duse)
           string_len += strlen(name)+1;
 
@@ -581,6 +582,7 @@ public:
       }
     }
 // END ***************************************************************
+
   }
 
   AVSFunction* Lookup(const char* search_name, const AVSValue* args, int num_args, bool* pstrict) {
@@ -901,12 +903,12 @@ ScriptEnvironment::ScriptEnvironment()
     CacheHead(0), hrfromcoinit(E_FAIL),
     unpromotedvfbs(&video_frame_buffers),
     mt_mode(-1),
-	temp_mt_mode(-5),
-	nthreads(0),
-	CurrentCLS(&start_node),
-	RestoreCLS(&start_node),
-	start_node(0),
-	PlanarChromaAlignmentState(true){ // Change to "true" for 2.5.7
+    temp_mt_mode(-5),
+    nthreads(0),
+    CurrentCLS(&start_node),
+    RestoreCLS(&start_node),
+    start_node(0),
+    PlanarChromaAlignmentState(true){ // Change to "true" for 2.5.7
 
   try {
     hrfromcoinit = CoInitialize(NULL);
@@ -920,6 +922,7 @@ ScriptEnvironment::ScriptEnvironment()
     }
     else
       InterlockedIncrement(&refcount);
+
     InitializeCriticalSectionAndSpinCount(&cs_var_table,4000);
     MEMORYSTATUS memstatus;
     GlobalMemoryStatus(&memstatus);
@@ -1269,7 +1272,6 @@ PVideoFrame ScriptEnvironment::NewPlanarVideoFrame(const VideoInfo& vi, int alig
 
   int _align = (align < FRAME_ALIGN) ? FRAME_ALIGN : align;
   VideoFrameBuffer* vfb = GetFrameBuffer(size+(_align*4));
-
   if (!vfb)
     ThrowError("NewPlanarVideoFrame: Returned 0 size image!");
 #ifdef _DEBUG
@@ -1282,7 +1284,6 @@ PVideoFrame ScriptEnvironment::NewPlanarVideoFrame(const VideoInfo& vi, int alig
     }
   }
 #endif
-
 //  int offset = (-int(vfb->GetWritePtr())) & (align-1);  // align first line offset
   int offset = int(vfb->GetWritePtr()) & (FRAME_ALIGN-1);  // align first line offset
   offset = (FRAME_ALIGN - offset)%FRAME_ALIGN;
@@ -1383,6 +1384,7 @@ bool ScriptEnvironment::MakeWritable(PVideoFrame* pvf) {
     LeaveCriticalSection(&cs_relink_video_frame_buffer);
     return false;
   }
+
   LeaveCriticalSection(&cs_relink_video_frame_buffer);
   // Otherwise, allocate a new frame (using NewVideoFrame) and
   // copy the data into it.  Then modify the passed PVideoFrame
@@ -1549,7 +1551,7 @@ void* ScriptEnvironment::ManageCache(int key, void* data){
 	cache->nextCache = CacheHead;
 	CacheHead = cache;
 
-    return (void*)1;
+	return (void*)1;
   }
   case MC_LockVFBList:
   {
@@ -1665,15 +1667,14 @@ LinkedVideoFrameBuffer* ScriptEnvironment::GetFrameBuffer2(int size) {
     for (i = video_frame_buffers.prev; i != &video_frame_buffers; i = i->prev) {
       if (InterlockedCompareExchange((long*)&i->refcount,1,0)==0) 
       {
-        if (i->GetDataSize() == size) 
-        {
+        if (i->GetDataSize() == size) {
           ++g_Mem_stats.PlanB;
           if (j) InterlockedDecrement((long*)&j->refcount);
           InterlockedIncrement((long*)&i->sequence_number);  // Signal to the cache that the vfb has been stolen
           return i;
         }
-        if (i->GetDataSize() > size) 
-        {
+        if (i->GetDataSize() > size) {
+          // Remember the smallest VFB that is bigger than our size
           if ((j == 0) || (i->GetDataSize() < j->GetDataSize()))
           {
             if(j)

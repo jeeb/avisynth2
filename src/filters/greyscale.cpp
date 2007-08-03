@@ -37,7 +37,6 @@
 
 #include "greyscale.h"
 
-#pragma warning (disable: 4731)   // ebx modified by inline assembly code
 
 
 /*************************************
@@ -105,21 +104,19 @@ PVideoFrame Greyscale::GetFrame(int n, IScriptEnvironment* env)
   }
 
   else if (vi.IsYUY2() && (env->GetCPUFlags() & CPUF_MMX)) {
-	__declspec(align(8)) static const __int64 oxooffooffooffooff = 0x00ff00ff00ff00ff; 
-	__declspec(align(8)) static const __int64 ox80oo80oo80oo80oo = 0x8000800080008000; 
                                                                                        
 	  myx = __min(pitch>>1, (myx+3) & -4);	// Try for mod 8                           
 	  __asm {
-	  	push		ebx						; daft compiler assumes this is preserved!!!
-
-		movq		mm7,oxooffooffooffooff
-		movq		mm6,ox80oo80oo80oo80oo
+		pcmpeqw		mm7,mm7
+		pcmpeqw		mm6,mm6
+		psrlw		mm7,8					; 0x00ff00ff00ff00ff
+		psllw		mm6,15					; 0x8000800080008000
 		mov			esi,srcp				; data pointer
-		mov			ebx,pitch				; pitch
+		mov			eax,pitch				; pitch
 		mov			edx,myy					; height
 		mov			edi,myx					; aligned width
-		sub			ebx,edi
-		sub			ebx,edi					; modulo = pitch - rowsize
+		sub			eax,edi
+		sub			eax,edi					; modulo = pitch - rowsize
 		shr			edi,1					; number of dwords
 
 		align		16
@@ -208,11 +205,10 @@ xlend2:
 		add			esi,4					; srcp++
 
 xlend3:
-		add			esi,ebx
+		add			esi,eax
 		dec			edx
 		jnle		yloop
 		emms
-		pop			ebx
 	  }
   }
   else if (vi.IsYUY2()) {
@@ -234,8 +230,6 @@ xlend3:
 	const int cyr709 = int(0.2125*32768+0.5);
 
 	__int64 rgb2lum;
-    __declspec(align(8)) static const __int64 oxoooo4ooooooooooo=0x0000400000000000;
-    __declspec(align(8)) static const __int64 oxffooooooffoooooo=0xff000000ff000000;
 	
 	if (theMatrix == Rec709)
 	  rgb2lum = ((__int64)cyr709 << 32) | (cyg709 << 16) | cyb709;
@@ -245,15 +239,17 @@ xlend3:
 	  rgb2lum = ((__int64)cyr << 32) | (cyg << 16) | cyb;
 
     __asm {
-	  	push		ebx					; daft compiler assumes this is preserved!!!
 		mov			edi,srcp
+		pcmpeqd		mm1,mm1
 		pxor		mm0,mm0
-		movq		mm1,oxoooo4ooooooooooo
+		psrlq		mm1,63				; 0x0000000000000001
+		pcmpeqd		mm3,mm3
+		psllq		mm1,46				; 0x0000400000000000
 		movq		mm2,rgb2lum
-		movq		mm3,oxffooooooffoooooo
+		pslld		mm3,24				; 0xff000000ff000000
 
 		xor			ecx,ecx
-		mov			ebx,myy
+		mov			eax,myy
 		mov			edx,myx
 
 		align		16
@@ -309,11 +305,10 @@ rgb2lum_even:
 		add			edi,pitch
 		mov			edx,myx
 		xor			ecx,ecx
-		dec			ebx
+		dec			eax
 		jnle		rgb2lum_mmxloop
 
 		emms
-		pop			ebx
     }
   }
   else if (vi.IsRGB()) {  // RGB C
@@ -375,5 +370,5 @@ AVSValue __cdecl Greyscale::Create(AVSValue args, void*, IScriptEnvironment* env
   if (vi.IsY8())
     return clip;
 
-  return new Greyscale(args[0].AsClip(), args[1].AsString(0), env);
+  return new Greyscale(clip, args[1].AsString(0), env);
 }

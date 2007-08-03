@@ -276,7 +276,7 @@ PVideoFrame Crop::GetFrame(int n, IScriptEnvironment* env)
     _align = align & (int)srcpY;
 
   if (_align) {
-    PVideoFrame dst = env->NewVideoFrame(vi,align+1);  
+    PVideoFrame dst = env->NewVideoFrame(vi, align+1);
 
     env->BitBlt(dst->GetWritePtr(PLANAR_Y), dst->GetPitch(PLANAR_Y), srcpY,
       frame->GetPitch(PLANAR_Y), dst->GetRowSize(PLANAR_Y), dst->GetHeight(PLANAR_Y));
@@ -322,6 +322,7 @@ AddBorders::AddBorders(int _left, int _top, int _right, int _bot, int _clr, PCli
       xsub=vi.GetPlaneWidthSubsampling(PLANAR_U);
       ysub=vi.GetPlaneHeightSubsampling(PLANAR_U);
     }
+
     const int xmask = (1 << xsub) - 1;
     const int ymask = (1 << ysub) - 1;
 
@@ -335,8 +336,7 @@ AddBorders::AddBorders(int _left, int _top, int _right, int _bot, int _clr, PCli
       env->ThrowError("AddBorders: YUV image can only add by Mod %d (top).", ymask+1);
     if (_bot   & ymask)
       env->ThrowError("AddBorders: YUV image can only add by Mod %d (bottom).", ymask+1);
-  }
-  else {
+  } else {
     // RGB is upside-down
     int t = top; top = bot; bot = t;
   }

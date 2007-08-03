@@ -530,8 +530,7 @@ PVideoFrame ImageReader::GetFrame(int n, IScriptEnvironment* env)
 		dstPtr += pitch;
 	  }
 	}
-	else
-	{
+	else {
 	  // Copy right side up
 	  for (int y=0; y<height; ++y)
 	  {
@@ -676,13 +675,12 @@ bool ImageReader::checkProperties(ifstream & file, PVideoFrame & frame, IScriptE
   return true;
 }
 
-
 AVSValue __cdecl ImageReader::Create(AVSValue args, void*, IScriptEnvironment* env) 
 {
   const char * path = args[0].AsString("c:\\%06d.ebmp");
 
   ImageReader *IR = new ImageReader(path, args[1].AsInt(0), args[2].AsInt(1000), args[3].AsFloat(24.0f), 
-                         args[4].AsBool(false), args[5].AsBool(false), args[6].AsString("rgb24"), env);
+                                    args[4].AsBool(false), args[5].AsBool(false), args[6].AsString("rgb24"), env);
   // If we are returning a stream of 2 or more copies of the same image
   // then use FreezeFrame and the Cache to minimise any reloading.
   if (IR->framecopies > 1) {

@@ -49,8 +49,8 @@
 AVSFunction Levels_filters[] = {
   { "Levels", "cifiii[coring]b", Levels::Create },        // src_low, gamma, src_high, dst_low, dst_high 
   { "RGBAdjust", "c[r]f[g]f[b]f[a]f[rb]f[gb]f[bb]f[ab]f[rg]f[gg]f[bg]f[ag]f[analyze]b", RGBAdjust::Create },
-  { "Tweak", "c[hue]f[sat]f[bright]f[cont]f[coring]b[sse]b[startHue]i[endHue]i[maxSat]i[minSat]i[interp]i", Tweak::Create },  // hue, sat, bright, contrast  ** sse is not used! **
-  { "MaskHS", "c[startHue]i[endHue]i[maxSat]i[minSat]i[coring]b", MaskHS::Create },
+  { "Tweak", "c[hue]f[sat]f[bright]f[cont]f[coring]b[sse]b[startHue]f[endHue]f[maxSat]f[minSat]f[interp]f", Tweak::Create },  // hue, sat, bright, contrast  ** sse is not used! **
+  { "MaskHS", "c[startHue]f[endHue]f[maxSat]f[minSat]f[coring]b", MaskHS::Create },
   { "Limiter", "c[min_luma]i[max_luma]i[min_chroma]i[max_chroma]i[show]s", Limiter::Create },
   { 0 }
 };
@@ -262,7 +262,7 @@ PVideoFrame __stdcall RGBAdjust::GetFrame(int n, IScriptEnvironment* env)
 			p += pitch;
 		}
 	
-		float pixels = (float)(vi.width*vi.height);
+		int pixels = vi.width*vi.height;
 		float avg_r=0, avg_g=0, avg_b=0;
 		float st_r=0, st_g=0, st_b=0;
 		int min_r=0, min_g=0, min_b=0;
@@ -272,7 +272,7 @@ PVideoFrame __stdcall RGBAdjust::GetFrame(int n, IScriptEnvironment* env)
 		int Amax_r=0, Amax_g=0, Amax_b=0;
 		bool Ahit_minr=false,Ahit_ming=false,Ahit_minb=false;
 		bool Ahit_maxr=false,Ahit_maxg=false,Ahit_maxb=false;
-		int At_256=int(pixels/256 + 0.5); // When 1/256th of all pixels have been reached, trigger "Loose min/max"
+		int At_256=(pixels+128)/256; // When 1/256th of all pixels have been reached, trigger "Loose min/max"
 
 		
 		for (i=0;i<256;i++) {
@@ -346,24 +346,12 @@ AVSValue __cdecl RGBAdjust::Create(AVSValue args, void*, IScriptEnvironment* env
 
 
 /* helper function for Tweak and MaskHS filters */
-bool ProcessPixel(int X, int Y, int Sat, int startHue, int endHue,
-                  int maxSat, int minSat, int p, int &iSat)
+bool ProcessPixel(int X, int Y, double startHue, double endHue,
+                  double maxSat, double minSat, double p, int &iSat)
 {
-	static bool degF = false;
-	static int deg[256][256];
-
-	if (!degF) {
-		degF = true;
-		// Precalc hue for all U/V combos
-		for (int x = 0; x<256; x++) {
-			for (int y = 0; y<256; y++) {
-				double theta = atan2((double)(x-128), (double)(y-128)) * 180.0 / 3.14159265358979323846;
-				deg[x][y] = (int) ((theta > 0.0) ? theta: 360.0+theta);
-			}
-		}
-	}
-	// hue
-	int T = deg[X+128][Y+128];
+	// a hue analog
+	double T = atan2((double)X, (double)Y) * 180.0 / 3.14159265358979323846;
+	if ( T < 0.0) T += 360.0;
 
 	// startHue <= hue <= endHue
 	if (startHue < endHue) {
@@ -372,30 +360,29 @@ bool ProcessPixel(int X, int Y, int Sat, int startHue, int endHue,
 		if (T<startHue && T>endHue) return false;
 	}
 
-	// Interpolation range is +/- 2^p for p>0
-	int W = X*X + Y*Y;
+	const double W = X*X + Y*Y;
 
-	// Outside of [min-2^p, max+2^p] no adjustment
-	// minSat-2^p <= U^2 + V^2 <= maxSat+2^p
-	int max = min(maxSat+(1<<p),180);
-	int min = max(minSat-(1<<p),0);
-	if ((max*max < W) || (min*min > W)) { // don't adjust
-		return false;
-	}
+	// In Range, full adjust but no need to interpolate
+	if (minSat*minSat <= W && W <= maxSat*maxSat) return true;
 
-	// In Range full adjust but no need to interpolate
-	// p==0 (no interpolation) needed for MaskHS
-	if (p==0 || ((int) maxSat*maxSat > W) && ((int) minSat*minSat < W)) {
-		return true;
-	}
+	// p == 0 (no interpolation) needed for MaskHS
+	if (p == 0) return false;
+
+	// Interpolation range is +/-p for p>0
+	const double max = min(maxSat+p, 180.0);
+	const double min = max(minSat-p,   0.0);
+
+	// Outside of [min-p, max+p] no adjustment
+	// minSat-p <= (U^2 + V^2) <= maxSat+p
+	if (W < min*min || max*max < W) return false; // don't adjust
 
 	// Interpolate saturation value
-	int holdSat = W < 180*180 ? (int)sqrt((float)W) : 180;
+	const double holdSat = W < 180.0*180.0 ? sqrt(W) : 180.0;
 
-	if (holdSat<minSat) { // within 2^p of lower range
-		iSat = (int) (((512 - Sat) * (minSat - holdSat) >> p) + Sat); 
-	} else { // within 2^p of upper range
-		iSat = (int) (((512 - Sat) * (holdSat - maxSat) >> p) + Sat);
+	if (holdSat < minSat) { // within p of lower range
+		iSat += (int)((512 - iSat) * (minSat - holdSat) / (p+1.0)); 
+	} else { // within p of upper range
+		iSat += (int)((512 - iSat) * (holdSat - maxSat) / (p+1.0));
 	}
 	
 	return true;
@@ -407,7 +394,7 @@ bool ProcessPixel(int X, int Y, int Sat, int startHue, int endHue,
 **********************/
 
 Tweak::Tweak( PClip _child, double _hue, double _sat, double _bright, double _cont, bool coring,
-                            int startHue, int endHue, int _maxSat, int _minSat, int p, 
+                            double startHue, double endHue, double _maxSat, double _minSat, double p, 
                             IScriptEnvironment* env ) 
   : GenericVideoFilter(_child)
 {
@@ -417,24 +404,30 @@ Tweak::Tweak( PClip _child, double _hue, double _sat, double _bright, double _co
 
     // Flag to skip special processing if doing all pixels
     // If defaults, don't check for ranges, just do all
-    const bool allPixels = (startHue == 0 && endHue == 359 && _maxSat == 115 && _minSat == 0);
+    const bool allPixels = (startHue == 0.0 && endHue == 360.0 && _maxSat == 150.0 && _minSat == 0.0);
 
     if (vi.IsY8()) {
-        if (!(_hue == 0.0 && _sat == 1.0 && startHue == 0 && endHue == 359 && _maxSat == 150 && _minSat == 0))
+        if (!(_hue == 0.0 && _sat == 1.0 && allPixels))
         env->ThrowError("Tweak: bright and cont are the only options available for Y8.");
     }
 
-    if (startHue > 359 || startHue < 0 || endHue > 359 || endHue < 0)
-          env->ThrowError("Tweak: startHue and endHue must be between 0 and 359.");
+    if (startHue < 0.0 || startHue >= 360.0)
+          env->ThrowError("Tweak: startHue must be greater than or equal to 0.0 and less than 360.0");
 
-    if (_minSat > _maxSat)
-          env->ThrowError("Tweak: make sure that MinSat =< MaxSat");
+    if (endHue <= 0.0 || endHue > 360.0)
+          env->ThrowError("Tweak: endHue must be greater than 0.0 and less than or equal to 360.0");
 
-    if (_maxSat > 150 || _maxSat < 1 || _minSat > 149 || _minSat < 0)
-          env->ThrowError("Tweak: maxSat and minSat must be between 0 and 150.");
+    if (_minSat >= _maxSat)
+          env->ThrowError("Tweak: MinSat must be less than MaxSat");
 
-    if (p>4 || p<0)
-          env->ThrowError("Tweak: make sure that 0<=p<=4.");
+    if (_minSat < 0.0 || _minSat >= 150.0)
+          env->ThrowError("Tweak: minSat must be greater than or equal to 0 and less than 150.");
+
+    if (_maxSat <= 0.0 || _maxSat > 150.0)
+          env->ThrowError("Tweak: maxSat must be greater than 0 and less than or equal to 150.");
+
+    if (p>=32.0 || p<0.0)
+          env->ThrowError("Tweak: P must be greater than or equal to 0 and less than 32.");
 
     Sat = (int) (_sat * 512);
     Cont = (int) (_cont * 512);
@@ -462,15 +455,15 @@ Tweak::Tweak( PClip _child, double _hue, double _sat, double _bright, double _co
 
     // 100% equals sat=119 (= maximal saturation of valid RGB (R=255,G=B=0)
     // 150% (=180) - 100% (=119) overshoot
-    int minSat = (int) ((119 * _minSat / 100) + 0.5);
-    int maxSat = (int) ((119 * _maxSat / 100) + 0.5);
+    const double minSat = 1.19 * _minSat;
+    const double maxSat = 1.19 * _maxSat;
 
     for (int u = 0; u < 256; u++) {
       const int destu = u-128;
       for (int v = 0; v < 256; v++) {
         const int destv = v-128;
         int iSat = Sat;
-        if (allPixels || ProcessPixel(destv, destu, Sat, startHue, endHue, maxSat, minSat, p, iSat)) {
+        if (allPixels || ProcessPixel(destv, destu, startHue, endHue, maxSat, minSat, p, iSat)) {
           int du = int ( (destu*COS + destv*SIN) * iSat ) >> 9;
           int dv = int ( (destv*COS - destu*SIN) * iSat ) >> 9;
           du = min(max(du+128,minUV),maxUV);
@@ -558,11 +551,11 @@ AVSValue __cdecl Tweak::Create(AVSValue args, void* user_data, IScriptEnvironmen
 					 args[3].AsFloat(0.0),		// bright
 					 args[4].AsFloat(1.0),		// cont
 					 args[5].AsBool(true),      // coring
-					 args[7].AsInt(0),          // startHue
-					 args[8].AsInt(359),        // endHue
-					 args[9].AsInt(150),        // maxSat
-					 args[10].AsInt(0),         // minSat
-					 args[11].AsInt(4),			// interp
+					 args[7].AsFloat(0.0),      // startHue
+					 args[8].AsFloat(360.0),    // endHue
+					 args[9].AsFloat(150.0),    // maxSat
+					 args[10].AsFloat(0.0),     // minSat
+					 args[11].AsFloat(16.0),	// interp
 					 env);
 	}
 	catch (...) { throw; }
@@ -574,7 +567,7 @@ AVSValue __cdecl Tweak::Create(AVSValue args, void* user_data, IScriptEnvironmen
 ******   MaskHS   *****
 **********************/
 
-MaskHS::MaskHS( PClip _child, int startHue, int endHue, int _maxSat, int _minSat, bool coring, 
+MaskHS::MaskHS( PClip _child, double startHue, double endHue, double _maxSat, double _minSat, bool coring, 
                 IScriptEnvironment* env ) 
   : GenericVideoFilter(_child)
 {
@@ -586,27 +579,29 @@ MaskHS::MaskHS( PClip _child, int startHue, int endHue, int _maxSat, int _minSat
         env->ThrowError("MaskHS: clip must contain chroma.");
     }
 
-    if (startHue > 359 || startHue < 0 || endHue > 359 || endHue < 0)
-          env->ThrowError("MaskHS: startHue and endHue must be between 0 and 359.");
+    if (startHue < 0.0 || startHue >= 360.0)
+          env->ThrowError("MaskHS: startHue must be greater than or equal to 0.0 and less than 360.0");
 
-    if (_minSat > _maxSat)
-          env->ThrowError("MaskHS: make sure that MinSat =< MaxSat");
+    if (endHue <= 0.0 || endHue > 360.0)
+          env->ThrowError("MaskHS: endHue must be greater than 0.0 and less than or equal to 360.0");
 
-    if (_maxSat > 150 || _maxSat < 1 || _minSat > 149 || _minSat < 0)
-          env->ThrowError("MaskHS: maxSat and minSat must be between 0 and 150.");
+    if (_minSat >= _maxSat)
+          env->ThrowError("MaskHS: MinSat must be less than MaxSat");
 
+    if (_minSat < 0.0 || _minSat >= 150.0)
+          env->ThrowError("MaskHS: minSat must be greater than or equal to 0 and less than 150.");
 
-    // Flag to skip special processing if doing all pixels
-    // If defaults, don't check for ranges, just do all
-    const bool allPixels = startHue == 0 && endHue == 359 && _maxSat == 150 && _minSat == 0;
+    if (_maxSat <= 0.0 || _maxSat > 150.0)
+          env->ThrowError("MaskHS: maxSat must be greater than 0 and less than or equal to 150.");
+
 
     const int maxY = coring ? 235 : 255;
     const int minY = coring ? 16 : 0;
 
     // 100% equals sat=119 (= maximal saturation of valid RGB (R=255,G=B=0)
     // 150% (=180) - 100% (=119) overshoot
-    const int minSat = (int) ((119 * _minSat / 100) + 0.5);
-    const int maxSat = (int) ((119 * _maxSat / 100) + 0.5);
+    const double minSat = 1.19 * _minSat;
+    const double maxSat = 1.19 * _maxSat;
 
     // apply mask
     for (int u = 0; u < 256; u++) {
@@ -614,7 +609,7 @@ MaskHS::MaskHS( PClip _child, int startHue, int endHue, int _maxSat, int _minSat
       for (int v = 0; v < 256; v++) {
         const int destv = v-128;
         int iSat = 0; // won't be used in MaskHS; interpolation is skipped since p==0:
-        if (allPixels || ProcessPixel(destv, destu, 0, startHue, endHue, maxSat, minSat, 0, iSat)) {
+        if (ProcessPixel(destv, destu, startHue, endHue, maxSat, minSat, 0.0, iSat)) {
           mapY[(u<<8)|v] = maxY;
         } else {
           mapY[(u<<8)|v] = minY;
@@ -664,7 +659,7 @@ PVideoFrame __stdcall MaskHS::GetFrame(int n, IScriptEnvironment* env)
 		const int sw = 1<<swidth;
 		const int sh = 1<<sheight;
 
-		dst_pitch <<= sheight;
+		const int dpitch = dst_pitch << sheight;
 		for (int y=0; y<heightu; ++y) {
 			for (int x=0; x<row_sizeu; ++x) {
 				const BYTE mapped = mapY[( (srcpu[x])<<8 ) | srcpv[x]];
@@ -679,7 +674,7 @@ PVideoFrame __stdcall MaskHS::GetFrame(int n, IScriptEnvironment* env)
 					}
 				}
 			}
-			dstp  += dst_pitch;
+			dstp  += dpitch;
 			srcpu += srcu_pitch;
 			srcpv += srcu_pitch;
 		}
@@ -693,11 +688,11 @@ AVSValue __cdecl MaskHS::Create(AVSValue args, void* user_data, IScriptEnvironme
 {
 	try {	// HIDE DAMN SEH COMPILER BUG!!!
 	return new MaskHS(args[0].AsClip(),
-					  args[1].AsInt(0),          // startHue
-					  args[2].AsInt(359),        // endHue
-					  args[3].AsInt(150),        // maxSat
-					  args[4].AsInt(0),          // minSat
-					  args[5].AsBool(true),      // coring
+					  args[1].AsFloat(0.0),      // startHue
+					  args[2].AsFloat(360.0),    // endHue
+					  args[3].AsFloat(150.0),    // maxSat
+					  args[4].AsFloat(0.0),      // minSat
+					  args[5].AsBool(false),     // coring
 					  env);
 	}
 	catch (...) { throw; }
@@ -711,9 +706,7 @@ Limiter::Limiter(PClip _child, int _min_luma, int _max_luma, int _min_chroma, in
   max_luma(_max_luma),
   min_chroma(_min_chroma),
   max_chroma(_max_chroma),
-  show(enum SHOW(_show)),
-  SoftWire::CodeGenerator(false) {
-
+  show(enum SHOW(_show)) {
   if (!vi.IsYUV())
       env->ThrowError("Limiter: Source must be YUV");
 
@@ -1071,7 +1064,7 @@ DynamicAssembledCode Limiter::create_emulator(int row_size, int height, IScriptE
   }
 
 
-  Assembler x86 = Assembler(false);   // This is the class that assembles the code.
+  Assembler x86;   // This is the class that assembles the code.
 
   if (env->GetCPUFlags() & CPUF_INTEGER_SSE) {
     x86.push(eax);

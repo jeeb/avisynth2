@@ -57,4 +57,5 @@ private:
   enum {Rec601 = 0, Rec709, Average };
 
 };
-#endif
+
+#endif  // __Greyscale_H__

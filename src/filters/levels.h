@@ -86,7 +86,7 @@ class Tweak : public GenericVideoFilter
 {
 public:
   Tweak( PClip _child, double _hue, double _sat, double _bright, double _cont, bool _coring,
-                       int _startHue, int _endHue, int _maxSat, int _minSat, int _interp,
+                       double _startHue, double _endHue, double _maxSat, double _minSat, double _interp,
 					   IScriptEnvironment* env );
 
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
@@ -106,7 +106,7 @@ private:
 class MaskHS : public GenericVideoFilter
 {
 public:
-  MaskHS( PClip _child, int _startHue, int _endHue, int _maxSat, int _minSat, bool _coring, IScriptEnvironment* env );
+  MaskHS( PClip _child, double _startHue, double _endHue, double _maxSat, double _minSat, bool _coring, IScriptEnvironment* env );
 
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
 
@@ -117,10 +117,9 @@ private:
 };
 
 
-
 /* Helper function for Tweak and MaskHS filters */
-bool ProcessPixel(int X, int Y, int Sat, int startHue, int endHue,
-                  int maxSat, int minSat, int p, int &iSat);
+bool ProcessPixel(int X, int Y, double startHue, double endHue,
+                  double maxSat, double minSat, double p, int &iSat);
 
 
 using namespace SoftWire; 
