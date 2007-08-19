@@ -27,6 +27,9 @@
 
 Mp2Output* out;
 
+#ifdef _DEBUG
+#define new DEBUG_CLIENTBLOCK
+#endif
 
 
 BOOL CALLBACK Mp2DialogProc(

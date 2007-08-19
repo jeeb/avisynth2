@@ -1,0 +1,14 @@
+#define HAVE_WINDOWS_THREADS
+
+#define MAX_NUM_THREADS 32
+
+#define HAVE_MMX
+
+#define HAVE_SSE
+
+#define HAVE_MM_MALLOC
+
+#define HAVE_SSE2
+
+#define HAVE_CPU_CAPS_DETECTION
+

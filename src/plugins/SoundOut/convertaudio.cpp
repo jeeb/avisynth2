@@ -38,6 +38,11 @@
 
 
 #include "soundout.h"
+
+#ifdef _DEBUG
+#define new DEBUG_CLIENTBLOCK
+#endif
+
 #  pragma warning(disable: 4244 4311 4554 4311) 
 // There are two type parameters. Acceptable sample types and a prefered sample type.
 // If the current clip is already one of the defined types in sampletype, this will be returned.

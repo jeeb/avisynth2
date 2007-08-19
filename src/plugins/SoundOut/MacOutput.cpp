@@ -26,6 +26,10 @@
 #include "MacOutput.h"
 MacOutput* out;
 
+#ifdef _DEBUG
+#define new DEBUG_CLIENTBLOCK
+#endif
+
 BOOL CALLBACK MacDialogProc(
   HWND hwndDlg,  // handle to dialog box
   UINT uMsg,     // message

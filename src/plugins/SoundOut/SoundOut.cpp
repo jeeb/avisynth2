@@ -36,23 +36,33 @@
 #include "AnalyzeSound.h"
 #include "RegistryIO.h"
 #include "DummyClip.h"
+#include "WavPackOutput.h"
 #include <vector>
+
+#ifdef _DEBUG
+#define new DEBUG_CLIENTBLOCK
+#endif
 
 HINSTANCE g_hInst;
 SoundOut* so;
 char buf[4096];
-Param p;
 int base_params;
+Param p;
 
 extern "C" __declspec(dllexport) const char* __stdcall AvisynthPluginInit2(IScriptEnvironment* env)
 {
   p.clear();
-  SoundOutput *out;
+  Param::iterator i;
+  SoundOutput* out;
   AVSValue v = DummyClip::Create(NULL, NULL, env);
   PClip clip = v.AsClip();
 
-  Param::iterator i;
   out = new WavOutput(clip,env);  
+  for (i = out->params.begin(); i != out->params.end(); i++)
+    p.insert(*i);
+  delete out;
+
+  out = new WavPackOutput(clip,env);  
   for (i = out->params.begin(); i != out->params.end(); i++)
     p.insert(*i);
   delete out;
@@ -204,12 +214,13 @@ SoundOut::~SoundOut() {
   while (blockRequests) { // Encoder still running
     Sleep(1000);
   }
-  _CrtDumpMemoryLeaks();
   if (wnd)
     DestroyWindow(wnd);
   if (guiThread)
    TerminateThread(guiThread,0);
   blockRequests = false;
+  p.clear();
+  _CrtDumpMemoryLeaks();
 }
 void SoundOut::startUp() {
   if (forceOut) {  // Direct output.
@@ -231,6 +242,8 @@ void SoundOut::startUp() {
       out = new Mp3Output(child,env);
     if (!_stricmp(type,"ogg"))
       out = new VorbisOutput(child,env);
+    if (!_stricmp(type,"wv"))
+      out = new WavPackOutput(child,env);
 
     if (!out) {
       blockRequests = false;  // Error - let allow it to destroy itself.
@@ -239,9 +252,9 @@ void SoundOut::startUp() {
     out->parent = this;
     passSettings(out);
     disableControls();
-	if (!out->startEncoding()) {
+    if (!out->startEncoding()) {
       blockRequests = false;  // Error - let allow it to destroy itself.
-	}
+	  }
   } else {
     openGUI();
     blockRequests = false;  // We open GUI, so now we no longer need to block requests.
@@ -335,6 +348,7 @@ void SoundOut::disableControls() {
     EnableWindow(GetDlgItem(wnd, IDC_BTN_SAVEOGG), false);
     EnableWindow(GetDlgItem(wnd, IDC_BTN_SAVEMP2), false);
     EnableWindow(GetDlgItem(wnd, IDC_BTN_SAVEAC3), false);
+    EnableWindow(GetDlgItem(wnd, IDC_BTN_SAVEWAVPACK), false);
     EnableWindow(GetDlgItem(wnd, IDC_BTN_COMMANDOUT), false);
   }
 }
@@ -352,6 +366,7 @@ void SoundOut::reEnableControls() {
     EnableWindow(GetDlgItem(wnd, IDC_BTN_SAVEMP2), true);
     EnableWindow(GetDlgItem(wnd, IDC_BTN_SAVEAC3), true);
     EnableWindow(GetDlgItem(wnd, IDC_BTN_COMMANDOUT), true);
+    EnableWindow(GetDlgItem(wnd, IDC_BTN_SAVEWAVPACK), true);
   }
 }
 void __stdcall SoundOut::GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) {
@@ -418,7 +433,9 @@ BOOL CALLBACK MainDialogProc(
           return true;
         case IDC_BTN_ANALYZE:
           so->SetOutput(new AnalyzeSound(so->GetClip(),so->env));
-          
+          return true;
+        case IDC_BTN_SAVEWAVPACK:
+          so->SetOutput(new WavPackOutput(so->GetClip(),so->env));          
           return true;
 			}
 			break;

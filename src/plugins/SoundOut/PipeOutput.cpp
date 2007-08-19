@@ -29,6 +29,10 @@
 #include <vfw.h>
 #include "Commdlg.h"
 
+#ifdef _DEBUG
+#define new DEBUG_CLIENTBLOCK
+#endif
+
 PipeOutput* out;
 
 const char * const PIPE_TypeString[] = {

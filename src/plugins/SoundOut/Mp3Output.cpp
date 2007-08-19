@@ -25,6 +25,10 @@
 
 #include "Mp3Output.h"
 
+#ifdef _DEBUG
+#define new DEBUG_CLIENTBLOCK
+#endif
+
 Mp3Output* out;
 
 BOOL CALLBACK Mp3DialogProc(

@@ -25,6 +25,10 @@
 
 #include "FlacOutput.h"
 
+#ifdef _DEBUG
+#define new DEBUG_CLIENTBLOCK
+#endif
+
 FlacOutput* out;
 
 BOOL CALLBACK FlacDialogProc(
@@ -58,7 +62,7 @@ BOOL CALLBACK FlacDialogProc(
 
 FlacOutput::FlacOutput(PClip _child, IScriptEnvironment* _env) : SoundOutput(ConvertAudio::Create(_child, SAMPLE_INT8|SAMPLE_INT16|SAMPLE_FLOAT,SAMPLE_FLOAT),_env)
 {
-  params["outputFileFilter"] = new AVSValue("FLAC files\0*.flac\0All Files\0*.*\0\0");
+  params["outputFileFilter"] = AVSValue("FLAC files\0*.flac\0All Files\0*.*\0\0");
   params["extension"] = AVSValue(".flac");
   params["filterID"] = AVSValue("flac");
   params["compressionlevel"] = AVSValue(6);

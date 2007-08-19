@@ -24,6 +24,11 @@
 // SoundOut (c) 2006-2007 by Klaus Post
 
 #include "VorbisOutput.h"
+
+#ifdef _DEBUG
+#define new DEBUG_CLIENTBLOCK
+#endif
+
 VorbisOutput* out;
 
 BOOL CALLBACK VorbisDialogProc(

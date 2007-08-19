@@ -25,14 +25,19 @@
 
 #pragma once
 
-#define _CRTDBG_MAP_ALLOC
+#ifdef _DEBUG
+  #define _CRTDBG_MAP_ALLOC
+  #define DEBUG_CLIENTBLOCK   new( _CLIENT_BLOCK, __FILE__, __LINE__)
+#else
+   #define DEBUG_CLIENTBLOCK
+#endif // _DEBUG
+
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
 #include "..\..\core\avisynth.h"
 #include "rc/rsrc.inc"
 #include "ParamDef.h"
-
 
 
 extern HINSTANCE g_hInst;

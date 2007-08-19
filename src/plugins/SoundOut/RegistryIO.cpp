@@ -1,6 +1,10 @@
 #include "RegistryIO.h"
 #include <vector>
 
+#ifdef _DEBUG
+#define new DEBUG_CLIENTBLOCK
+#endif
+
 using namespace std;
 
 const HKEY RegRootKey = HKEY_CURRENT_USER;

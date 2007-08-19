@@ -67,6 +67,10 @@ protected:
 
 #define BLOCKSAMPLES 256 * 1024
 
+#ifdef _DEBUG
+#define new DEBUG_CLIENTBLOCK
+#endif
+
 class SampleBlock {
 public:
   SampleBlock(VideoInfo* _vi, int _nSamples) :lastBlock(false) {numSamples = _nSamples; samples = new char[(int)_vi->BytesFromAudioSamples(_nSamples*_vi->AudioChannels())];}
@@ -77,6 +81,9 @@ public:
 private:
   char* samples;
 };
+#ifdef _DEBUG
+#undef new
+#endif
 
 class SampleFetcher 
 {

@@ -1,5 +1,10 @@
 #include "AnalyzeSound.h"
 #include <math.h>
+
+#ifdef _DEBUG
+#define new DEBUG_CLIENTBLOCK
+#endif
+
 AnalyzeSound* out;
 
 BOOL CALLBACK AnalyzeDialogProc(
@@ -53,11 +58,26 @@ AnalyzeSound::AnalyzeSound(PClip _child, IScriptEnvironment* _env) : SoundOutput
   hStats = 0;
   canReplayGain = true;
   out = this;
+  maximum = NULL;
+  accumulated = NULL;
+  squared_accumulated = NULL;
   this->startEncoding();
 }
 
 AnalyzeSound::~AnalyzeSound(void)
 {
+  if (maximum)
+    delete[] maximum;
+  maximum = NULL;
+
+  if (accumulated)
+    delete[] accumulated;
+  accumulated = NULL;
+
+  if (squared_accumulated)
+    delete[] squared_accumulated;
+  squared_accumulated = NULL;
+
   if (hStats)
     DestroyWindow(hStats);
   hStats = 0;

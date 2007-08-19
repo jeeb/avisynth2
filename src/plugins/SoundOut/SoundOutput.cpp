@@ -27,6 +27,10 @@
 #include "Commdlg.h"
 #include "RegistryIO.h"
 
+#ifdef _DEBUG
+#define new DEBUG_CLIENTBLOCK
+#endif
+
 SoundOutput* so_out;
 
 BOOL CALLBACK ConvertProgressProc(
@@ -323,7 +327,6 @@ void SoundOutput::updateSampleStats(__int64 processed,__int64 total, bool force)
 
 DWORD WINAPI StartFetcher(LPVOID p) {
   SampleFetcher* t = (SampleFetcher*)p;
-  Sleep(100);
   t->FetchLoop();  
   return 0;
 }

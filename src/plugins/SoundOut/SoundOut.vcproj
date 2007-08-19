@@ -60,7 +60,8 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="Advapi32.lib Comdlg32.lib User32.lib lib\libFLAC++_static.lib lib\libFLAC_static.lib lib\vorbis_static_d.lib lib\ogg_static_d.lib lib\twolame.lib lib\MAClib.lib lib\libsndfile-1.lib lib\aften_staticD.lib lib\libmp3lame.lib lib\mpglib.lib lib\vorbisenc_static_d.lib"
+				LinkLibraryDependencies="true"
+				AdditionalDependencies="Advapi32.lib Comdlg32.lib User32.lib lib\libFLAC++_static.lib lib\libFLAC_static.lib lib\vorbis_static_d.lib lib\ogg_static_d.lib lib\MAClib.lib lib\libsndfile-1.lib lib\mpglib.lib lib\vorbisenc_static_d.lib"
 				ShowProgress="0"
 				LinkIncremental="2"
 				GenerateDebugInformation="true"
@@ -139,7 +140,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="Advapi32.lib Comdlg32.lib User32.lib lib\libFLAC++_static.lib lib\libFLAC_static.lib lib\vorbis_static.lib lib\ogg_static.lib lib\twolame.lib lib\MAClib.lib lib\libsndfile-1.lib lib\aften_static.lib lib\libmp3lame.lib lib\mpglib.lib lib\vorbisenc_static.lib"
+				AdditionalDependencies="Advapi32.lib Comdlg32.lib User32.lib lib\libFLAC++_static.lib lib\libFLAC_static.lib lib\vorbis_static.lib lib\ogg_static.lib lib\twolame.lib lib\MAClib.lib lib\libsndfile-1.lib lib\aften_static.lib lib\libmp3lame.lib lib\mpglib.lib lib\vorbisenc_static.lib lib\wavpackdll.lib"
 				LinkIncremental="1"
 				GenerateManifest="true"
 				AdditionalManifestDependencies=""
@@ -216,6 +217,10 @@
 			</File>
 			<File
 				RelativePath=".\h\twolame.h"
+				>
+			</File>
+			<File
+				RelativePath=".\dep\wavpack\include\wavpack.h"
 				>
 			</File>
 			<Filter
@@ -440,6 +445,14 @@
 			</File>
 			<File
 				RelativePath=".\WavOutput.h"
+				>
+			</File>
+			<File
+				RelativePath=".\WavPackOutput.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\WavPackOutput.h"
 				>
 			</File>
 		</Filter>

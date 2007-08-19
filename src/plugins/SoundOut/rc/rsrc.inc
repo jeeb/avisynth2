@@ -14,6 +14,7 @@
 #define IDC_CBO1                1013
 #define IDC_BTN_ANALYZE         1014
 #define IDC_BTN3                1015
+#define IDC_BTN_SAVEWAVPACK     1016
 #define IDD_FLACSETTINGS        2000
 #define IDC_FLAC_COMPRESSIONLEVEL 1001
 #define IDC_GRP3                1002
@@ -60,6 +61,8 @@
 #define IDC_WAVCANCEL           1004
 #define IDC_WAVSAVE             1005
 #define IDC_WAVPEAKINFO         6001
+#define IDC_STC22               6002
+#define IDC_WAVFORMAT           6003
 #define IDD_AC3SETTINGS         7000
 #define IDC_AC3CBRMODE          1001
 #define IDC_AC3GROUP            1002
@@ -136,5 +139,13 @@
 #define IDD_ANALYZESTATS        3700
 #define IDC_GRP15               1001
 #define IDC_ANALYZETEXT         1002
+#define IDD_WAVPACKSETTINGS     3100
+#define IDC_GRP16               1001
+#define IDC_WAVPACKHEADER       1002
+#define IDC_WAVPACKFORMAT       1003
+#define IDC_WAVPACKSAVE         1004
+#define IDC_WAVPACKCANCEL       1005
+#define IDC_WAVPACKCOMPRESSION  1007
+#define IDC_WAVPACKCOMPRESSIONSTRING 1008
 #define ICO_AVISYNTH            1050
 #define IDR_VERSION             1

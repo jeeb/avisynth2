@@ -27,6 +27,10 @@
 
 AC3Output* out;
 
+#ifdef _DEBUG
+#define new DEBUG_CLIENTBLOCK
+#endif
+
 BOOL CALLBACK AC3DialogProc(
   HWND wnd,  // handle to dialog box
   UINT uMsg,     // message
