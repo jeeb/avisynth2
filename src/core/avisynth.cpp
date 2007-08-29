@@ -926,11 +926,19 @@ ScriptEnvironment::ScriptEnvironment()
     InitializeCriticalSectionAndSpinCount(&cs_var_table,4000);
     MEMORYSTATUS memstatus;
     GlobalMemoryStatus(&memstatus);
-    // Minimum 16MB, otherwise available physical memory/4, no maximum
-    if (memstatus.dwAvailPhys  > 64*1024*1024)
+    // Minimum 16MB
+    // else physical memory/4
+    // plus 0.5 physical memory in excess of 256MB
+    if      (memstatus.dwAvailPhys    > 256*1024*1024)
+      memory_max = ((__int64)memstatus.dwAvailPhys >> 1) - 64*1024*1024;
+    else if (memstatus.dwAvailPhys    > 64*1024*1024)
       memory_max = (__int64)memstatus.dwAvailPhys >> 2;
     else
-      memory_max = 16777216i64;
+      memory_max = 16*1024*1024;
+
+    if (memory_max <= 0) // More than 2GB
+      memory_max = 1024*1024*1024;
+
     memory_used = 0i64;
     DWORD systemaffinitymask=0;
     DWORD processaffinitymask=0;
@@ -985,15 +993,17 @@ ScriptEnvironment::~ScriptEnvironment() {
 }
 
 int ScriptEnvironment::SetMemoryMax(int mem) {
-  MEMORYSTATUS memstatus;
-  __int64 mem_limit;
+  if (mem > 0) {
+    MEMORYSTATUS memstatus;
+    __int64 mem_limit;
 
-  GlobalMemoryStatus(&memstatus);
-  memory_max = mem * 1048576i64;                          // mem as megabytes
-  if (memory_max < memory_used) memory_max = memory_used; // can't be less than we already have
-  mem_limit = memory_used + (__int64)memstatus.dwAvailPhys - 5242880i64;
-  if (memory_max > mem_limit) memory_max = mem_limit;     // can't be more than 5Mb less than total
-  if (memory_max < 4194304i64) memory_max = 4194304i64;	  // can't be less than 4Mb -- Tritical Jan 2006
+    GlobalMemoryStatus(&memstatus);
+    memory_max = mem * 1048576i64;                          // mem as megabytes
+    if (memory_max < memory_used) memory_max = memory_used; // can't be less than we already have
+    mem_limit = memory_used + (__int64)memstatus.dwAvailPhys - 5242880i64;
+    if (memory_max > mem_limit) memory_max = mem_limit;     // can't be more than 5Mb less than total
+    if (memory_max < 4194304i64) memory_max = 4194304i64;	  // can't be less than 4Mb -- Tritical Jan 2006
+  }
   return (int)(memory_max/1048576i64);
 }
 
