@@ -1,0 +1,20 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 9.00
+# Visual C++ Express 2005
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libFLAC_static", "libFLAC_static.vcproj", "{AC3E4DDE-F5B8-48F2-8FFC-E3D3C10DC479}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Win32 = Debug|Win32
+		Release|Win32 = Release|Win32
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{AC3E4DDE-F5B8-48F2-8FFC-E3D3C10DC479}.Debug|Win32.ActiveCfg = Debug|Win32
+		{AC3E4DDE-F5B8-48F2-8FFC-E3D3C10DC479}.Debug|Win32.Build.0 = Debug|Win32
+		{AC3E4DDE-F5B8-48F2-8FFC-E3D3C10DC479}.Release|Win32.ActiveCfg = Release|Win32
+		{AC3E4DDE-F5B8-48F2-8FFC-E3D3C10DC479}.Release|Win32.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
