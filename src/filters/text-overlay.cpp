@@ -50,21 +50,22 @@ using namespace std;
 
 AVSFunction Text_filters[] = {
   { "ShowFrameNumber",
-	"c[scroll]b[offset]i[x]i[y]i[font]s[size]i[text_color]i[halo_color]i",
+	"c[scroll]b[offset]i[x]i[y]i[font]s[size]f[text_color]i[halo_color]i[font_width]f[font_angle]f",
 	ShowFrameNumber::Create },
 
   { "ShowSMPTE",
-	"c[fps]f[offset]s[offset_f]i[x]i[y]i[font]s[size]i[text_color]i[halo_color]i",
+	"c[fps]f[offset]s[offset_f]i[x]i[y]i[font]s[size]f[text_color]i[halo_color]i[font_width]f[font_angle]f",
 	ShowSMPTE::CreateSMTPE },
 
   { "ShowTime",
-	"c[offset_f]i[x]i[y]i[font]s[size]i[text_color]i[halo_color]i",
+	"c[offset_f]i[x]i[y]i[font]s[size]f[text_color]i[halo_color]i[font_width]f[font_angle]f",
 	ShowSMPTE::CreateTime },
 
   { "Info", "c", FilterInfo::Create },  // clip
 
   { "Subtitle",
-	"cs[x]i[y]i[first_frame]i[last_frame]i[font]s[size]i[text_color]i[halo_color]i[align]i[spc]i[lsp]i", 
+	"cs[x]i[y]i[first_frame]i[last_frame]i[font]s[size]f[text_color]i[halo_color]i"
+	"[align]i[spc]i[lsp]i[font_width]f[font_angle]f[interlaced]b", 
     Subtitle::Create },       // see docs!
 
   { "Compare",
@@ -83,8 +84,10 @@ AVSFunction Text_filters[] = {
  *******   Anti-alias    ******
  *****************************/
 
-Antialiaser::Antialiaser(int width, int height, const char fontname[], int size, int _textcolor, int _halocolor)
- : w(width), h(height), textcolor(_textcolor), halocolor(_halocolor), alpha_calcs(0)
+Antialiaser::Antialiaser(int width, int height, const char fontname[], int size,
+   int _textcolor, int _halocolor, int font_width, int font_angle, bool _interlaced)
+ : w(width), h(height), textcolor(_textcolor), halocolor(_halocolor), alpha_calcs(0),
+   dirty(true), interlaced(_interlaced)
 {
   struct {
     BITMAPINFOHEADER bih;
@@ -114,7 +117,7 @@ Antialiaser::Antialiaser(int width, int height, const char fontname[], int size,
 		0 )) {
 	  hbmDefault = (HBITMAP)SelectObject(hdcAntialias, hbmAntialias);
 
-	  HFONT newfont = LoadFont(fontname, size, true, false);
+	  HFONT newfont = LoadFont(fontname, size, true, false, font_width, font_angle);
 	  hfontDefault = newfont ? (HFONT)SelectObject(hdcAntialias, newfont) : 0;
 
 	  SetMapMode(hdcAntialias, MM_TEXT);
@@ -124,8 +127,6 @@ Antialiaser::Antialiaser(int width, int height, const char fontname[], int size,
 	  alpha_calcs = new unsigned short[width*height*4];
 
 	  if (!alpha_calcs) FreeDC();
-
-	  dirty = true;
 	}
   }
 }
@@ -183,7 +184,7 @@ void Antialiaser::Apply( const VideoInfo& vi, PVideoFrame* frame, int pitch)
 			  (*frame)->GetWritePtr(PLANAR_V),
 			  vi.GetPlaneWidthSubsampling(PLANAR_U),
 			  vi.GetPlaneHeightSubsampling(PLANAR_U));
-    
+
 }
 
 
@@ -208,17 +209,17 @@ void Antialiaser::ApplyYV12(BYTE* buf, int pitch, int pitchUV, BYTE* bufU, BYTE*
       const int basealpha11 = alpha[x4+4+w4];
       const int basealphaUV = basealpha00 + basealpha10 + basealpha01 + basealpha11;
 
-      if (basealphaUV != 256) {
-        buf[x+0]       = (buf[x+0]       * basealpha00 + alpha[x4+3]   ) >> 6;
-        buf[x+1]       = (buf[x+1]       * basealpha10 + alpha[x4+7]   ) >> 6;
-        buf[x+0+pitch] = (buf[x+0+pitch] * basealpha01 + alpha[x4+3+w4]) >> 6;
-        buf[x+1+pitch] = (buf[x+1+pitch] * basealpha11 + alpha[x4+7+w4]) >> 6;
+      if (basealphaUV != 1024) {
+        buf[x+0]       = (buf[x+0]       * basealpha00 + alpha[x4+3]   ) >> 8;
+        buf[x+1]       = (buf[x+1]       * basealpha10 + alpha[x4+7]   ) >> 8;
+        buf[x+0+pitch] = (buf[x+0+pitch] * basealpha01 + alpha[x4+3+w4]) >> 8;
+        buf[x+1+pitch] = (buf[x+1+pitch] * basealpha11 + alpha[x4+7+w4]) >> 8;
 
         const int au  = alpha[x4+2] + alpha[x4+6] + alpha[x4+2+w4] + alpha[x4+6+w4];
-        bufU[x>>1] = (bufU[x>>1] * basealphaUV + au) >> 8;
+        bufU[x>>1] = (bufU[x>>1] * basealphaUV + au) >> 10;
 
         const int av  = alpha[x4+1] + alpha[x4+5] + alpha[x4+1+w4] + alpha[x4+5+w4];
-        bufV[x>>1] = (bufV[x>>1] * basealphaUV + av) >> 8;
+        bufV[x>>1] = (bufV[x>>1] * basealphaUV + av) >> 10;
       }
     }
     buf += pitch<<1;
@@ -230,14 +231,17 @@ void Antialiaser::ApplyYV12(BYTE* buf, int pitch, int pitchUV, BYTE* bufU, BYTE*
 
 
 void Antialiaser::ApplyPlanar(BYTE* buf, int pitch, int pitchUV, BYTE* bufU, BYTE* bufV, int shiftX, int shiftY) {
+  const int stepX = 1<<shiftX;
+  const int stepY = 1<<shiftY;
+
   if (dirty) {
     GetAlphaRect();
-    xl &= -(1<<shiftX); xr |= (1<<shiftX)-1;
-    yb &= -(1<<shiftY); yt |= (1<<shiftY)-1;
+    xl &= -stepX; xr |= stepX-1;
+    yb &= -stepY; yt |= stepY-1;
   }
   const int w4 = w*4;
   unsigned short* alpha = alpha_calcs + yb*w4;
-  buf  += pitch*yb;
+  buf += pitch*yb;
 
   // Apply Y
   for (int y=yb; y<=yt; y+=1) {
@@ -245,8 +249,8 @@ void Antialiaser::ApplyPlanar(BYTE* buf, int pitch, int pitchUV, BYTE* bufU, BYT
       int x4 = x<<2;
       const int basealpha = alpha[x4];
 
-      if (basealpha != 64) {
-        buf[x] = (buf[x] * basealpha + alpha[x4+3]) >> 6;
+      if (basealpha != 256) {
+        buf[x] = (buf[x] * basealpha + alpha[x4+3]) >> 8;
       }
     }
     buf += pitch;
@@ -256,10 +260,8 @@ void Antialiaser::ApplyPlanar(BYTE* buf, int pitch, int pitchUV, BYTE* bufU, BYT
   if (!bufU) return;
 
   // This will not be fast, but it will be generic.
-  const int stepX = 1<<shiftX;
-  const int stepY = 1<<shiftY;
-  const int skipThresh = 64 * stepY * stepX;
-  const int shifter = 6+shiftX+shiftY;
+  const int skipThresh = 256 << (shiftX+shiftY);
+  const int shifter = 8+shiftX+shiftY;
 
   alpha = alpha_calcs + yb*w4;
   bufU += (pitchUV*yb)>>shiftY;
@@ -307,15 +309,15 @@ void Antialiaser::ApplyYUY2(BYTE* buf, int pitch) {
       const int basealpha1  = alpha[x*4+4];
       const int basealphaUV = basealpha0 + basealpha1;
 
-      if (basealphaUV != 128) {
-        buf[x*2+0] = (buf[x*2+0] * basealpha0 + alpha[x*4+3]) >> 6;
-        buf[x*2+2] = (buf[x*2+2] * basealpha1 + alpha[x*4+7]) >> 6;
+      if (basealphaUV != 512) {
+        buf[x*2+0] = (buf[x*2+0] * basealpha0 + alpha[x*4+3]) >> 8;
+        buf[x*2+2] = (buf[x*2+2] * basealpha1 + alpha[x*4+7]) >> 8;
 
         const int au  = alpha[x*4+2] + alpha[x*4+6];
-        buf[x*2+1] = (buf[x*2+1] * basealphaUV + au) >> 7;
+        buf[x*2+1] = (buf[x*2+1] * basealphaUV + au) >> 9;
 
         const int av  = alpha[x*4+1] + alpha[x*4+5];
-        buf[x*2+3] = (buf[x*2+3] * basealphaUV + av) >> 7;
+        buf[x*2+3] = (buf[x*2+3] * basealphaUV + av) >> 9;
       }
     }
     buf += pitch;
@@ -332,10 +334,10 @@ void Antialiaser::ApplyRGB24(BYTE* buf, int pitch) {
   for (int y=yb; y<=yt; ++y) {
     for (int x=xl; x<=xr; ++x) {
       const int basealpha = alpha[x*4+0];
-      if (basealpha != 64) {
-        buf[x*3+0] = (buf[x*3+0] * basealpha + alpha[x*4+1]) >> 6;
-        buf[x*3+1] = (buf[x*3+1] * basealpha + alpha[x*4+2]) >> 6;
-        buf[x*3+2] = (buf[x*3+2] * basealpha + alpha[x*4+3]) >> 6;
+      if (basealpha != 256) {
+        buf[x*3+0] = (buf[x*3+0] * basealpha + alpha[x*4+1]) >> 8;
+        buf[x*3+1] = (buf[x*3+1] * basealpha + alpha[x*4+2]) >> 8;
+        buf[x*3+2] = (buf[x*3+2] * basealpha + alpha[x*4+3]) >> 8;
       }
     }
     buf -= pitch;
@@ -352,10 +354,10 @@ void Antialiaser::ApplyRGB32(BYTE* buf, int pitch) {
   for (int y=yb; y<=yt; ++y) {
     for (int x=xl; x<=xr; ++x) {
       const int basealpha = alpha[x*4+0];
-      if (basealpha != 64) {
-        buf[x*4+0] = (buf[x*4+0] * basealpha + alpha[x*4+1]) >> 6;
-        buf[x*4+1] = (buf[x*4+1] * basealpha + alpha[x*4+2]) >> 6;
-        buf[x*4+2] = (buf[x*4+2] * basealpha + alpha[x*4+3]) >> 6;
+      if (basealpha != 256) {
+        buf[x*4+0] = (buf[x*4+0] * basealpha + alpha[x*4+1]) >> 8;
+        buf[x*4+1] = (buf[x*4+1] * basealpha + alpha[x*4+2]) >> 8;
+        buf[x*4+2] = (buf[x*4+2] * basealpha + alpha[x*4+3]) >> 8;
       }
     }
     buf -= pitch;
@@ -399,6 +401,10 @@ void Antialiaser::GetAlphaRect() {
   const int RYtext = ((textcolor>>16)&255), GUtext = ((textcolor>>8)&255), BVtext = (textcolor&255);
   const int RYhalo = ((halocolor>>16)&255), GUhalo = ((halocolor>>8)&255), BVhalo = (halocolor&255);
 
+  // Scaled Alpha
+  const int Atext = (255 - ((textcolor >> 24) & 0xFF) ) * 516;
+  const int Ahalo = (255 - ((halocolor >> 24) & 0xFF) ) * 516;
+
   const int srcpitch = (w+4+3) & -4;
 
   xl=0;
@@ -411,11 +417,7 @@ void Antialiaser::GetAlphaRect() {
     BYTE* src = (BYTE*)lpAntialiasBits + ((h-y-1)*8 + 20) * srcpitch + 2;
     int wt = w;
     do {
-      int alpha1, alpha2;
       int i;
-      BYTE bmasks[8], tmasks[8];
-
-      alpha1 = alpha2 = 0;
 
 /*      BYTE tmp = 0;
       for (i=0; i<8; i++) {
@@ -486,41 +488,69 @@ void Antialiaser::GetAlphaRect() {
 		if (y  >= yt) yt=y;
 		if (y  <= yb) yb=y;
 
-        for (i=0; i<8; i++)
-          alpha1 += bitcnt[src[srcpitch*i]];
+        int alpha1, alpha2;
 
-        BYTE cenmask = 0, mask1, mask2;
+        alpha1 = alpha2 = 0;
 
-        for(i=0; i<=8; i++) {
-          cenmask |= (BYTE)(((long)-src[srcpitch*i  ])>>31);
-          cenmask |= bitexl[src[srcpitch*i-1]];
-          cenmask |= bitexr[src[srcpitch*i+1]];
-        }
+		// How many lit pixels in the centre cell?
+		if (interlaced) {
+		  for(i=-4; i<12; i++) // For interlaced include extra half cells above and below
+			alpha1 += bitcnt[src[srcpitch*i]];
+		  alpha1 += 1;
+		  alpha1 /= 2;
+		}
+		else {
+		  for(i=0; i<8; i++)
+			alpha1 += bitcnt[src[srcpitch*i]];
+		}
 
-        mask1 = mask2 = cenmask;
+		if (alpha1) {
+		  // If we have any lit pixels we fully occupy the cell.
+		  alpha2 = 64;
+		}
+		else {
+		  // No lit pixels here so check the neighbours
+		  BYTE cenmask = 0, mask1, mask2;
 
-        for(i=0; i<8; i++) {
-          mask1 |= (BYTE)(((long)-src[srcpitch*(-i)])>>31);
-          mask1 |= bitexl[src[srcpitch*(-8+i)-1]];
-          mask1 |= bitexr[src[srcpitch*(-8+1)+1]];
-          mask2 |= (BYTE)(((long)-src[srcpitch*(8+i)])>>31);
-          mask2 |= bitexl[src[srcpitch*(8+i)-1]];
-          mask2 |= bitexr[src[srcpitch*(8+i)+1]];
+		  // Check left and right neighbours for lit pixels
+		  for(i=0; i<8; i++) {
+			cenmask |= bitexl[src[srcpitch*i-1]];
+			cenmask |= bitexr[src[srcpitch*i+1]];
+		  }
 
-          tmasks[i] = mask1;
-          bmasks[i] = mask2;
-        }
+		  if (cenmask == 0xFF) {
+			// If we have hard adjacent lit pixels we fully occupy this cell.
+			alpha2 = 64;
+		  }
+		  else {
+			mask1 = mask2 = cenmask;
 
-        for(i=0; i<8; i++) {
-          alpha2 += bitcnt[cenmask | tmasks[7-i] | bmasks[i]];
-        }
-		dest[0] = 64 - alpha2;
-		dest[1] = BVtext * alpha1 + BVhalo * (alpha2-alpha1);
-		dest[2] = GUtext * alpha1 + GUhalo * (alpha2-alpha1);
-		dest[3] = RYtext * alpha1 + RYhalo * (alpha2-alpha1);
+			for(i=0; i<8; i++) {
+			  // Check the 3 cells above
+			  mask1 |= bitexl[        src[srcpitch*(-1-i)-1]];
+			  mask1 |= (BYTE)(((long)-src[srcpitch*(-1-i)  ])>>31);
+			  mask1 |= bitexr[        src[srcpitch*(-1-i)+1]];
+
+			  // Check the 3 cells below
+			  mask2 |= bitexl[        src[srcpitch*(8+i)-1]];
+			  mask2 |= (BYTE)(((long)-src[srcpitch*(8+i)  ])>>31);
+			  mask2 |= bitexr[        src[srcpitch*(8+i)+1]];
+
+			  // Strength of occupancy based on neighbours distance
+			  alpha2 += bitcnt[ mask1 | mask2 ];
+			}
+		  }
+		}
+        
+        // Pre calulate table for quick use  --  Pc = (Pc * dest[0] + dest[c]) >> 8;
+
+		dest[0] = (64*516*255 - Atext*alpha1 - Ahalo*(alpha2-alpha1))>>15;
+		dest[1] = (BVtext * Atext*alpha1 + BVhalo * Ahalo*(alpha2-alpha1))>>15;
+		dest[2] = (GUtext * Atext*alpha1 + GUhalo * Ahalo*(alpha2-alpha1))>>15;
+		dest[3] = (RYtext * Atext*alpha1 + RYhalo * Ahalo*(alpha2-alpha1))>>15;
       }
 	  else {
-		dest[0] = 64;
+		dest[0] = 256;
 		dest[1] = 0;
 		dest[2] = 0;
 		dest[3] = 0;
@@ -551,12 +581,13 @@ void Antialiaser::GetAlphaRect() {
  ************************************/
 
 ShowFrameNumber::ShowFrameNumber(PClip _child, bool _scroll, int _offset, int _x, int _y, const char _fontname[],
-					 int _size, int _textcolor, int _halocolor, IScriptEnvironment* env)
+					 int _size, int _textcolor, int _halocolor, int font_width, int font_angle, IScriptEnvironment* env)
 // GenericVideoFilter(_child), antialiaser(vi.width, vi.height, "Arial", 192),
- : GenericVideoFilter(_child), scroll(_scroll), offset(_offset), x(_x), y(_y), size(_size*8),
-   antialiaser(vi.width, vi.height, _fontname, _size*8,
+ : GenericVideoFilter(_child), scroll(_scroll), offset(_offset), x(_x), y(_y), size(_size),
+   antialiaser(vi.width, vi.height, _fontname, _size,
                vi.IsYUV() ? RGB2YUV(_textcolor) : _textcolor,
-               vi.IsYUV() ? RGB2YUV(_halocolor) : _halocolor )
+               vi.IsYUV() ? RGB2YUV(_halocolor) : _halocolor,
+			   font_width, font_angle)
 {
   if ((x==-1) ^ (y==-1))
 	env->ThrowError("ShowFrameNumber: both x and y position must be specified");
@@ -605,10 +636,12 @@ AVSValue __cdecl ShowFrameNumber::Create(AVSValue args, void*, IScriptEnvironmen
   const int x = args[3].AsInt(-1);
   const int y = args[4].AsInt(-1);
   const char* font = args[5].AsString("Arial");
-  const int size = args[6].AsInt(24);
+  const int size = int(args[6].AsFloat(24)*8+0.5);
   const int text_color = args[7].AsInt(0xFFFF00);
   const int halo_color = args[8].AsInt(0);
-  return new ShowFrameNumber(clip, scroll, offset, x, y, font, size, text_color, halo_color, env);
+  const int font_width = int(args[9].AsFloat(0)*8+0.5);
+  const int font_angle = int(args[10].AsFloat(0)*10+0.5);
+  return new ShowFrameNumber(clip, scroll, offset, x, y, font, size, text_color, halo_color, font_width, font_angle, env);
 }
 
 
@@ -623,11 +656,12 @@ AVSValue __cdecl ShowFrameNumber::Create(AVSValue args, void*, IScriptEnvironmen
  **********************************/
 
 ShowSMPTE::ShowSMPTE(PClip _child, double _rate, const char* offset, int _offset_f, int _x, int _y, const char _fontname[],
-					 int _size, int _textcolor, int _halocolor, IScriptEnvironment* env)
+					 int _size, int _textcolor, int _halocolor, int font_width, int font_angle, IScriptEnvironment* env)
   : GenericVideoFilter(_child), x(_x), y(_y),
-    antialiaser(vi.width, vi.height, _fontname, _size*8,
+    antialiaser(vi.width, vi.height, _fontname, _size,
                 vi.IsYUV() ? RGB2YUV(_textcolor) : _textcolor,
-                vi.IsYUV() ? RGB2YUV(_halocolor) : _halocolor )
+                vi.IsYUV() ? RGB2YUV(_halocolor) : _halocolor,
+			    font_width, font_angle)
 {
   int off_f, off_sec, off_min, off_hour;
 
@@ -765,14 +799,16 @@ AVSValue __cdecl ShowSMPTE::CreateSMTPE(AVSValue args, void*, IScriptEnvironment
   const char* offset = args[2].AsString(0);
   const int offset_f = args[3].AsInt(0);
   const int xreal = args[0].AsClip()->GetVideoInfo().width;
-  const int x = args[4].AsInt((int)(xreal*0.5));
+  const int x = args[4].AsInt(xreal/2);
   const int yreal = args[0].AsClip()->GetVideoInfo().height;
-  const int y = args[5].AsInt((int)(yreal));
+  const int y = args[5].AsInt(yreal);
   const char* font = args[6].AsString("Arial");
-  const int size = args[7].AsInt(24);
+  const int size = int(args[7].AsFloat(24)*8+0.5);
   const int text_color = args[8].AsInt(0xFFFF00);
   const int halo_color = args[9].AsInt(0);
-  return new ShowSMPTE(clip, dfrate, offset, offset_f, x, y, font, size, text_color, halo_color, env);
+  const int font_width = int(args[10].AsFloat(0)*8+0.5);
+  const int font_angle = int(args[11].AsFloat(0)*10+0.5);
+  return new ShowSMPTE(clip, dfrate, offset, offset_f, x, y, font, size, text_color, halo_color, font_width, font_angle, env);
 }
 
 AVSValue __cdecl ShowSMPTE::CreateTime(AVSValue args, void*, IScriptEnvironment* env)
@@ -780,14 +816,16 @@ AVSValue __cdecl ShowSMPTE::CreateTime(AVSValue args, void*, IScriptEnvironment*
   PClip clip = args[0].AsClip();
   const int offset_f = args[1].AsInt(0);
   const int xreal = args[0].AsClip()->GetVideoInfo().width;
-  const int x = args[2].AsInt((int)(xreal*0.5));
+  const int x = args[2].AsInt(xreal/2);
   const int yreal = args[0].AsClip()->GetVideoInfo().height;
   const int y = args[3].AsInt(yreal);
   const char* font = args[4].AsString("Arial");
-  const int size = args[5].AsInt(24);
+  const int size = int(args[5].AsFloat(24)*8+0.5);
   const int text_color = args[6].AsInt(0xFFFF00);
   const int halo_color = args[7].AsInt(0);
-  return new ShowSMPTE(clip, 0.0, NULL, offset_f, x, y, font, size, text_color, halo_color, env);
+  const int font_width = int(args[8].AsFloat(0)*8+0.5);
+  const int font_angle = int(args[9].AsFloat(0)*10+0.5);
+  return new ShowSMPTE(clip, 0.0, NULL, offset_f, x, y, font, size, text_color, halo_color, font_width, font_angle, env);
 }
 
 
@@ -802,12 +840,14 @@ AVSValue __cdecl ShowSMPTE::CreateTime(AVSValue args, void*, IScriptEnvironment*
 
 Subtitle::Subtitle( PClip _child, const char _text[], int _x, int _y, int _firstframe, 
                     int _lastframe, const char _fontname[], int _size, int _textcolor, 
-                    int _halocolor, int _align, int _spc, bool _multiline, int _lsp )
+                    int _halocolor, int _align, int _spc, bool _multiline, int _lsp,
+					int _font_width, int _font_angle, bool _interlaced )
  : GenericVideoFilter(_child), antialiaser(0), text(_text), x(_x), y(_y), 
-   firstframe(_firstframe), lastframe(_lastframe), fontname(_fontname), size(_size*8),
+   firstframe(_firstframe), lastframe(_lastframe), fontname(_fontname), size(_size),
    textcolor(vi.IsYUV() ? RGB2YUV(_textcolor) : _textcolor),
    halocolor(vi.IsYUV() ? RGB2YUV(_halocolor) : _halocolor),
-   align(_align), spc(_spc), multiline(_multiline), lsp(_lsp)
+   align(_align), spc(_spc), multiline(_multiline), lsp(_lsp),
+   font_width(_font_width), font_angle(_font_angle), interlaced(_interlaced)
 {
 }
 
@@ -852,13 +892,17 @@ AVSValue __cdecl Subtitle::Create(AVSValue args, void*, IScriptEnvironment* env)
     const int first_frame = args[4].AsInt(0);
     const int last_frame = args[5].AsInt(clip->GetVideoInfo().num_frames-1);
     const char* font = args[6].AsString("Arial");
-    const int size = args[7].AsInt(18);
+    const int size = int(args[7].AsFloat(18)*8+0.5);
     const int text_color = args[8].AsInt(0xFFFF00);
     const int halo_color = args[9].AsInt(0);
     const int align = args[10].AsInt(args[2].AsInt(8)==-1?2:7);
     const int spc = args[11].AsInt(0);
     const bool multiline = args[12].Defined();
     const int lsp = args[12].AsInt(0);
+	const int font_width = int(args[13].AsFloat(0)*8+0.5);
+	const int font_angle = int(args[14].AsFloat(0)*10+0.5);
+	const bool interlaced = args[15].AsBool(false);
+
     int defx, defy;
     switch (align) {
 	 case 1: case 4: case 7: defx = 8; break;
@@ -869,7 +913,7 @@ AVSValue __cdecl Subtitle::Create(AVSValue args, void*, IScriptEnvironment* env)
      case 1: case 2: case 3: defy = clip->GetVideoInfo().height-2; break;
      case 4: case 5: case 6: defy = -1; break;
 	 case 7: case 8: case 9: defy = 0; break;
-     default: defy = size; break; }
+     default: defy = (size+4)/8; break; }
 
     const int x = args[2].AsInt(defx);
     const int y = args[3].AsInt(defy);
@@ -877,15 +921,16 @@ AVSValue __cdecl Subtitle::Create(AVSValue args, void*, IScriptEnvironment* env)
     if ((align < 1) || (align > 9))
      env->ThrowError("Subtitle: Align values are 1 - 9 mapped to your numeric pad");
 
-    return new Subtitle(clip, text, x, y, first_frame, last_frame, font, size,
-	                    text_color, halo_color, align, spc, multiline, lsp);
+    return new Subtitle(clip, text, x, y, first_frame, last_frame, font, size, text_color,
+	                    halo_color, align, spc, multiline, lsp, font_width, font_angle, interlaced);
 }
 
 
 
 void Subtitle::InitAntialiaser(IScriptEnvironment* env) 
 {
-  antialiaser = new Antialiaser(vi.width, vi.height, fontname, size, textcolor, halocolor);
+  antialiaser = new Antialiaser(vi.width, vi.height, fontname, size, textcolor, halocolor,
+                                font_width, font_angle, interlaced);
 
   int real_x = x;
   int real_y = y;
@@ -996,8 +1041,8 @@ const char* t_FLOAT32="Float 32 bit";
 const char* t_YES="YES";
 const char* t_NO="NO";
 const char* t_NONE="NONE";
-const char* t_TFF="Top Field First             ";
-const char* t_BFF="Bottom Field First          ";
+const char* t_TFF ="Top Field First            ";
+const char* t_BFF ="Bottom Field First         ";
 const char* t_ATFF="Assumed Top Field First    ";
 const char* t_ABFF="Assumed Bottom Field First ";
 const char* t_STFF="Top Field (Separated)      ";
@@ -1164,19 +1209,20 @@ Compare::Compare(PClip _child1, PClip _child2, const char* channels, const char 
   if (vi.width != vi2.width || vi.height != vi2.height)
     env->ThrowError("Compare: Clips must have same size.");
 
-  if (!(vi.IsRGB24() || vi.IsYUY2() || vi.IsRGB32()))
-    env->ThrowError("Compare: Clips have unknown format. RGB24, RGB32 and YUY2 supported.");
+  if (!(vi.IsRGB24() || vi.IsYUY2() || vi.IsRGB32() || vi.IsPlanar()))
+    env->ThrowError("Compare: Clips have unknown format. RGB24, RGB32, YUY2 and YUV Planar supported.");
 
   if (channels[0] == 0) {
-    if (vi.IsRGB32() || vi.IsRGB24())
+    if (vi.IsRGB())
       channels = "RGB";
-    else if (vi.IsYUY2())
+    else if (vi.IsYUV())
       channels = "YUV";
-    else env->ThrowError("Compare: Clips have unknown format. RGB24, RGB32 and YUY2 supported.");
+    else env->ThrowError("Compare: Clips have unknown colorspace. RGB and YUV supported.");
   }
 
+  planar_plane = 0;
   mask = 0;
-  for (WORD i = 0; i < strlen(channels); i++) {
+  for (int i = 0; i < strlen(channels); i++) {
     if (vi.IsRGB()) {
       switch (channels[i]) {
       case 'b':
@@ -1186,11 +1232,21 @@ Compare::Compare(PClip _child1, PClip _child2, const char* channels, const char 
       case 'r':
       case 'R': mask |= 0x00ff0000; break;
       case 'a':
-      case 'A': mask |= 0xff000000; break;
+      case 'A': mask |= 0xff000000; if (vi.IsRGB32()) break; // else fall thru
       default: env->ThrowError("Compare: invalid channel: %c", channels[i]);
       }
       if (vi.IsRGB24()) mask &= 0x00ffffff;   // no alpha channel in RGB24
-    } else {  // YUV
+	} else if (vi.IsPlanar()) {
+      switch (channels[i]) {
+      case 'y':
+      case 'Y': mask |= 0xffffffff; planar_plane |= PLANAR_Y; break;
+      case 'u':
+      case 'U': mask |= 0xffffffff; planar_plane |= PLANAR_U; break;
+      case 'v':
+      case 'V': mask |= 0xffffffff; planar_plane |= PLANAR_V; break;
+      default: env->ThrowError("Compare: invalid channel: %c", channels[i]);
+      }
+    } else {  // YUY2
       switch (channels[i]) {
       case 'y':
       case 'Y': mask |= 0x00ff00ff; break;
@@ -1253,65 +1309,27 @@ AVSValue __cdecl Compare::Create(AVSValue args, void*, IScriptEnvironment *env)
             env);
 }
 
-
-
-PVideoFrame __stdcall Compare::GetFrame(int n, IScriptEnvironment* env)
-{
-  PVideoFrame f1 = child->GetFrame(n, env);
-  PVideoFrame f2 = child2->GetFrame(n, env);
-
-  const BYTE* f1ptr = f1->GetReadPtr();
-  const BYTE* f2ptr = f2->GetReadPtr();
-  const int pitch1 = f1->GetPitch();
-  const int pitch2 = f2->GetPitch();
-  const int rowsize = f1->GetRowSize();
-  const int height = f1->GetHeight();
-
-  int bytecount = rowsize * height * masked_bytes / 4;
-  const int incr = vi.IsRGB24() ? 3 : 4;
-
-  int SD = 0;
-  int SAD = 0;
-  int pos_D = 0;
-  int neg_D = 0;
-  double SSD = 0;
-  int row_SSD;
-
-  if (((rowsize & 7) && !vi.IsRGB24()) ||       // rowsize must be a multiple or 8 for RGB32 and YUY2
-    ((rowsize % 6) && vi.IsRGB24()) ||          // or 6 for RGB24
-    !(env->GetCPUFlags() & CPUF_INTEGER_SSE)) { // to use the ISSE routine
-    for (int y = 0; y < height; y++) {
-      row_SSD = 0;
-      for (int x = 0; x < rowsize; x += incr) {
-        DWORD p1 = *(DWORD *)(f1ptr + x) & mask;
-        DWORD p2 = *(DWORD *)(f2ptr + x) & mask;
-        int d0 = (p1 & 0xff) - (p2 & 0xff);
-        int d1 = ((p1 >> 8) & 0xff) - ((p2 & 0xff00) >> 8);
-        int d2 = ((p1 >>16) & 0xff) - ((p2 & 0xff0000) >> 16);
-        int d3 = (p1 >> 24) - (p2 >> 24);
-        SD += d0 + d1 + d2 + d3;
-        SAD += abs(d0) + abs(d1) + abs(d2) + abs(d3);
-        row_SSD += d0 * d0 + d1 * d1 + d2 * d2 + d3 * d3;
-        pos_D = max(max(max(max(pos_D,d0),d1),d2),d3);
-        neg_D = min(min(min(min(neg_D,d0),d1),d2),d3);
-      }
-      SSD += row_SSD;
-      f1ptr += pitch1;
-      f2ptr += pitch2;
-    }
-  } else {        // ISSE version; rowsize multiple of 8 for RGB32 and YUY2; 6 for RGB24
-    const _int64 mask64 = (__int64)mask << (vi.IsRGB24()? 24: 32) | mask;
+void Compare::Compare_ISSE(DWORD mask, int incr,
+                           const BYTE * f1ptr, int pitch1, 
+                           const BYTE * f2ptr, int pitch2,
+                           int rowsize, int height,
+                           int &SAD_sum, int &SD_sum, int &pos_D,  int &neg_D, double &SSD_sum)
+{ 
+    // rowsize multiple of 8 for YUV Planar, RGB32 and YUY2; 6 for RGB24
+    // incr must be 3 for RGB24 and 4 for others
+    // SAD_sum, SD_sum, SSD_sum are incremented (must be properly initialized)
+    int SAD = 0, SD = 0;
     const int incr2 = incr * 2;
-    __int64 iSSD;
-    unsigned __int64 pos_D8 = 0, neg_D8 = 0;
+
+    __declspec(align(8)) __int64 iSSD;
+    __declspec(align(8)) __int64 mask64 = (__int64)mask << ((incr == 3) ? 24: 32) | mask;
+    __declspec(align(8)) unsigned __int64 pos_D8 = 0, neg_D8 = 0;
 
     __asm {
-	  push    ebx
       mov     esi, f1ptr
       mov     edi, f2ptr
       add     esi, rowsize
       add     edi, rowsize
-      mov     ebx, height
       xor     eax, eax      ; sum of squared differences low
       xor     edx, edx      ; sum of squared differences high
       pxor    mm7, mm7      ; sum of absolute differences
@@ -1364,7 +1382,7 @@ comp_loopx:
       movd    ecx, mm3
       add     eax, ecx
       adc     edx, 0
-      dec     ebx
+      dec     height
       jne     comp_loopy
 
       movd    SAD, mm7
@@ -1372,16 +1390,115 @@ comp_loopx:
       mov     DWORD PTR [iSSD], eax
       mov     DWORD PTR [iSSD+4], edx
       emms
-	  pop     ebx
     }
-    SSD = (double)iSSD;
-    for (int i=0; i<8; i++) {
+    SSD_sum += (double)iSSD;
+    for (int i=0; i<incr2; i++) {
       pos_D = max(pos_D, (int)(pos_D8 & 0xff));
       neg_D = max(neg_D, (int)(neg_D8 & 0xff));
       pos_D8 >>= 8;
       neg_D8 >>= 8;
     }
     neg_D = -neg_D;
+    SAD_sum += SAD;
+    SD_sum  += SD;
+}
+
+
+PVideoFrame __stdcall Compare::GetFrame(int n, IScriptEnvironment* env)
+{
+  PVideoFrame f1 = child->GetFrame(n, env);
+  PVideoFrame f2 = child2->GetFrame(n, env);
+
+  int SD = 0;
+  int SAD = 0;
+  int pos_D = 0;
+  int neg_D = 0;
+  double SSD = 0;
+  int row_SSD;
+
+  int bytecount = 0;
+  const int incr = vi.IsRGB24() ? 3 : 4;
+
+  if (vi.IsRGB24() || vi.IsYUY2() || vi.IsRGB32()) {
+
+    const BYTE* f1ptr = f1->GetReadPtr();
+    const BYTE* f2ptr = f2->GetReadPtr();
+    const int pitch1 = f1->GetPitch();
+    const int pitch2 = f2->GetPitch();
+    const int rowsize = f1->GetRowSize();
+    const int height = f1->GetHeight();
+
+    bytecount = rowsize * height * masked_bytes / 4;
+
+    if (((rowsize & 7) && !vi.IsRGB24()) ||       // rowsize must be a multiple or 8 for RGB32 and YUY2
+       ((rowsize % 6) && vi.IsRGB24()) ||          // or 6 for RGB24
+       !(env->GetCPUFlags() & CPUF_INTEGER_SSE)) { // to use the ISSE routine
+      for (int y = 0; y < height; y++) {
+        row_SSD = 0;
+        for (int x = 0; x < rowsize; x += incr) {
+          DWORD p1 = *(DWORD *)(f1ptr + x) & mask;
+          DWORD p2 = *(DWORD *)(f2ptr + x) & mask;
+          int d0 = (p1 & 0xff) - (p2 & 0xff);
+          int d1 = ((p1 >> 8) & 0xff) - ((p2 & 0xff00) >> 8);
+          int d2 = ((p1 >>16) & 0xff) - ((p2 & 0xff0000) >> 16);
+          int d3 = (p1 >> 24) - (p2 >> 24);
+          SD += d0 + d1 + d2 + d3;
+          SAD += abs(d0) + abs(d1) + abs(d2) + abs(d3);
+          row_SSD += d0 * d0 + d1 * d1 + d2 * d2 + d3 * d3;
+          pos_D = max(max(max(max(pos_D,d0),d1),d2),d3);
+          neg_D = min(min(min(min(neg_D,d0),d1),d2),d3);
+        }
+        SSD += row_SSD;
+        f1ptr += pitch1;
+        f2ptr += pitch2;
+      }
+    } else {        // ISSE version; rowsize multiple of 8 for RGB32 and YUY2; 6 for RGB24
+      Compare_ISSE(mask, incr, f1ptr, pitch1, f2ptr, pitch2, rowsize, height,
+                   SAD, SD, pos_D, neg_D, SSD);
+    }
+  }
+  else { // Planar
+  
+    int planes[3] = {PLANAR_Y, PLANAR_U, PLANAR_V};
+    for (int p=0; p<3; p++) {
+      const int plane = planes[p];
+
+	  if (planar_plane & plane) {
+
+        const BYTE* f1ptr = f1->GetReadPtr(plane);
+        const BYTE* f2ptr = f2->GetReadPtr(plane);
+        const int pitch1 = f1->GetPitch(plane);
+        const int pitch2 = f2->GetPitch(plane);
+        const int rowsize = f1->GetRowSize(plane);
+        const int height = f1->GetHeight(plane);
+
+        bytecount += rowsize * height;
+
+        if ((rowsize & 7) || !(env->GetCPUFlags() & CPUF_INTEGER_SSE)) { 
+          // rowsize must be a multiple 8 to use the ISSE routine
+          for (int y = 0; y < height; y++) {
+            row_SSD = 0;
+            for (int x = 0; x < rowsize; x += 1) {
+              int p1 = *(f1ptr + x);
+              int p2 = *(f2ptr + x);
+              int d0 = p1 - p2;
+              SD += d0;
+              SAD += abs(d0);
+              row_SSD += d0 * d0;
+              pos_D = max(pos_D,d0);
+              neg_D = min(neg_D,d0);
+            }
+            SSD += row_SSD;
+            f1ptr += pitch1;
+            f2ptr += pitch2;
+          }
+        }
+        else {
+         Compare_ISSE(mask, incr, f1ptr, pitch1, f2ptr, pitch2, rowsize, height,
+                      SAD, SD, pos_D, neg_D, SSD);
+        }
+      }
+    }
   }
 
   double MAD = (double)SAD / bytecount;
@@ -1461,6 +1578,21 @@ comp_loopx:
                   dstp[x << 1] = 0xFF;              // Y
                   dstp[((x & -1) << 1) + 1] = 0x80; // U
                   dstp[((x & -1) << 1) + 3] = 0x80; // V
+                }
+              }
+            } // for x
+            dstp -= dst_pitch;
+          } // for y
+        }
+		else if (vi.IsPlanar()) {
+          dstp += (vi.height - 1) * dst_pitch;
+          for (int y = 0; y <= 100; y++) {            
+            for (int x = max(0, vi.width - n - 1); x < vi.width; x++) {
+              if (y <= psnrs[n - vi.width + 1 + x]) {
+                if (y <= psnrs[n - vi.width + 1 + x] - 2) {
+                  dstp[x] = 0x00;              // Y
+                } else {
+                  dstp[x] = 0xFF;              // Y
                 }
               }
             } // for x
