@@ -812,7 +812,7 @@ PVideoFrame Histogram::DrawModeLevels(int n, IScriptEnvironment* env) {
       for (y=64+1 ; y > h ; y--) {
         pdstb[x+y*dstPitch] = 235;
       }
-      if (left) pdstb[x+h*dstPitch] = pdstb[x+h*dstPitch]+left;
+      pdstb[x+h*dstPitch] = 16+left;
     }
 
     // Draw U
@@ -831,7 +831,7 @@ PVideoFrame Histogram::DrawModeLevels(int n, IScriptEnvironment* env) {
       for (y=128+16+1 ; y > h ; y--) {
         pdstb[x+y*dstPitch] = 235;
       }
-      if (left) pdstb[x+h*dstPitch] = pdstb[x+h*dstPitch]+left;
+      pdstb[x+h*dstPitch] = 16+left;
     }
 
     // Draw V
@@ -840,7 +840,7 @@ PVideoFrame Histogram::DrawModeLevels(int n, IScriptEnvironment* env) {
       maxval = max(histV[i], maxval);
     }
 
-    scale = 64.0 / maxval;
+    scale = 64.0f / (float)maxval;
 
     for (x=0;x<256;x++) {
       float scaled_h = (float)histV[x] * scale;
@@ -849,7 +849,7 @@ PVideoFrame Histogram::DrawModeLevels(int n, IScriptEnvironment* env) {
       for (y=192+32+1 ; y > h ; y--) {
         pdstb[x+y*dstPitch] = 235;
       }
-      if (left) pdstb[x+h*dstPitch] = pdstb[x+h*dstPitch]+left;
+      pdstb[x+h*dstPitch] = 16+left;
     }
 
     // Draw chroma
