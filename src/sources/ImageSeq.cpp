@@ -308,7 +308,7 @@ ImageReader::ImageReader(const char * _base_name, const int _start, const int _e
   }
   _snprintf(filename, sizeof filename, base_name, start);
 
-  memfill(vi, 0, sizeof(vi));
+  memset(&vi, 0, sizeof(vi));
 
   // Invariants
   vi.num_frames = -start + end + 1;  // make sure each frame can be requested
