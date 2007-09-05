@@ -774,7 +774,7 @@ PVideoFrame __stdcall ShowSMPTE::GetFrame(int n, IScriptEnvironment* env)
     wsprintf(text, "%02d:%02d:%02d:%02d", hour, min%60, sec%60, frames);
   }
   else {
-    int ms = (int)(((__int64)n * vi.fps_denominator * 1000 / (__int64)vi.fps_numerator)%1000);
+    int ms = (int)(((__int64)n * vi.fps_denominator * 1000 / vi.fps_numerator)%1000);
     int sec = (int)((__int64)n * vi.fps_denominator / vi.fps_numerator);
     int min = sec/60;
     int hour = sec/3600;
@@ -1210,7 +1210,7 @@ Compare::Compare(PClip _child1, PClip _child2, const char* channels, const char 
     env->ThrowError("Compare: Clips must have same size.");
 
   if (!(vi.IsRGB24() || vi.IsYUY2() || vi.IsRGB32() || vi.IsPlanar()))
-    env->ThrowError("Compare: Clips have unknown format. RGB24, RGB32, YUY2 and YUV Planar supported.");
+    env->ThrowError("Compare: Clips have unknown pixel format. RGB24, RGB32, YUY2 and YUV Planar supported.");
 
   if (channels[0] == 0) {
     if (vi.IsRGB())

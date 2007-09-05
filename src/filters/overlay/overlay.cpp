@@ -89,10 +89,10 @@ GenericVideoFilter(_child) {
   overlayVi = overlay->GetVideoInfo();
   overlayConv = SelectInputCS(&overlayVi, env);
 
-  if (!overlayConv) {    
-    AVSValue new_args[3] = { overlay, false, (full_range) ? "PC.601" : "rec601" }; 
+  if (!overlayConv) {
+    AVSValue new_args[3] = { overlay, false, (full_range) ? "PC.601" : "rec601" };
     try {
-      overlay = env->Invoke("ConvertToYV24", AVSValue(new_args, 3)).AsClip(); 
+      overlay = env->Invoke("ConvertToYV24", AVSValue(new_args, 3)).AsClip();
     } catch (...)  {}
 
     overlayVi = overlay->GetVideoInfo();
@@ -118,10 +118,10 @@ GenericVideoFilter(_child) {
 
     maskConv = SelectInputCS(&maskVi, env);
     if (!maskConv) {
-      AVSValue new_args[3] = { mask, false, (full_range) ? "PC.601" : "rec601" }; 
+      AVSValue new_args[3] = { mask, false, (full_range) ? "PC.601" : "rec601" };
 
       try {
-        mask = env->Invoke((greymask) ? "ConvertToY8" : "ConvertToYV24", AVSValue(new_args, 3)).AsClip(); 
+        mask = env->Invoke((greymask) ? "ConvertToY8" : "ConvertToYV24", AVSValue(new_args, 3)).AsClip();
       } catch (...)  {}
       maskVi = mask->GetVideoInfo();
       maskConv = SelectInputCS(&maskVi, env);
@@ -143,9 +143,9 @@ GenericVideoFilter(_child) {
   inputConv = SelectInputCS(inputVi, env);
 
   if (!inputConv) {
-    AVSValue new_args[3] = { child, false, (full_range) ? "PC.601" : "rec601" }; 
+    AVSValue new_args[3] = { child, false, (full_range) ? "PC.601" : "rec601" };
     try {
-      child = env->Invoke("ConvertToYV24", AVSValue(new_args, 3)).AsClip(); 
+      child = env->Invoke("ConvertToYV24", AVSValue(new_args, 3)).AsClip();
     } catch (...)  {}
 
     vi = child->GetVideoInfo();
@@ -261,7 +261,7 @@ PVideoFrame __stdcall Overlay::GetFrame(int n, IScriptEnvironment *env) {
     delete img;
     img = NULL;
     return frame;
-  } 
+  }
 
   PVideoFrame f = env->NewVideoFrame(vi);
   f = outputConv->ConvertImage(img, f, env);

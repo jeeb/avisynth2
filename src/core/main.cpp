@@ -53,7 +53,7 @@
 
 #ifndef _DEBUG
 // Release mode logging
-//#define OPT_RELS_LOGGING
+#define OPT_RELS_LOGGING
 #ifdef OPT_RELS_LOGGING
 
 #undef _RPT0
@@ -936,7 +936,6 @@ STDMETHODIMP_(LONG) CAVIStreamSynth::Info(AVISTREAMINFOW *psi, LONG lSize) {
         asi.fccHandler = '61VY'; 
       else if (vi->IsYV411()) 
         asi.fccHandler = 'B14Y'; 
-      
       else {
         _ASSERT(FALSE);
       }

@@ -143,7 +143,7 @@ PVideoFrame __stdcall Color::GetFrame(int frame, IScriptEnvironment* env)
 //	dpitch = dst->GetPitch();
 //	dmodulo = dpitch - dst->GetRowSize();
   if (analyze||autowhite||autogain) {
-    for (i=0;i<256;i++) {
+    for (int i=0;i<256;i++) {
       accum_Y[i]=0;
       accum_U[i]=0;
       accum_V[i]=0;

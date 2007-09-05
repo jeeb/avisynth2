@@ -60,4 +60,4 @@ public:
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
 };
 
-#endif
+#endif  // __Convert_RGB_H__
