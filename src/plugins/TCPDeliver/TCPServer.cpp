@@ -281,7 +281,7 @@ void TCPServerListener::Listen() {
           delete tr;
         } // end if fd is set
         if (updateStats)
-          sprintf_s(clientText, 8000, "[%d]: %s", i, s_list[i].status_text);
+          sprintf(clientText, "[%d]: %s", i, s_list[i].status_text);
       } // end if list != null
     } // end for i
 
@@ -339,7 +339,7 @@ void TCPServerListener::UpdateStatWindow(DWORD sinceLast) {
     sinceLast = 0;
 
   char buf[4096];
-  sprintf_s(&buf[0], 4096, "Clients Connected:%d, Total Clients:%d\r\n"
+  sprintf(&buf[0], "Clients Connected:%d, Total Clients:%d\r\n"
     "Frames Requested:%d, Frames PreRendered:%d\r\n"
     "Speed: %5.2fFPS, %dKB/s\r\n"
     "Frame data sent (compressed):%dMB, Uncompressed:%dMB (%d%%)\r\n"
