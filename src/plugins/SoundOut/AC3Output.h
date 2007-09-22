@@ -42,7 +42,7 @@ public:
   bool GUI_ready;
 protected:
   AftenContext aften;
-  void encodeBlock(unsigned char* in);
+  void encodeBlock(unsigned char* in, bool done = false);
   FILE *f;
   __int64 encodedSamples;
 

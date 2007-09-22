@@ -1,5 +1,5 @@
 /* libFLAC++ - Free Lossless Audio Codec library
- * Copyright (C) 2002,2003,2004,2005,2006 Josh Coalson
+ * Copyright (C) 2002,2003,2004,2005,2006,2007  Josh Coalson
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -1018,8 +1018,12 @@ namespace FLAC {
 
 			bool next();                                                        ///< See FLAC__metadata_simple_iterator_next().
 			bool prev();                                                        ///< See FLAC__metadata_simple_iterator_prev().
+			bool is_last() const;                                               ///< See FLAC__metadata_simple_iterator_is_last().
 
+			off_t get_block_offset() const;                                     ///< See FLAC__metadata_simple_iterator_get_block_offset().
 			::FLAC__MetadataType get_block_type() const;                        ///< See FLAC__metadata_simple_iterator_get_block_type().
+			unsigned get_block_length() const;                                  ///< See FLAC__metadata_simple_iterator_get_block_length().
+			bool get_application_id(FLAC__byte *id);                            ///< See FLAC__metadata_simple_iterator_get_application_id().
 			Prototype *get_block();                                             ///< See FLAC__metadata_simple_iterator_get_block().
 			bool set_block(Prototype *block, bool use_padding = true);          ///< See FLAC__metadata_simple_iterator_set_block().
 			bool insert_block_after(Prototype *block, bool use_padding = true); ///< See FLAC__metadata_simple_iterator_insert_block_after().

@@ -29,8 +29,18 @@
 
 using namespace FLAC;
 
+class FlacOutput;
+
+class FlacOutEncoder: public Encoder::File {
+public:
+  FlacOutput *parent;
+	FlacOutEncoder(FlacOutput *_parent): FLAC::Encoder::File(), parent(_parent) { }
+protected:
+	virtual void progress_callback(FLAC__uint64 bytes_written, FLAC__uint64 samples_written, unsigned frames_written, unsigned total_frames_estimate);
+}; 
+
 class FlacOutput :
-  public SoundOutput, public Encoder::File
+  public SoundOutput
 {
 public:
   FlacOutput(PClip _child, IScriptEnvironment* _env) ;
@@ -42,6 +52,8 @@ public:
   virtual bool getParamsFromGUI();
   virtual bool setParamsToGUI();
   virtual void showGUI();
+  FlacOutEncoder* encoder;
+  FILE *f;
 };
 
 extern const char * const _FLAC__StreamEncoderStateString[];

@@ -284,10 +284,10 @@ bool AC3Output::initEncoder() {
   return true;
 }
 
-void AC3Output::encodeBlock(unsigned char* in) {
+void AC3Output::encodeBlock(unsigned char* in, bool done) {
   unsigned char frame[A52_MAX_CODED_FRAME_SIZE];
   aften_remap_wav_to_a52(in,A52_SAMPLES_PER_FRAME,aften.channels, aften.sample_format,aften.acmod);
-  int out = aften_encode_frame(&aften, frame, in);
+  int out = aften_encode_frame(&aften, frame,  done ? NULL : in);
   if (out<0) {
     MessageBox(NULL,"Encoder error.","AC3 Encoder",MB_OK);
     exitThread = true;
@@ -299,7 +299,7 @@ void AC3Output::encodeBlock(unsigned char* in) {
     exitThread = true;
     return;
   }
-  encodedSamples += A52_SAMPLES_PER_FRAME;
+  encodedSamples += done ? 0 : A52_SAMPLES_PER_FRAME;
   this->updateSampleStats(encodedSamples, vi.num_audio_samples);
 }
 
@@ -332,6 +332,7 @@ void AC3Output::encodeLoop() {
     memset(&fwav[fwav_n*sampleSize], 0, (A52_SAMPLES_PER_FRAME - fwav_n) * sampleSize);
     encodeBlock(fwav);
   }
+  encodeBlock(fwav, true);
   this->updateSampleStats(encodedSamples, vi.num_audio_samples, true);
 
 	aften_encode_close(&aften);

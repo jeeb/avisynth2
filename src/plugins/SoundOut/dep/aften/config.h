@@ -1,6 +1,5 @@
-#define HAVE_WINDOWS_THREADS
-
-#define MAX_NUM_THREADS 32
+//#define HAVE_WINDOWS_THREADS
+//#define MAX_NUM_THREADS 32
 
 #define HAVE_MMX
 

@@ -583,7 +583,7 @@ mdct_thread_close(A52ThreadContext *tctx)
 }
 
 void
-mdct_initA(A52Context *ctx)
+mdct_init_aften(A52Context *ctx)
 {
     ctx_init(&ctx->mdct_ctx_512, 512);
     ctx_init(&ctx->mdct_ctx_256, 256);

@@ -39,7 +39,7 @@
  * Modified Discrete Cosine Transform
  */
 
-#include "common.h"
+#include "..\common.h"
 
 #include <stdlib.h>
 #include <stdio.h>

@@ -48,8 +48,8 @@
 #include <sys/types.h> /* for off_t */
 #if defined _MSC_VER || defined __BORLANDC__ || defined __MINGW32__
 #if _MSC_VER <= 1600 || defined __BORLANDC__ /* @@@ [2G limit] */
-#define fseeko fseek
-#define ftello ftell
+#define fseeko _fseeki64
+#define ftello _ftelli64
 #endif
 #endif
 #include "FLAC/assert.h"
@@ -4279,7 +4279,7 @@ FLAC__StreamEncoderSeekStatus file_seek_callback_(const FLAC__StreamEncoder *enc
 
 FLAC__StreamEncoderTellStatus file_tell_callback_(const FLAC__StreamEncoder *encoder, FLAC__uint64 *absolute_byte_offset, void *client_data)
 {
-	off_t offset;
+	FLAC__uint64 offset;
 
 	(void)client_data;
 

@@ -666,12 +666,56 @@ c32f_loop:
       break;
     }
     case SAMPLE_INT24: {
+      float multiplier = (float)(1<<23);
+      float maxF = (float)((1<<23) - 1);
+      float minF = -(float)((1<<23) -1);
       unsigned char* samples = (unsigned char*)outbuf;
-      for (i=0;i<count;i++) {
-        signed int tval = Saturate_int24(inbuf[i] * (float)(1<<23));
-        samples[i*3] = tval & 0xff;
-        samples[i*3+1] = (tval & 0xff00)>>8;
-        samples[i*3+2] = (tval & 0xff0000)>>16;
+      int c_loop = (count-8) - ((count-8)&3); // in samples
+      int c_miss = count-c_loop;
+      if (c_loop) {        
+        __asm {
+          xor eax,eax                   // input offset count
+          xor ecx,ecx                   // dest offset count
+          mov edx, [c_loop]
+          shl edx, 2                     // in input bytes (*4)
+          movd mm7,[multiplier]
+          mov esi, [inbuf];
+          mov edi, [outbuf];
+          movd mm6,[maxF]               // Maximum value
+          pshufw mm7,mm7, 01000100b
+          movd mm5,[minF]               // Minimum value
+          pshufw mm6,mm6, 01000100b
+          pshufw mm5,mm5, 01000100b
+          align 16
+c24f_loop:
+          movq mm1, [esi+eax]            //  b b | a a
+            movq mm2, [esi+eax+8]          //  d d | c c
+            pfmul mm1,mm7                  // x * 24 bit
+            pfmul mm2,mm7                  // x * 24 bit
+            pfmax mm1,mm5
+            pfmax mm2,mm5
+            pfmin mm1,mm6
+            pfmin mm2,mm6
+            pf2id mm1, mm1                 //  xb=int(b) | xa=int(a)
+            pf2id mm2, mm2                 //  xb=int(d) | xa=int(c)            
+            pshufw mm3,mm1,11101110b
+            pshufw mm4,mm1,11101110b
+            movd [edi+ecx], mm1            //  store xb | xa
+            movd [edi+ecx+3], mm3            //  store xb | xa
+            movd [edi+ecx+6], mm2          //  store xd | xc
+            movd [edi+ecx+9], mm4          //  store xd | xc
+            add eax,16
+            add ecx,12
+            cmp eax, edx
+            jne c24f_loop
+            emms
+        }
+      }
+      for (i=0;i<c_miss;i++) {
+        signed int tval = Saturate_int24(inbuf[i+c_loop] * (float)(1<<23));
+        samples[(i+c_loop)*3] = tval & 0xff;
+        samples[((i+c_loop)*3)+1] = (tval & 0xff00)>>8;
+        samples[((i+c_loop)*3)+2] = (tval & 0xff0000)>>16;
       }
       break;
     }

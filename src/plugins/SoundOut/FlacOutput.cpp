@@ -25,10 +25,6 @@
 
 #include "FlacOutput.h"
 
-#ifdef _DEBUG
-#define new DEBUG_CLIENTBLOCK
-#endif
-
 FlacOutput* out;
 
 BOOL CALLBACK FlacDialogProc(
@@ -60,7 +56,7 @@ BOOL CALLBACK FlacDialogProc(
   return false;
 }
 
-FlacOutput::FlacOutput(PClip _child, IScriptEnvironment* _env) : SoundOutput(ConvertAudio::Create(_child, SAMPLE_INT8|SAMPLE_INT16|SAMPLE_FLOAT,SAMPLE_FLOAT),_env)
+FlacOutput::FlacOutput(PClip _child, IScriptEnvironment* _env) : SoundOutput(ConvertAudio::Create(_child, SAMPLE_INT8|SAMPLE_INT16,SAMPLE_INT16),_env)
 {
   params["outputFileFilter"] = AVSValue("FLAC files\0*.flac\0All Files\0*.*\0\0");
   params["extension"] = AVSValue(".flac");
@@ -96,31 +92,41 @@ bool FlacOutput::setParamsToGUI() {
 
 
 bool FlacOutput::initEncoder() {
-  set_channels(vi.AudioChannels());
-  set_bits_per_sample(vi.BytesPerChannelSample() == 4 ? 24 : vi.BytesPerChannelSample()*8);  
-  set_sample_rate(vi.audio_samples_per_second);
-  set_compression_level(params["compressionlevel"].AsInt());
-  set_total_samples_estimate(vi.num_audio_samples);
-  init(outputFile);
-  if (get_state() != FLAC__STREAM_ENCODER_INIT_STATUS_OK) {
+  encoder = new FlacOutEncoder(this);
+  encoder->set_channels(vi.AudioChannels());
+  encoder->set_bits_per_sample(vi.BytesPerChannelSample()*8);  
+  encoder->set_sample_rate(vi.audio_samples_per_second);
+  encoder->set_compression_level(params["compressionlevel"].AsInt());
+  encoder->set_total_samples_estimate(vi.num_audio_samples);
+
+  if (fopen_s(&f, outputFile, "wbS")) {
+    MessageBox(NULL,"Could not open file for writing","FLAC Encoder",MB_OK);
+    return false;
+  }
+
+  if (!encoder->init(f)) {
+    if (encoder->get_state() != FLAC__STREAM_ENCODER_INIT_STATUS_OK) {
       char buf[800];
-      sprintf_s(buf, 800, "FLAC Initialization error: %s", _FLAC__StreamEncoderInitStatusString[get_state()]);
+      sprintf_s(buf, 800, "FLAC Initialization error: %s", _FLAC__StreamEncoderInitStatusString[encoder->get_state()]);
       MessageBox(NULL,buf,"FLAC Encoder",MB_OK);
       return false;
-  }      
+    }     
+  }
   return true;
 }
 
 void FlacOutput::encodeLoop() {
   SampleBlock* sb;
+  __int64 encodedSamples = 0;
   do {
     sb = input->GetNextBlock();
     int totSmps = sb->numSamples*vi.AudioChannels();
     int* dataArray=new int[totSmps];
-    if (vi.IsSampleType(SAMPLE_FLOAT)) { // FLAC has very stupid idea that all samples should be passed as ints.
-      float* samples = (float*)sb->getSamples();
+    if (vi.IsSampleType(SAMPLE_INT24)) { // FLAC has very stupid idea that all samples should be passed as ints.
+      unsigned char* samples = (unsigned char*)sb->getSamples();
       for (int i = 0; i<totSmps ; i++) { 
-        dataArray[i] = (int)(samples[i]*(float)(1<<23));
+        //dataArray[i] = (int)(samples[i]*(float)(1<<23));
+        dataArray[i] =  samples [i*3] | (((int) samples [i*3+1]) << 8) | (((int)(signed char) samples [i*3+2]) << 16);
       }
     } else if (vi.IsSampleType(SAMPLE_INT16)) {
       signed short* samples = (signed short*)sb->getSamples();
@@ -133,55 +139,30 @@ void FlacOutput::encodeLoop() {
         dataArray[i]=((int)samples[i]-128);
       }
     }
-    process_interleaved(dataArray, sb->numSamples);
+    if (!encoder->process_interleaved(dataArray, sb->numSamples)) {
+      FLAC::Encoder::File::State state = encoder->get_state(); 
+      if (state != FLAC__STREAM_ENCODER_OK) {
+        sb->lastBlock = true;
+        char buf[800];
+        sprintf_s(buf, 800, "FLAC Encoder error: %s", state.as_cstring());
+        MessageBox(NULL,buf,"FLAC Encoder",MB_OK);
+      }      
+    } else {
+      encodedSamples += sb->numSamples;
+    }
     delete dataArray;
-
-    if (get_state() != FLAC__STREAM_ENCODER_OK) {
-      sb->lastBlock = true;
-      char buf[800];
-      sprintf_s(buf, 800, "FLAC Encoder error: %s", _FLAC__StreamEncoderStateString[get_state()]);
-      MessageBox(NULL,buf,"FLAC Encoder",MB_OK);
-    }      
   } while (!sb->lastBlock && !exitThread);
-  finish();
+  encoder->finish();
+  delete encoder;
+  this->updateSampleStats(encodedSamples, vi.num_audio_samples, true);
+  fclose(f);
   encodeThread = 0;
 }
 
-void 	FlacOutput::progress_callback (FLAC__uint64 bytes_written, FLAC__uint64 samples_written, unsigned frames_written, unsigned total_frames_estimate) {
-  if (quietExit || !wnd)
-    return;
-  if (GetTickCount() - lastUpdateTick < 100)
-    return;
 
-  int percent = (int)(samples_written * 100 / vi.num_audio_samples);
-  int compression = (int)((vi.BytesFromAudioSamples(samples_written) - bytes_written ) * 100 / vi.BytesFromAudioSamples(samples_written));
-  const char* tw_m;
-  int totalWritten = ConvertDataSizes(bytes_written, &tw_m);
-  char buf[800];
-  sprintf_s(buf, 800, "Written %dk of %dk samples (%d%%)\n"
-    "Written %d%s data. Compression: %d%%.",
-    (int)(samples_written), (int)(vi.num_audio_samples), percent,
-    totalWritten, tw_m, compression);
-
-  if (!exitThread) {
-    SetDlgItemText(wnd,IDC_STC_CONVERTMSG,buf);
-    this->updatePercent(percent);
-  }
-  lastUpdateTick = GetTickCount();
-
+void FlacOutEncoder::progress_callback (FLAC__uint64 bytes_written, FLAC__uint64 samples_written, unsigned frames_written, unsigned total_frames_estimate) {
+  parent->updateSampleStats(samples_written, parent->GetVideoInfo().num_audio_samples);
 }
-
-const char * const _FLAC__StreamEncoderStateString[] = {
-	"FLAC__STREAM_ENCODER_OK",
-	"FLAC__STREAM_ENCODER_UNINITIALIZED",
-	"FLAC__STREAM_ENCODER_OGG_ERROR",
-	"FLAC__STREAM_ENCODER_VERIFY_DECODER_ERROR",
-	"FLAC__STREAM_ENCODER_VERIFY_MISMATCH_IN_AUDIO_DATA",
-	"FLAC__STREAM_ENCODER_CLIENT_ERROR",
-	"FLAC__STREAM_ENCODER_IO_ERROR",
-	"FLAC__STREAM_ENCODER_FRAMING_ERROR",
-	"FLAC__STREAM_ENCODER_MEMORY_ALLOCATION_ERROR"
-}; 
 
 const char * const _FLAC__StreamEncoderInitStatusString[] = {
 	"FLAC__STREAM_ENCODER_INIT_STATUS_OK",

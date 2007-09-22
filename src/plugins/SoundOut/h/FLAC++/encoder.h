@@ -1,5 +1,5 @@
 /* libFLAC++ - Free Lossless Audio Codec library
- * Copyright (C) 2002,2003,2004,2005,2006 Josh Coalson
+ * Copyright (C) 2002,2003,2004,2005,2006,2007  Josh Coalson
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -102,7 +102,7 @@ namespace FLAC {
 		public:
 			/** This class is a wrapper around FLAC__StreamEncoderState.
 			 */
-			class State {
+			class FLACPP_API State {
 			public:
 				inline State(::FLAC__StreamEncoderState state): state_(state) { }
 				inline operator ::FLAC__StreamEncoderState() const { return state_; }
@@ -189,7 +189,7 @@ namespace FLAC {
 			/// See FLAC__StreamEncoderTellCallback
 			virtual ::FLAC__StreamEncoderTellStatus tell_callback(FLAC__uint64 *absolute_byte_offset);
 
-			/// See FLAC__StreamEncoderTellCallback
+			/// See FLAC__StreamEncoderMetadataCallback
 			virtual void metadata_callback(const ::FLAC__StreamMetadata *metadata);
 
 #if (defined _MSC_VER) || (defined __BORLANDC__) || (defined __GNUG__ && (__GNUG__ < 2 || (__GNUG__ == 2 && __GNUC_MINOR__ < 96))) || (defined __SUNPRO_CC)
@@ -231,8 +231,8 @@ namespace FLAC {
 		 */
 		class FLACPP_API File: public Stream {
 		public:
-      File() :Stream()  {};
-      virtual ~File() {};
+			File();
+			virtual ~File();
 
 			virtual ::FLAC__StreamEncoderInitStatus init(FILE *file);                      ///< See FLAC__stream_encoder_init_FILE()
 			virtual ::FLAC__StreamEncoderInitStatus init(const char *filename);            ///< See FLAC__stream_encoder_init_file()

@@ -328,7 +328,7 @@ select_mdct(A52Context *ctx)
     }
 #endif
 #endif /* CONFIG_DOUBLE */
-    mdct_initA(ctx);
+    mdct_init_aften(ctx);
 }
 
 static void

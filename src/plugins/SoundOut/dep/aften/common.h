@@ -38,6 +38,9 @@
 #include <inttypes.h>
 #else
 #if defined(_WIN32) && defined(_MSC_VER)
+#define HAVE_WINDOWS_THREADS 1
+#define MAX_NUM_THREADS 4
+#define inline __inline
 
 // integer types
 typedef __int8 int8_t;

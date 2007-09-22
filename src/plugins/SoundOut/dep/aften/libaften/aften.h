@@ -37,9 +37,9 @@ extern "C" {
 
 #if defined(_WIN32) && !defined(_XBOX)
  #if defined(AFTEN_BUILD_LIBRARY)
-  #define AFTEN_API __declspec(dllexport)
+  #define AFTEN_API
  #else
-  #define AFTEN_API __declspec(dllimport)
+  #define AFTEN_API
  #endif
 #else
  #if defined(AFTEN_BUILD_LIBRARY) && defined(HAVE_GCC_VISIBILITY)
