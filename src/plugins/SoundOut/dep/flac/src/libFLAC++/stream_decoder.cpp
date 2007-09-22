@@ -1,5 +1,5 @@
 /* libFLAC++ - Free Lossless Audio Codec library
- * Copyright (C) 2002,2003,2004,2005,2006  Josh Coalson
+ * Copyright (C) 2002,2003,2004,2005,2006,2007  Josh Coalson
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -157,6 +157,12 @@ namespace FLAC {
 		{
 			FLAC__ASSERT(is_valid());
 			return ::FLAC__stream_decoder_get_blocksize(decoder_);
+		}
+
+		bool Stream::get_decode_position(FLAC__uint64 *position) const
+		{
+			FLAC__ASSERT(is_valid());
+			return ::FLAC__stream_decoder_get_decode_position(decoder_, position);
 		}
 
 		::FLAC__StreamDecoderInitStatus Stream::init()

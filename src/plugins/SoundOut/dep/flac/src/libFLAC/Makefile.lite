@@ -1,5 +1,5 @@
 #  libFLAC - Free Lossless Audio Codec library
-#  Copyright (C) 2001,2002,2003,2004,2005,2006  Josh Coalson
+#  Copyright (C) 2001,2002,2003,2004,2005,2006,2007  Josh Coalson
 #
 #  Redistribution and use in source and binary forms, with or without
 #  modification, are permitted provided that the following conditions
@@ -54,15 +54,18 @@ else
 ifeq ($(SOLARIS_BUILD),yes)
 else
 SRCS_NASM = \
+	ia32/bitreader_asm.nasm \
 	ia32/cpu_asm.nasm \
 	ia32/fixed_asm.nasm \
-	ia32/lpc_asm.nasm
+	ia32/lpc_asm.nasm \
+	ia32/stream_encoder_asm.nasm
 endif
 endif
 
 SRCS_C = \
-	bitbuffer.c \
 	bitmath.c \
+	bitreader.c \
+	bitwriter.c \
 	cpu.c \
 	crc.c \
 	fixed.c \

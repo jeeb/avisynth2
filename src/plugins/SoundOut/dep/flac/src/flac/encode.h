@@ -1,5 +1,5 @@
 /* flac - Command-line FLAC encoder/decoder
- * Copyright (C) 2000,2001,2002,2003,2004,2005,2006  Josh Coalson
+ * Copyright (C) 2000,2001,2002,2003,2004,2005,2006,2007  Josh Coalson
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -19,17 +19,13 @@
 #ifndef flac__encode_h
 #define flac__encode_h
 
-/* needed because of off_t */
 #if HAVE_CONFIG_H
 #  include <config.h>
 #endif
 
 #include "FLAC/metadata.h"
+#include "foreign_metadata.h"
 #include "utils.h"
-
-#ifdef HAVE_CONFIG_H
-#include <config.h>
-#endif
 
 extern const int FLAC_ENCODE__DEFAULT_PADDING;
 
@@ -73,6 +69,8 @@ typedef struct {
 	char *requested_seek_points;
 	int num_requested_seek_points;
 	const char *cuesheet_filename;
+	FLAC__bool treat_warnings_as_errors;
+	FLAC__bool continue_through_decode_errors; /* currently only obeyed when encoding from FLAC or Ogg FLAC */
 	FLAC__bool cued_seekpoints;
 	FLAC__bool channel_map_none; /* --channel-map=none specified, eventually will expand to take actual channel map */
 
@@ -82,6 +80,7 @@ typedef struct {
 	FLAC__int32 **align_reservoir;
 	unsigned *align_reservoir_samples;
 	FLAC__bool replay_gain;
+	FLAC__bool ignore_chunk_sizes;
 	FLAC__bool sector_align;
 
 	FLAC__StreamMetadata *vorbis_comment;
@@ -92,11 +91,13 @@ typedef struct {
 		FLAC__bool disable_constant_subframes;
 		FLAC__bool disable_fixed_subframes;
 		FLAC__bool disable_verbatim_subframes;
+		FLAC__bool do_md5;
 	} debug;
 } encode_options_t;
 
 typedef struct {
 	encode_options_t common;
+	foreign_metadata_t *foreign_metadata; /* NULL unless --keep-foreign-metadata requested */
 } wav_encode_options_t;
 
 typedef struct {

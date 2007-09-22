@@ -1,5 +1,5 @@
 /* libFLAC - Free Lossless Audio Codec library
- * Copyright (C) 2000,2001,2002,2003,2004,2005,2006  Josh Coalson
+ * Copyright (C) 2000,2001,2002,2003,2004,2005,2006,2007  Josh Coalson
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -35,9 +35,14 @@
 
 #include <stdio.h>
 #include <stdlib.h> /* for qsort() */
+#include <string.h> /* for memset() */
 #include "FLAC/assert.h"
 #include "FLAC/format.h"
 #include "private/format.h"
+
+#ifndef FLaC__INLINE
+#define FLaC__INLINE
+#endif
 
 #ifdef min
 #undef min
@@ -56,9 +61,9 @@ FLAC_API const char *FLAC__VERSION_STRING = VERSION;
 
 #if defined _MSC_VER || defined __BORLANDC__ || defined __MINW32__
 /* yet one more hack because of MSVC6: */
-FLAC_API const char *FLAC__VENDOR_STRING = "reference libFLAC 1.1.3 20061120";
+FLAC_API const char *FLAC__VENDOR_STRING = "reference libFLAC 1.2.1 20070917";
 #else
-FLAC_API const char *FLAC__VENDOR_STRING = "reference libFLAC " VERSION " 20061120";
+FLAC_API const char *FLAC__VENDOR_STRING = "reference libFLAC " VERSION " 20070917";
 #endif
 
 FLAC_API const FLAC__byte FLAC__STREAM_SYNC_STRING[4] = { 'f','L','a','C' };
@@ -119,7 +124,8 @@ FLAC_API const unsigned FLAC__STREAM_METADATA_LENGTH_LEN = 24; /* bits */
 
 FLAC_API const unsigned FLAC__FRAME_HEADER_SYNC = 0x3ffe;
 FLAC_API const unsigned FLAC__FRAME_HEADER_SYNC_LEN = 14; /* bits */
-FLAC_API const unsigned FLAC__FRAME_HEADER_RESERVED_LEN = 2; /* bits */
+FLAC_API const unsigned FLAC__FRAME_HEADER_RESERVED_LEN = 1; /* bits */
+FLAC_API const unsigned FLAC__FRAME_HEADER_BLOCKING_STRATEGY_LEN = 1; /* bits */
 FLAC_API const unsigned FLAC__FRAME_HEADER_BLOCK_SIZE_LEN = 4; /* bits */
 FLAC_API const unsigned FLAC__FRAME_HEADER_SAMPLE_RATE_LEN = 4; /* bits */
 FLAC_API const unsigned FLAC__FRAME_HEADER_CHANNEL_ASSIGNMENT_LEN = 4; /* bits */
@@ -132,12 +138,15 @@ FLAC_API const unsigned FLAC__FRAME_FOOTER_CRC_LEN = 16; /* bits */
 FLAC_API const unsigned FLAC__ENTROPY_CODING_METHOD_TYPE_LEN = 2; /* bits */
 FLAC_API const unsigned FLAC__ENTROPY_CODING_METHOD_PARTITIONED_RICE_ORDER_LEN = 4; /* bits */
 FLAC_API const unsigned FLAC__ENTROPY_CODING_METHOD_PARTITIONED_RICE_PARAMETER_LEN = 4; /* bits */
+FLAC_API const unsigned FLAC__ENTROPY_CODING_METHOD_PARTITIONED_RICE2_PARAMETER_LEN = 5; /* bits */
 FLAC_API const unsigned FLAC__ENTROPY_CODING_METHOD_PARTITIONED_RICE_RAW_LEN = 5; /* bits */
 
 FLAC_API const unsigned FLAC__ENTROPY_CODING_METHOD_PARTITIONED_RICE_ESCAPE_PARAMETER = 15; /* == (1<<FLAC__ENTROPY_CODING_METHOD_PARTITIONED_RICE_PARAMETER_LEN)-1 */
+FLAC_API const unsigned FLAC__ENTROPY_CODING_METHOD_PARTITIONED_RICE2_ESCAPE_PARAMETER = 31; /* == (1<<FLAC__ENTROPY_CODING_METHOD_PARTITIONED_RICE2_PARAMETER_LEN)-1 */
 
 FLAC_API const char * const FLAC__EntropyCodingMethodTypeString[] = {
-	"PARTITIONED_RICE"
+	"PARTITIONED_RICE",
+	"PARTITIONED_RICE2"
 };
 
 FLAC_API const unsigned FLAC__SUBFRAME_LPC_QLP_COEFF_PRECISION_LEN = 4; /* bits */
@@ -207,9 +216,17 @@ FLAC_API const char * const FLAC__StreamMetadata_Picture_TypeString[] = {
 
 FLAC_API FLAC__bool FLAC__format_sample_rate_is_valid(unsigned sample_rate)
 {
+	if(sample_rate == 0 || sample_rate > FLAC__MAX_SAMPLE_RATE) {
+		return false;
+	}
+	else
+		return true;
+}
+
+FLAC_API FLAC__bool FLAC__format_sample_rate_is_subset(unsigned sample_rate)
+{
 	if(
-		sample_rate == 0 ||
-		sample_rate > FLAC__MAX_SAMPLE_RATE ||
+		!FLAC__format_sample_rate_is_valid(sample_rate) ||
 		(
 			sample_rate >= (1u << 16) &&
 			!(sample_rate % 1000 == 0 || sample_rate % 10 == 0)
@@ -221,6 +238,7 @@ FLAC_API FLAC__bool FLAC__format_sample_rate_is_valid(unsigned sample_rate)
 		return true;
 }
 
+/* @@@@ add to unit tests; it is already indirectly tested by the metadata_object tests */
 FLAC_API FLAC__bool FLAC__format_seektable_is_legal(const FLAC__StreamMetadata_SeekTable *seek_table)
 {
 	unsigned i;
@@ -256,6 +274,7 @@ static int seekpoint_compare_(const FLAC__StreamMetadata_SeekPoint *l, const FLA
 		return 1;
 }
 
+/* @@@@ add to unit tests; it is already indirectly tested by the metadata_object tests */
 FLAC_API unsigned FLAC__format_seektable_sort(FLAC__StreamMetadata_SeekTable *seek_table)
 {
 	unsigned i, j;
@@ -294,7 +313,7 @@ FLAC_API unsigned FLAC__format_seektable_sort(FLAC__StreamMetadata_SeekTable *se
  * and a more clear explanation at the end of this section:
  *   http://www.cl.cam.ac.uk/~mgk25/unicode.html#utf-8
  */
-static __inline unsigned utf8len_(const FLAC__byte *utf8)
+static FLaC__INLINE unsigned utf8len_(const FLAC__byte *utf8)
 {
 	FLAC__ASSERT(0 != utf8);
 	if ((utf8[0] & 0x80) == 0) {
@@ -393,6 +412,7 @@ FLAC_API FLAC__bool FLAC__format_vorbiscomment_entry_is_legal(const FLAC__byte *
 	return true;
 }
 
+/* @@@@ add to unit tests; it is already indirectly tested by the metadata_object tests */
 FLAC_API FLAC__bool FLAC__format_cuesheet_is_legal(const FLAC__StreamMetadata_CueSheet *cue_sheet, FLAC__bool check_cd_da_subset, const char **violation)
 {
 	unsigned i, j;
@@ -471,6 +491,7 @@ FLAC_API FLAC__bool FLAC__format_cuesheet_is_legal(const FLAC__StreamMetadata_Cu
 	return true;
 }
 
+/* @@@@ add to unit tests; it is already indirectly tested by the metadata_object tests */
 FLAC_API FLAC__bool FLAC__format_picture_is_legal(const FLAC__StreamMetadata_Picture *picture, const char **violation)
 {
 	char *p;
@@ -564,6 +585,7 @@ FLAC__bool FLAC__format_entropy_coding_method_partitioned_rice_contents_ensure_s
 			return false;
 		if(0 == (object->raw_bits = (unsigned*)realloc(object->raw_bits, sizeof(unsigned)*(1 << max_partition_order))))
 			return false;
+		memset(object->raw_bits, 0, sizeof(unsigned)*(1 << max_partition_order));
 		object->capacity_by_order = max_partition_order;
 	}
 

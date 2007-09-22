@@ -1,5 +1,5 @@
 /* libFLAC++ - Free Lossless Audio Codec library
- * Copyright (C) 2002,2003,2004,2005,2006  Josh Coalson
+ * Copyright (C) 2002,2003,2004,2005,2006,2007  Josh Coalson
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,6 +29,8 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#define __STDC_LIMIT_MACROS 1 /* otherwise SIZE_MAX is not defined for c++ */
+#include "share/alloc.h"
 #include "FLAC++/metadata.h"
 #include "FLAC/assert.h"
 #include <stdlib.h> // for malloc(), free()
@@ -302,14 +304,14 @@ namespace FLAC {
 		void StreamInfo::set_min_framesize(unsigned value)
 		{
 			FLAC__ASSERT(is_valid());
-			FLAC__ASSERT(value < (1u < FLAC__STREAM_METADATA_STREAMINFO_MIN_FRAME_SIZE_LEN));
+			FLAC__ASSERT(value < (1u << FLAC__STREAM_METADATA_STREAMINFO_MIN_FRAME_SIZE_LEN));
 			object_->data.stream_info.min_framesize = value;
 		}
 
 		void StreamInfo::set_max_framesize(unsigned value)
 		{
 			FLAC__ASSERT(is_valid());
-			FLAC__ASSERT(value < (1u < FLAC__STREAM_METADATA_STREAMINFO_MAX_FRAME_SIZE_LEN));
+			FLAC__ASSERT(value < (1u << FLAC__STREAM_METADATA_STREAMINFO_MAX_FRAME_SIZE_LEN));
 			object_->data.stream_info.max_framesize = value;
 		}
 
@@ -339,7 +341,7 @@ namespace FLAC {
 		void StreamInfo::set_total_samples(FLAC__uint64 value)
 		{
 			FLAC__ASSERT(is_valid());
-			FLAC__ASSERT(value < (1u << FLAC__STREAM_METADATA_STREAMINFO_TOTAL_SAMPLES_LEN));
+			FLAC__ASSERT(value < (((FLAC__uint64)1) << FLAC__STREAM_METADATA_STREAMINFO_TOTAL_SAMPLES_LEN));
 			object_->data.stream_info.total_samples = value;
 		}
 
@@ -574,7 +576,7 @@ namespace FLAC {
 
 			clear_entry();
 
-			if(0 == (entry_.entry = (FLAC__byte*)malloc(field_length+1))) {
+			if(0 == (entry_.entry = (FLAC__byte*)safe_malloc_add_2op_(field_length, /*+*/1))) {
 				is_valid_ = false;
 			}
 			else {
@@ -623,7 +625,7 @@ namespace FLAC {
 
 			clear_field_value();
 
-			if(0 == (field_value_ = (char *)malloc(field_value_length+1))) {
+			if(0 == (field_value_ = (char *)safe_malloc_add_2op_(field_value_length, /*+*/1))) {
 				is_valid_ = false;
 			}
 			else {
@@ -713,7 +715,7 @@ namespace FLAC {
 		{
 			clear_entry();
 
-			if(0 == (entry_.entry = (FLAC__byte*)malloc(field_name_length_ + 1 + field_value_length_ + 1))) {
+			if(0 == (entry_.entry = (FLAC__byte*)safe_malloc_add_4op_(field_name_length_, /*+*/1, /*+*/field_value_length_, /*+*/1))) {
 				is_valid_ = false;
 			}
 			else {
@@ -738,8 +740,8 @@ namespace FLAC {
 			if(0 == p)
 				p = (const char *)entry_.entry + entry_.length;
 
-			field_name_length_ = p - (const char *)entry_.entry;
-			if(0 == (field_name_ = (char *)malloc(field_name_length_ + 1))) { // +1 for the trailing \0
+			field_name_length_ = (unsigned)(p - (const char *)entry_.entry);
+			if(0 == (field_name_ = (char *)safe_malloc_add_2op_(field_name_length_, /*+*/1))) { // +1 for the trailing \0
 				is_valid_ = false;
 				return;
 			}
@@ -748,14 +750,14 @@ namespace FLAC {
 
 			if(entry_.length - field_name_length_ == 0) {
 				field_value_length_ = 0;
-				if(0 == (field_value_ = (char *)malloc(0))) {
+				if(0 == (field_value_ = (char *)safe_malloc_(0))) {
 					is_valid_ = false;
 					return;
 				}
 			}
 			else {
 				field_value_length_ = entry_.length - field_name_length_ - 1;
-				if(0 == (field_value_ = (char *)malloc(field_value_length_ + 1))) { // +1 for the trailing \0
+				if(0 == (field_value_ = (char *)safe_malloc_add_2op_(field_value_length_, /*+*/1))) { // +1 for the trailing \0
 					is_valid_ = false;
 					return;
 				}
@@ -1336,10 +1338,38 @@ namespace FLAC {
 			return (bool)::FLAC__metadata_simple_iterator_prev(iterator_);
 		}
 
+		//@@@@ add to tests
+		bool SimpleIterator::is_last() const
+		{
+			FLAC__ASSERT(is_valid());
+			return (bool)::FLAC__metadata_simple_iterator_is_last(iterator_);
+		}
+
+		//@@@@ add to tests
+		off_t SimpleIterator::get_block_offset() const
+		{
+			FLAC__ASSERT(is_valid());
+			return ::FLAC__metadata_simple_iterator_get_block_offset(iterator_);
+		}
+
 		::FLAC__MetadataType SimpleIterator::get_block_type() const
 		{
 			FLAC__ASSERT(is_valid());
 			return ::FLAC__metadata_simple_iterator_get_block_type(iterator_);
+		}
+
+		//@@@@ add to tests
+		unsigned SimpleIterator::get_block_length() const
+		{
+			FLAC__ASSERT(is_valid());
+			return ::FLAC__metadata_simple_iterator_get_block_length(iterator_);
+		}
+
+		//@@@@ add to tests
+		bool SimpleIterator::get_application_id(FLAC__byte *id)
+		{
+			FLAC__ASSERT(is_valid());
+			return (bool)::FLAC__metadata_simple_iterator_get_application_id(iterator_, id);
 		}
 
 		Prototype *SimpleIterator::get_block()

@@ -1,5 +1,5 @@
 /* flac - Command-line FLAC encoder/decoder
- * Copyright (C) 2002,2003,2004,2005,2006  Josh Coalson
+ * Copyright (C) 2002,2003,2004,2005,2006,2007  Josh Coalson
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -220,7 +220,7 @@ static void free_field(Argument_VcField *obj)
 		free(obj->field_value);
 }
 
-FLAC__bool flac__vorbiscomment_add(FLAC__StreamMetadata *block, const char *comment, FLAC__bool value_from_file, const char **violation)
+FLAC__bool flac__vorbiscomment_add(FLAC__StreamMetadata *block, const char *comment, FLAC__bool value_from_file, FLAC__bool raw, const char **violation)
 {
 	Argument_VcField parsed;
 	FLAC__bool dummy;
@@ -237,7 +237,7 @@ FLAC__bool flac__vorbiscomment_add(FLAC__StreamMetadata *block, const char *comm
 		return false;
 	}
 
-	if(!set_vc_field(block, &parsed, &dummy, /*raw=*/false, violation)) {
+	if(!set_vc_field(block, &parsed, &dummy, raw, violation)) {
 		free_field(&parsed);
 		return false;
 	}

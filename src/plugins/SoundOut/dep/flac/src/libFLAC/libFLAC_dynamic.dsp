@@ -43,7 +43,7 @@ RSC=rc.exe
 # PROP Ignore_Export_Lib 0
 # PROP Target_Dir ""
 # ADD BASE CPP /nologo /MT /W3 /GX /O2 /D "WIN32" /D "NDEBUG" /D "_WINDOWS" /YX /FD /c
-# ADD CPP /nologo /MD /W3 /GR /GX /O2 /I ".\include" /I "..\..\include" /D "NDEBUG" /D "FLAC_API_EXPORTS" /D "FLAC__HAS_OGG" /D VERSION=\"1.1.3\" /D "FLAC__CPU_IA32" /D "FLAC__HAS_NASM" /D "FLAC__USE_3DNOW" /D "_WINDOWS" /D "_WINDLL" /D "WIN32" /D "_USRDLL" /FR /FD /c
+# ADD CPP /nologo /MD /W3 /GR /GX /O2 /I ".\include" /I "..\..\include" /D "NDEBUG" /D "FLAC_API_EXPORTS" /D "FLAC__HAS_OGG" /D VERSION=\"1.2.1\" /D "FLAC__CPU_IA32" /D "FLAC__HAS_NASM" /D "FLAC__USE_3DNOW" /D "_WINDOWS" /D "_WINDLL" /D "WIN32" /D "_USRDLL" /FR /FD /c
 # ADD BASE MTL /nologo /D "NDEBUG" /mktyplib203 /o "NUL" /win32
 # ADD MTL /nologo /D "NDEBUG" /mktyplib203 /o "NUL" /win32
 # ADD BASE RSC /l 0x409 /d "NDEBUG"
@@ -69,7 +69,7 @@ LINK32=link.exe
 # PROP Ignore_Export_Lib 0
 # PROP Target_Dir ""
 # ADD BASE CPP /nologo /MTd /W3 /Gm /GX /Zi /Od /D "WIN32" /D "_DEBUG" /D "_WINDOWS" /YX /FD /c
-# ADD CPP /nologo /MDd /W3 /Gm /GR /GX /ZI /Od /I ".\include" /I "..\..\include" /D "_DEBUG" /D "FLAC_API_EXPORTS" /D "FLAC__HAS_OGG" /D VERSION=\"1.1.3\" /D "FLAC__CPU_IA32" /D "FLAC__HAS_NASM" /D "FLAC__USE_3DNOW" /D "_WINDOWS" /D "_WINDLL" /D "WIN32" /D "_USRDLL" /FR /FD /c
+# ADD CPP /nologo /MDd /W3 /Gm /GR /GX /ZI /Od /I ".\include" /I "..\..\include" /D "_DEBUG" /D "DEBUG" /D "FLAC__OVERFLOW_DETECT" /D "FLAC_API_EXPORTS" /D "FLAC__HAS_OGG" /D VERSION=\"1.2.1\" /D "FLAC__CPU_IA32" /D "FLAC__HAS_NASM" /D "FLAC__USE_3DNOW" /D "_WINDOWS" /D "_WINDLL" /D "WIN32" /D "_USRDLL" /FR /FD /c
 # ADD BASE MTL /nologo /D "_DEBUG" /mktyplib203 /o "NUL" /win32
 # ADD MTL /nologo /D "_DEBUG" /mktyplib203 /o "NUL" /win32
 # ADD BASE RSC /l 0x409 /d "_DEBUG"
@@ -93,6 +93,35 @@ LINK32=link.exe
 # Begin Group "Assembly Files (ia32)"
 
 # PROP Default_Filter ""
+# Begin Source File
+
+SOURCE=.\ia32\bitreader_asm.nasm
+
+!IF  "$(CFG)" == "libFLAC_dynamic - Win32 Release"
+
+USERDEP__CPU_A="ia32/bitreader_asm.nasm"	
+# Begin Custom Build
+InputPath=.\ia32\bitreader_asm.nasm
+
+"ia32/bitreader_asm.obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
+	nasmw.exe -f win32 -d OBJ_FORMAT_win32 -i ia32/ ia32/bitreader_asm.nasm -o ia32/bitreader_asm.obj
+
+# End Custom Build
+
+!ELSEIF  "$(CFG)" == "libFLAC_dynamic - Win32 Debug"
+
+USERDEP__CPU_A="ia32/bitreader_asm.nasm"	
+# Begin Custom Build
+InputPath=.\ia32\bitreader_asm.nasm
+
+"ia32/bitreader_asm.obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
+	nasmw.exe -f win32 -d OBJ_FORMAT_win32 -i ia32/ ia32/bitreader_asm.nasm -o ia32/bitreader_asm.obj
+
+# End Custom Build
+
+!ENDIF 
+
+# End Source File
 # Begin Source File
 
 SOURCE=.\ia32\cpu_asm.nasm
@@ -182,16 +211,49 @@ InputPath=.\ia32\lpc_asm.nasm
 # End Source File
 # Begin Source File
 
+SOURCE=.\ia32\stream_encoder_asm.nasm
+
+!IF  "$(CFG)" == "libFLAC_dynamic - Win32 Release"
+
+USERDEP__CPU_A="ia32/stream_encoder_asm.nasm"	
+# Begin Custom Build
+InputPath=.\ia32\stream_encoder_asm.nasm
+
+"ia32/stream_encoder_asm.obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
+	nasmw.exe -f win32 -d OBJ_FORMAT_win32 -i ia32/ ia32/stream_encoder_asm.nasm -o ia32/stream_encoder_asm.obj
+
+# End Custom Build
+
+!ELSEIF  "$(CFG)" == "libFLAC_dynamic - Win32 Debug"
+
+USERDEP__CPU_A="ia32/stream_encoder_asm.nasm"	
+# Begin Custom Build
+InputPath=.\ia32\stream_encoder_asm.nasm
+
+"ia32/stream_encoder_asm.obj" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
+	nasmw.exe -f win32 -d OBJ_FORMAT_win32 -i ia32/ ia32/stream_encoder_asm.nasm -o ia32/stream_encoder_asm.obj
+
+# End Custom Build
+
+!ENDIF 
+
+# End Source File
+# Begin Source File
+
 SOURCE=.\ia32\nasm.h
 # End Source File
 # End Group
 # Begin Source File
 
-SOURCE=.\bitbuffer.c
+SOURCE=.\bitmath.c
 # End Source File
 # Begin Source File
 
-SOURCE=.\bitmath.c
+SOURCE=.\bitreader.c
+# End Source File
+# Begin Source File
+
+SOURCE=.\bitwriter.c
 # End Source File
 # Begin Source File
 
@@ -275,11 +337,15 @@ SOURCE=.\include\private\all.h
 # End Source File
 # Begin Source File
 
-SOURCE=.\include\private\bitbuffer.h
+SOURCE=.\include\private\bitmath.h
 # End Source File
 # Begin Source File
 
-SOURCE=.\include\private\bitmath.h
+SOURCE=.\include\private\bitreader.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\include\private\bitwriter.h
 # End Source File
 # Begin Source File
 

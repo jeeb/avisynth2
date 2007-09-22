@@ -1,5 +1,5 @@
 /* flac - Command-line FLAC encoder/decoder
- * Copyright (C) 2000,2001,2002,2003,2004,2005,2006  Josh Coalson
+ * Copyright (C) 2000,2001,2002,2003,2004,2005,2006,2007  Josh Coalson
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -28,7 +28,7 @@
 #endif
 #if defined _MSC_VER || defined __MINGW32__
 #include <sys/types.h> /* for off_t */
-#if _MSC_VER <= 1200 /* @@@ [2G limit] */
+#if _MSC_VER <= 1600 /* @@@ [2G limit] */
 #define fseeko fseek
 #define ftello ftell
 #endif
@@ -38,8 +38,9 @@
 #include <math.h> /* for floor() */
 #include <stdio.h> /* for FILE etc. */
 #include <stdlib.h> /* for malloc */
-#include <string.h> /* for strcmp(), strerror( */
+#include <string.h> /* for strcmp(), strerror() */
 #include "FLAC/all.h"
+#include "share/alloc.h"
 #include "share/grabbag.h"
 #include "encode.h"
 
@@ -63,10 +64,13 @@ typedef struct {
 	FLAC__bool is_stdout;
 	FLAC__bool outputfile_opened; /* true if we successfully opened the output file and we want it to be deleted if there is an error */
 	const char *inbasefilename;
+	const char *infilename;
 	const char *outfilename;
 
 	FLAC__uint64 skip;
 	FLAC__uint64 until; /* a value of 0 mean end-of-stream (i.e. --until=-0) */
+	FLAC__bool treat_warnings_as_errors;
+	FLAC__bool continue_through_decode_errors;
 	FLAC__bool replay_gain;
 	unsigned channels;
 	unsigned bits_per_sample;
@@ -114,15 +118,16 @@ static FLAC__int32 *input_[FLAC__MAX_CHANNELS];
 extern FLAC__bool FLAC__stream_encoder_disable_constant_subframes(FLAC__StreamEncoder *encoder, FLAC__bool value);
 extern FLAC__bool FLAC__stream_encoder_disable_fixed_subframes(FLAC__StreamEncoder *encoder, FLAC__bool value);
 extern FLAC__bool FLAC__stream_encoder_disable_verbatim_subframes(FLAC__StreamEncoder *encoder, FLAC__bool value);
+extern FLAC__bool FLAC__stream_encoder_set_do_md5(FLAC__StreamEncoder *encoder, FLAC__bool value);
 
 /*
  * local routines
  */
-static FLAC__bool EncoderSession_construct(EncoderSession *e, FLAC__bool use_ogg, FLAC__bool verify, FILE *infile, const char *infilename, const char *outfilename);
+static FLAC__bool EncoderSession_construct(EncoderSession *e, FLAC__bool use_ogg, FLAC__bool verify, FLAC__bool treat_warnings_as_errors, FLAC__bool continue_through_decode_errors, FILE *infile, const char *infilename, const char *outfilename);
 static void EncoderSession_destroy(EncoderSession *e);
-static int EncoderSession_finish_ok(EncoderSession *e, int info_align_carry, int info_align_zero);
+static int EncoderSession_finish_ok(EncoderSession *e, int info_align_carry, int info_align_zero, foreign_metadata_t *foreign_metadata);
 static int EncoderSession_finish_error(EncoderSession *e);
-static FLAC__bool EncoderSession_init_encoder(EncoderSession *e, encode_options_t options, FLAC__uint32 channel_mask, unsigned channels, unsigned bps, unsigned sample_rate, FLACDecoderData *flac_decoder_data);
+static FLAC__bool EncoderSession_init_encoder(EncoderSession *e, encode_options_t options, FLAC__uint32 channel_mask, unsigned channels, unsigned bps, unsigned sample_rate, const foreign_metadata_t *foreign_metadata, FLACDecoderData *flac_decoder_data);
 static FLAC__bool EncoderSession_process(EncoderSession *e, const FLAC__int32 * const buffer[], unsigned samples);
 static FLAC__bool convert_to_seek_table_template(const char *requested_seek_points, int num_requested_seek_points, FLAC__StreamMetadata *cuesheet, EncoderSession *e);
 static FLAC__bool canonicalize_until_specification(utils__SkipUntilSpecification *spec, const char *inbasefilename, unsigned sample_rate, FLAC__uint64 skip, FLAC__uint64 total_samples_in_input);
@@ -137,7 +142,7 @@ static FLAC__bool flac_decoder_eof_callback(const FLAC__StreamDecoder *decoder, 
 static FLAC__StreamDecoderWriteStatus flac_decoder_write_callback(const FLAC__StreamDecoder *decoder, const FLAC__Frame *frame, const FLAC__int32 * const buffer[], void *client_data);
 static void flac_decoder_metadata_callback(const FLAC__StreamDecoder *decoder, const FLAC__StreamMetadata *metadata, void *client_data);
 static void flac_decoder_error_callback(const FLAC__StreamDecoder *decoder, FLAC__StreamDecoderErrorStatus status, void *client_data);
-static FLAC__bool parse_cuesheet(FLAC__StreamMetadata **cuesheet, const char *cuesheet_filename, const char *inbasefilename, FLAC__bool is_cdda, FLAC__uint64 lead_out_offset);
+static FLAC__bool parse_cuesheet(FLAC__StreamMetadata **cuesheet, const char *cuesheet_filename, const char *inbasefilename, FLAC__bool is_cdda, FLAC__uint64 lead_out_offset, FLAC__bool treat_warnings_as_errors);
 static void print_stats(const EncoderSession *encoder_session);
 static void print_error_with_init_status(const EncoderSession *e, const char *message, FLAC__StreamEncoderInitStatus init_status);
 static void print_error_with_state(const EncoderSession *e, const char *message);
@@ -149,7 +154,9 @@ static FLAC__bool read_big_endian_uint32(FILE *f, FLAC__uint32 *val, FLAC__bool 
 static FLAC__bool read_sane_extended(FILE *f, FLAC__uint32 *val, FLAC__bool eof_ok, const char *fn);
 static FLAC__bool fskip_ahead(FILE *f, FLAC__uint64 offset);
 static unsigned count_channel_mask_bits(FLAC__uint32 mask);
+#if 0
 static FLAC__uint32 limit_channel_mask(FLAC__uint32 mask, unsigned channels);
+#endif
 
 /*
  * public routines
@@ -178,6 +185,8 @@ int flac__encode_aif(FILE *infile, off_t infilesize, const char *infilename, con
 			/*use_ogg=*/false,
 #endif
 			options.common.verify,
+			options.common.treat_warnings_as_errors,
+			options.common.continue_through_decode_errors,
 			infile,
 			infilename,
 			outfilename
@@ -190,6 +199,14 @@ int flac__encode_aif(FILE *infile, off_t infilesize, const char *infilename, con
 		size_t i;
 		for(i = 0; i < sizeof(channel_map)/sizeof(channel_map[0]); i++)
 			channel_map[i] = i;
+	}
+
+	if(options.foreign_metadata) {
+		const char *error;
+		if(!flac__foreign_metadata_read_from_aiff(options.foreign_metadata, infilename, &error)) {
+			flac__utils_printf(stderr, 1, "%s: ERROR reading foreign metadata: %s\n", encoder_session.inbasefilename, error);
+			return EncoderSession_finish_error(&encoder_session);
+		}
 	}
 
 	/* lookahead[] already has "FORMxxxxAIFF", do sub-chunks */
@@ -219,6 +236,8 @@ int flac__encode_aif(FILE *infile, off_t infilesize, const char *infilename, con
 			}
 			else if(!is_aifc && xx!=minimum_comm_size) {
 				flac__utils_printf(stderr, 1, "%s: WARNING: non-standard %s 'COMM' chunk has length = %u, expected %u\n", encoder_session.inbasefilename, is_aifc? "AIFF-C" : "AIFF", (unsigned int)xx, minimum_comm_size);
+				if(encoder_session.treat_warnings_as_errors)
+					return EncoderSession_finish_error(&encoder_session);
 			}
 			skip= (xx-minimum_comm_size)+(xx & 1U);
 
@@ -317,7 +336,7 @@ int flac__encode_aif(FILE *infile, off_t infilesize, const char *infilename, con
 
 			/* skip any extra data in the COMM chunk */
 			if(!fskip_ahead(infile, skip)) {
-				flac__utils_printf(stderr, 1, "%s: ERROR during read while skipping extra COMM data\n", encoder_session.inbasefilename);
+				flac__utils_printf(stderr, 1, "%s: ERROR during read while skipping over extra COMM data\n", encoder_session.inbasefilename);
 				return EncoderSession_finish_error(&encoder_session);
 			}
 
@@ -334,7 +353,7 @@ int flac__encode_aif(FILE *infile, off_t infilesize, const char *infilename, con
 		}
 		else if(got_ssnd_chunk==false && !memcmp(chunk_id, "SSND", 4)) { /* sound data chunk */
 			unsigned int offset= 0U, block_size= 0U, align_remainder= 0U, data_bytes;
-			size_t bytes_per_frame= channels*(bps>>3);
+			const size_t bytes_per_frame= channels*(bps>>3);
 			FLAC__uint64 total_samples_in_input, trim = 0;
 			FLAC__bool pad= false;
 
@@ -346,9 +365,15 @@ int flac__encode_aif(FILE *infile, off_t infilesize, const char *infilename, con
 			/* SSND chunk size */
 			if(!read_big_endian_uint32(infile, &xx, false, encoder_session.inbasefilename))
 				return EncoderSession_finish_error(&encoder_session);
-			data_bytes= xx;
+			if(options.common.ignore_chunk_sizes) {
+				FLAC__ASSERT(!options.common.sector_align);
+				data_bytes = (unsigned)(-(int)bytes_per_frame); /* max out data_bytes; we'll use EOF as signal to stop reading */
+			}
+			else {
+				data_bytes= xx;
+				data_bytes-= 8U; /* discount the offset and block size fields */
+			}
 			pad= (data_bytes & 1U) ? true : false;
-			data_bytes-= 8U; /* discount the offset and block size fields */
 
 			/* offset */
 			if(!read_big_endian_uint32(infile, &xx, false, encoder_session.inbasefilename))
@@ -397,7 +422,14 @@ int flac__encode_aif(FILE *infile, off_t infilesize, const char *infilename, con
 			}
 
 			data_bytes-= (unsigned int)encoder_session.skip*bytes_per_frame; /*@@@ WATCHOUT: 4GB limit */
-			encoder_session.total_samples_to_encode= total_samples_in_input - encoder_session.skip;
+			if(options.common.ignore_chunk_sizes) {
+				encoder_session.total_samples_to_encode= 0;
+				flac__utils_printf(stderr, 2, "(No runtime statistics possible; please wait for encoding to finish...)\n");
+				FLAC__ASSERT(0 == encoder_session.until);
+			}
+			else {
+				encoder_session.total_samples_to_encode= total_samples_in_input - encoder_session.skip;
+			}
 			if(encoder_session.until > 0) {
 				trim = total_samples_in_input - encoder_session.until;
 				FLAC__ASSERT(total_samples_in_input > 0);
@@ -416,7 +448,7 @@ int flac__encode_aif(FILE *infile, off_t infilesize, const char *infilename, con
 			/* +54 for the size of the AIFF headers; this is just an estimate for the progress indicator and doesn't need to be exact */
 			encoder_session.unencoded_size= encoder_session.total_samples_to_encode*bytes_per_frame+54;
 
-			if(!EncoderSession_init_encoder(&encoder_session, options.common, /*channel_mask=*/0, channels, bps-shift, sample_rate, /*flac_decoder_data=*/0))
+			if(!EncoderSession_init_encoder(&encoder_session, options.common, /*channel_mask=*/0, channels, bps-shift, sample_rate, options.foreign_metadata, /*flac_decoder_data=*/0))
 				return EncoderSession_finish_error(&encoder_session);
 
 			/* first do any samples in the reservoir */
@@ -448,7 +480,14 @@ int flac__encode_aif(FILE *infile, off_t infilesize, const char *infilename, con
 						return EncoderSession_finish_error(&encoder_session);
 					}
 					else if(feof(infile)) {
-						flac__utils_printf(stderr, 1, "%s: WARNING: unexpected EOF; expected %u samples, got %u samples\n", encoder_session.inbasefilename, (unsigned int)encoder_session.total_samples_to_encode, (unsigned int)encoder_session.samples_written);
+						if(options.common.ignore_chunk_sizes) {
+							flac__utils_printf(stderr, 1, "%s: INFO: hit EOF with --ignore-chunk-sizes, got %u samples\n", encoder_session.inbasefilename, (unsigned)encoder_session.samples_written);
+						}
+						else {
+							flac__utils_printf(stderr, 1, "%s: WARNING: unexpected EOF; expected %u samples, got %u samples\n", encoder_session.inbasefilename, (unsigned)encoder_session.total_samples_to_encode, (unsigned)encoder_session.samples_written);
+							if(encoder_session.treat_warnings_as_errors)
+								return EncoderSession_finish_error(&encoder_session);
+						}
 						data_bytes= 0;
 					}
 				}
@@ -509,6 +548,8 @@ int flac__encode_aif(FILE *infile, off_t infilesize, const char *infilename, con
 						}
 						else if(bytes_read != (*options.common.align_reservoir_samples) * bytes_per_frame) {
 							flac__utils_printf(stderr, 1, "%s: WARNING: unexpected EOF; read %u bytes; expected %u samples, got %u samples\n", encoder_session.inbasefilename, (unsigned int)bytes_read, (unsigned int)encoder_session.total_samples_to_encode, (unsigned int)encoder_session.samples_written);
+							if(encoder_session.treat_warnings_as_errors)
+								return EncoderSession_finish_error(&encoder_session);
 						}
 						else {
 							info_align_carry= *options.common.align_reservoir_samples;
@@ -531,14 +572,15 @@ int flac__encode_aif(FILE *infile, off_t infilesize, const char *infilename, con
 			got_ssnd_chunk= true;
 		}
 		else { /* other chunk */
-			if(!memcmp(chunk_id, "COMM", 4)) {
-				flac__utils_printf(stderr, 1, "%s: WARNING: skipping extra 'COMM' chunk\n", encoder_session.inbasefilename);
-			}
-			else if(!memcmp(chunk_id, "SSND", 4)) {
-				flac__utils_printf(stderr, 1, "%s: WARNING: skipping extra 'SSND' chunk\n", encoder_session.inbasefilename);
-			}
-			else {
-				flac__utils_printf(stderr, 1, "%s: WARNING: skipping unknown chunk '%s'\n", encoder_session.inbasefilename, chunk_id);
+			if(!options.foreign_metadata) {
+				if(!memcmp(chunk_id, "COMM", 4))
+					flac__utils_printf(stderr, 1, "%s: WARNING: skipping extra 'COMM' chunk (use --keep-foreign-metadata to keep)\n", encoder_session.inbasefilename);
+				else if(!memcmp(chunk_id, "SSND", 4))
+					flac__utils_printf(stderr, 1, "%s: WARNING: skipping extra 'SSND' chunk (use --keep-foreign-metadata to keep)\n", encoder_session.inbasefilename);
+				else if(!options.foreign_metadata)
+					flac__utils_printf(stderr, 1, "%s: WARNING: skipping unknown chunk '%s' (use --keep-foreign-metadata to keep)\n", encoder_session.inbasefilename, chunk_id);
+				if(encoder_session.treat_warnings_as_errors)
+					return EncoderSession_finish_error(&encoder_session);
 			}
 
 			/* chunk size */
@@ -549,7 +591,7 @@ int flac__encode_aif(FILE *infile, off_t infilesize, const char *infilename, con
 
 				FLAC__ASSERT(skip<=LONG_MAX);
 				if(!fskip_ahead(infile, skip)) {
-					fprintf(stderr, "%s: ERROR during read while skipping unknown chunk\n", encoder_session.inbasefilename);
+					fprintf(stderr, "%s: ERROR during read while skipping over unknown chunk\n", encoder_session.inbasefilename);
 					return EncoderSession_finish_error(&encoder_session);
 				}
 			}
@@ -561,7 +603,7 @@ int flac__encode_aif(FILE *infile, off_t infilesize, const char *infilename, con
 		return EncoderSession_finish_error(&encoder_session);
 	}
 
-	return EncoderSession_finish_ok(&encoder_session, info_align_carry, info_align_zero);
+	return EncoderSession_finish_ok(&encoder_session, info_align_carry, info_align_zero, options.foreign_metadata);
 }
 
 int flac__encode_wav(FILE *infile, off_t infilesize, const char *infilename, const char *outfilename, const FLAC__byte *lookahead, unsigned lookahead_length, wav_encode_options_t options)
@@ -569,7 +611,7 @@ int flac__encode_wav(FILE *infile, off_t infilesize, const char *infilename, con
 	EncoderSession encoder_session;
 	FLAC__bool is_unsigned_samples = false;
 	unsigned channels = 0, bps = 0, sample_rate = 0, shift = 0;
-	size_t bytes_per_wide_sample, bytes_read;
+	size_t bytes_read;
 	size_t channel_map[FLAC__MAX_CHANNELS];
 	FLAC__uint16 x, format; /* format is the wFormatTag word from the 'fmt ' chunk */
 	FLAC__uint32 xx, channel_mask = 0;
@@ -590,6 +632,8 @@ int flac__encode_wav(FILE *infile, off_t infilesize, const char *infilename, con
 			/*use_ogg=*/false,
 #endif
 			options.common.verify,
+			options.common.treat_warnings_as_errors,
+			options.common.continue_through_decode_errors,
 			infile,
 			infilename,
 			outfilename
@@ -602,6 +646,14 @@ int flac__encode_wav(FILE *infile, off_t infilesize, const char *infilename, con
 		size_t i;
 		for(i = 0; i < sizeof(channel_map)/sizeof(channel_map[0]); i++)
 			channel_map[i] = i;
+	}
+
+	if(options.foreign_metadata) {
+		const char *error;
+		if(!flac__foreign_metadata_read_from_wave(options.foreign_metadata, infilename, &error)) {
+			flac__utils_printf(stderr, 1, "%s: ERROR reading foreign metadata: %s\n", encoder_session.inbasefilename, error);
+			return EncoderSession_finish_error(&encoder_session);
+		}
 	}
 
 	/*
@@ -628,7 +680,7 @@ int flac__encode_wav(FILE *infile, off_t infilesize, const char *infilename, con
 			 * 4 byte: avg bytes per sec
 			 * 2 byte: block align
 			 * 2 byte: bits per sample (not necessarily all significant)
-			 * WAVEFORMAT adds
+			 * WAVEFORMATEX adds
 			 * 2 byte: extension size in bytes (usually 0 for WAVEFORMATEX and 22 for WAVEFORMATEXTENSIBLE with PCM)
 			 * WAVEFORMATEXTENSIBLE adds
 			 * 2 byte: valid bits per sample
@@ -702,6 +754,8 @@ int flac__encode_wav(FILE *infile, off_t infilesize, const char *infilename, con
 					if(bps == 24 || bps == 32) {
 						/* let these slide with a warning since they're unambiguous */
 						flac__utils_printf(stderr, 1, "%s: WARNING: legacy WAVE file has format type %u but bits-per-sample=%u\n", encoder_session.inbasefilename, (unsigned)format, bps);
+						if(encoder_session.treat_warnings_as_errors)
+							return EncoderSession_finish_error(&encoder_session);
 					}
 					else {
 						/* @@@ we could add an option to specify left- or right-justified blocks so we knew how to set 'shift' */
@@ -714,6 +768,8 @@ int flac__encode_wav(FILE *infile, off_t infilesize, const char *infilename, con
 					if(bps % 8) {
 						/* assume legacy file is byte aligned with some LSBs zero; this is double-checked in format_input() */
 						flac__utils_printf(stderr, 1, "%s: WARNING: legacy WAVE file (format type %d) has block alignment=%u, bits-per-sample=%u, channels=%u\n", encoder_session.inbasefilename, (unsigned)format, block_align, bps, channels);
+						if(encoder_session.treat_warnings_as_errors)
+							return EncoderSession_finish_error(&encoder_session);
 						shift = 8 - (bps % 8);
 						bps += shift;
 					}
@@ -859,7 +915,7 @@ int flac__encode_wav(FILE *infile, off_t infilesize, const char *infilename, con
 
 			/* skip any extra data in the fmt sub-chunk */
 			if(!fskip_ahead(infile, data_bytes)) {
-				flac__utils_printf(stderr, 1, "%s: ERROR during read while skipping extra 'fmt' data\n", encoder_session.inbasefilename);
+				flac__utils_printf(stderr, 1, "%s: ERROR during read while skipping over extra 'fmt' data\n", encoder_session.inbasefilename);
 				return EncoderSession_finish_error(&encoder_session);
 			}
 
@@ -877,19 +933,24 @@ int flac__encode_wav(FILE *infile, off_t infilesize, const char *infilename, con
 		else if(xx == 0x61746164 && !got_data_chunk && got_fmt_chunk) { /* "data" */
 			FLAC__uint64 total_samples_in_input, trim = 0;
 			FLAC__bool pad = false;
+			const size_t bytes_per_wide_sample = channels * (bps >> 3);
 			unsigned data_bytes;
 
 			/* data size */
 			if(!read_little_endian_uint32(infile, &xx, false, encoder_session.inbasefilename))
 				return EncoderSession_finish_error(&encoder_session);
-			data_bytes = xx;
-			if(0 == data_bytes) {
-				flac__utils_printf(stderr, 1, "%s: ERROR: 'data' subchunk has size of 0\n", encoder_session.inbasefilename);
-				return EncoderSession_finish_error(&encoder_session);
+			if(options.common.ignore_chunk_sizes) {
+				FLAC__ASSERT(!options.common.sector_align);
+				data_bytes = (unsigned)(-(int)bytes_per_wide_sample); /* max out data_bytes; we'll use EOF as signal to stop reading */
+			}
+			else {
+				data_bytes = xx;
+				if(0 == data_bytes) {
+					flac__utils_printf(stderr, 1, "%s: ERROR: 'data' subchunk has size of 0\n", encoder_session.inbasefilename);
+					return EncoderSession_finish_error(&encoder_session);
+				}
 			}
 			pad = (data_bytes & 1U) ? true : false;
-
-			bytes_per_wide_sample = channels * (bps >> 3);
 
 			/* *options.common.align_reservoir_samples will be 0 unless --sector-align is used */
 			FLAC__ASSERT(options.common.sector_align || *options.common.align_reservoir_samples == 0);
@@ -912,7 +973,14 @@ int flac__encode_wav(FILE *infile, off_t infilesize, const char *infilename, con
 			}
 
 			data_bytes -= (unsigned)encoder_session.skip * bytes_per_wide_sample; /*@@@ WATCHOUT: 4GB limit */
-			encoder_session.total_samples_to_encode = total_samples_in_input - encoder_session.skip;
+			if(options.common.ignore_chunk_sizes) {
+				encoder_session.total_samples_to_encode = 0;
+				flac__utils_printf(stderr, 2, "(No runtime statistics possible; please wait for encoding to finish...)\n");
+				FLAC__ASSERT(0 == encoder_session.until);
+			}
+			else {
+				encoder_session.total_samples_to_encode = total_samples_in_input - encoder_session.skip;
+			}
 			if(encoder_session.until > 0) {
 				trim = total_samples_in_input - encoder_session.until;
 				FLAC__ASSERT(total_samples_in_input > 0);
@@ -931,7 +999,7 @@ int flac__encode_wav(FILE *infile, off_t infilesize, const char *infilename, con
 			/* +44 for the size of the WAV headers; this is just an estimate for the progress indicator and doesn't need to be exact */
 			encoder_session.unencoded_size = encoder_session.total_samples_to_encode * bytes_per_wide_sample + 44;
 
-			if(!EncoderSession_init_encoder(&encoder_session, options.common, channel_mask, channels, bps-shift, sample_rate, /*flac_decoder_data=*/0))
+			if(!EncoderSession_init_encoder(&encoder_session, options.common, channel_mask, channels, bps-shift, sample_rate, options.foreign_metadata, /*flac_decoder_data=*/0))
 				return EncoderSession_finish_error(&encoder_session);
 
 			/*
@@ -968,7 +1036,14 @@ int flac__encode_wav(FILE *infile, off_t infilesize, const char *infilename, con
 						return EncoderSession_finish_error(&encoder_session);
 					}
 					else if(feof(infile)) {
-						flac__utils_printf(stderr, 1, "%s: WARNING: unexpected EOF; expected %u samples, got %u samples\n", encoder_session.inbasefilename, (unsigned)encoder_session.total_samples_to_encode, (unsigned)encoder_session.samples_written);
+						if(options.common.ignore_chunk_sizes) {
+							flac__utils_printf(stderr, 1, "%s: INFO: hit EOF with --ignore-chunk-sizes, got %u samples\n", encoder_session.inbasefilename, (unsigned)encoder_session.samples_written);
+						}
+						else {
+							flac__utils_printf(stderr, 1, "%s: WARNING: unexpected EOF; expected %u samples, got %u samples\n", encoder_session.inbasefilename, (unsigned)encoder_session.total_samples_to_encode, (unsigned)encoder_session.samples_written);
+							if(encoder_session.treat_warnings_as_errors)
+								return EncoderSession_finish_error(&encoder_session);
+						}
 						data_bytes = 0;
 					}
 				}
@@ -1028,6 +1103,8 @@ int flac__encode_wav(FILE *infile, off_t infilesize, const char *infilename, con
 						}
 						else if(bytes_read != (*options.common.align_reservoir_samples) * bytes_per_wide_sample) {
 							flac__utils_printf(stderr, 1, "%s: WARNING: unexpected EOF; read %u bytes; expected %u samples, got %u samples\n", encoder_session.inbasefilename, (unsigned)bytes_read, (unsigned)encoder_session.total_samples_to_encode, (unsigned)encoder_session.samples_written);
+							if(encoder_session.treat_warnings_as_errors)
+								return EncoderSession_finish_error(&encoder_session);
 						}
 						else {
 							info_align_carry = *options.common.align_reservoir_samples;
@@ -1050,24 +1127,22 @@ int flac__encode_wav(FILE *infile, off_t infilesize, const char *infilename, con
 			got_data_chunk = true;
 		}
 		else {
-			if(xx == 0x20746d66 && got_fmt_chunk) { /* "fmt " */
-				flac__utils_printf(stderr, 1, "%s: WARNING: skipping extra 'fmt ' sub-chunk\n", encoder_session.inbasefilename);
+			if(xx == 0x61746164 && !got_fmt_chunk) { /* "data" */
+				flac__utils_printf(stderr, 1, "%s: ERROR: got 'data' sub-chunk before 'fmt' sub-chunk\n", encoder_session.inbasefilename);
+				return EncoderSession_finish_error(&encoder_session);
 			}
-			else if(xx == 0x61746164) { /* "data" */
-				if(got_data_chunk) {
-					flac__utils_printf(stderr, 1, "%s: WARNING: skipping extra 'data' sub-chunk\n", encoder_session.inbasefilename);
-				}
-				else if(!got_fmt_chunk) {
-					flac__utils_printf(stderr, 1, "%s: ERROR: got 'data' sub-chunk before 'fmt' sub-chunk\n", encoder_session.inbasefilename);
+
+			if(!options.foreign_metadata) {
+				if(xx == 0x20746d66 && got_fmt_chunk) /* "fmt " */
+					flac__utils_printf(stderr, 1, "%s: WARNING: skipping extra 'fmt ' sub-chunk (use --keep-foreign-metadata to keep)\n", encoder_session.inbasefilename);
+				else if(xx == 0x61746164) /* "data" */
+					flac__utils_printf(stderr, 1, "%s: WARNING: skipping extra 'data' sub-chunk (use --keep-foreign-metadata to keep)\n", encoder_session.inbasefilename);
+				else
+					flac__utils_printf(stderr, 1, "%s: WARNING: skipping unknown sub-chunk '%c%c%c%c' (use --keep-foreign-metadata to keep)\n", encoder_session.inbasefilename, (char)(xx&255), (char)((xx>>8)&255), (char)((xx>>16)&255), (char)(xx>>24));
+				if(encoder_session.treat_warnings_as_errors)
 					return EncoderSession_finish_error(&encoder_session);
-				}
-				else {
-					FLAC__ASSERT(0);
-				}
 			}
-			else {
-				flac__utils_printf(stderr, 1, "%s: WARNING: skipping unknown sub-chunk '%c%c%c%c'\n", encoder_session.inbasefilename, (char)(xx&255), (char)((xx>>8)&255), (char)((xx>>16)&255), (char)(xx>>24));
-			}
+
 			/* sub-chunk size */
 			if(!read_little_endian_uint32(infile, &xx, false, encoder_session.inbasefilename))
 				return EncoderSession_finish_error(&encoder_session);
@@ -1076,14 +1151,14 @@ int flac__encode_wav(FILE *infile, off_t infilesize, const char *infilename, con
 
 				FLAC__ASSERT(skip<=LONG_MAX);
 				if(!fskip_ahead(infile, skip)) {
-					flac__utils_printf(stderr, 1, "%s: ERROR during read while skipping unsupported sub-chunk\n", encoder_session.inbasefilename);
+					flac__utils_printf(stderr, 1, "%s: ERROR during read while skipping over unsupported sub-chunk\n", encoder_session.inbasefilename);
 					return EncoderSession_finish_error(&encoder_session);
 				}
 			}
 		}
 	}
 
-	return EncoderSession_finish_ok(&encoder_session, info_align_carry, info_align_zero);
+	return EncoderSession_finish_ok(&encoder_session, info_align_carry, info_align_zero, options.foreign_metadata);
 }
 
 int flac__encode_raw(FILE *infile, off_t infilesize, const char *infilename, const char *outfilename, const FLAC__byte *lookahead, unsigned lookahead_length, raw_encode_options_t options)
@@ -1111,6 +1186,8 @@ int flac__encode_raw(FILE *infile, off_t infilesize, const char *infilename, con
 			/*use_ogg=*/false,
 #endif
 			options.common.verify,
+			options.common.treat_warnings_as_errors,
+			options.common.continue_through_decode_errors,
 			infile,
 			infilename,
 			outfilename
@@ -1182,7 +1259,7 @@ int flac__encode_raw(FILE *infile, off_t infilesize, const char *infilename, con
 		}
 	}
 
-	if(!EncoderSession_init_encoder(&encoder_session, options.common, /*channel_mask=*/0, options.channels, options.bps, options.sample_rate, /*flac_decoder_data=*/0))
+	if(!EncoderSession_init_encoder(&encoder_session, options.common, /*channel_mask=*/0, options.channels, options.bps, options.sample_rate, /*foreign_metadata=*/0, /*flac_decoder_data=*/0))
 		return EncoderSession_finish_error(&encoder_session);
 
 	/*
@@ -1283,6 +1360,8 @@ int flac__encode_raw(FILE *infile, off_t infilesize, const char *infilename, con
 				}
 				else if(feof(infile)) {
 					flac__utils_printf(stderr, 1, "%s: WARNING: unexpected EOF; expected %u samples, got %u samples\n", encoder_session.inbasefilename, (unsigned)encoder_session.total_samples_to_encode, (unsigned)encoder_session.samples_written);
+					if(encoder_session.treat_warnings_as_errors)
+						return EncoderSession_finish_error(&encoder_session);
 					total_input_bytes_read = max_input_bytes;
 				}
 			}
@@ -1335,6 +1414,8 @@ int flac__encode_raw(FILE *infile, off_t infilesize, const char *infilename, con
 				}
 				else if(bytes_read != (*options.common.align_reservoir_samples) * bytes_per_wide_sample) {
 					flac__utils_printf(stderr, 1, "%s: WARNING: unexpected EOF; read %u bytes; expected %u samples, got %u samples\n", encoder_session.inbasefilename, (unsigned)bytes_read, (unsigned)encoder_session.total_samples_to_encode, (unsigned)encoder_session.samples_written);
+					if(encoder_session.treat_warnings_as_errors)
+						return EncoderSession_finish_error(&encoder_session);
 				}
 				else {
 					info_align_carry = *options.common.align_reservoir_samples;
@@ -1345,7 +1426,7 @@ int flac__encode_raw(FILE *infile, off_t infilesize, const char *infilename, con
 		}
 	}
 
-	return EncoderSession_finish_ok(&encoder_session, info_align_carry, info_align_zero);
+	return EncoderSession_finish_ok(&encoder_session, info_align_carry, info_align_zero, /*foreign_metadata=*/0);
 }
 
 int flac__encode_flac(FILE *infile, off_t infilesize, const char *infilename, const char *outfilename, const FLAC__byte *lookahead, unsigned lookahead_length, flac_encode_options_t options, FLAC__bool input_is_ogg)
@@ -1365,6 +1446,8 @@ int flac__encode_flac(FILE *infile, off_t infilesize, const char *infilename, co
 			/*use_ogg=*/false,
 #endif
 			options.common.verify,
+			options.common.treat_warnings_as_errors,
+			options.common.continue_through_decode_errors,
 			infile,
 			infilename,
 			outfilename
@@ -1459,8 +1542,8 @@ int flac__encode_flac(FILE *infile, off_t infilesize, const char *infilename, co
 		encoder_session.unencoded_size = decoder_data.filesize;
 
 		/* (channel mask will get copied over from the source VORBIS_COMMENT if it exists) */
-		if(!EncoderSession_init_encoder(&encoder_session, options.common, /*channel_mask=*/0, decoder_data.metadata_blocks[0]->data.stream_info.channels, decoder_data.metadata_blocks[0]->data.stream_info.bits_per_sample, decoder_data.metadata_blocks[0]->data.stream_info.sample_rate, &decoder_data))
-			return EncoderSession_finish_error(&encoder_session);
+		if(!EncoderSession_init_encoder(&encoder_session, options.common, /*channel_mask=*/0, decoder_data.metadata_blocks[0]->data.stream_info.channels, decoder_data.metadata_blocks[0]->data.stream_info.bits_per_sample, decoder_data.metadata_blocks[0]->data.stream_info.sample_rate, /*foreign_metadata=*/0, &decoder_data))
+			goto fubar2; /*@@@ yuck */
 
 		/*
 		 * have to wait until the FLAC encoder is set up for writing
@@ -1481,29 +1564,39 @@ int flac__encode_flac(FILE *infile, off_t infilesize, const char *infilename, co
 		 * now do samples from the file
 		 */
 		while(!decoder_data.fatal_error && decoder_data.samples_left_to_process > 0) {
+			/* We can also hit the end of stream without samples_left_to_process
+			 * going to 0 if there are errors and continue_through_decode_errors
+			 * is on, so we want to break in that case too:
+			 */
+			if(encoder_session.continue_through_decode_errors && FLAC__stream_decoder_get_state(decoder) == FLAC__STREAM_DECODER_END_OF_STREAM)
+				break;
 			if(!FLAC__stream_decoder_process_single(decoder)) {
 				flac__utils_printf(stderr, 1, "%s: ERROR: while decoding FLAC input, state = %s\n", encoder_session.inbasefilename, FLAC__stream_decoder_get_resolved_state_string(decoder));
 				goto fubar2; /*@@@ yuck */
 			}
 		}
+		if(decoder_data.fatal_error) {
+			flac__utils_printf(stderr, 1, "%s: ERROR: while decoding FLAC input, state = %s\n", encoder_session.inbasefilename, FLAC__stream_decoder_get_resolved_state_string(decoder));
+			goto fubar2; /*@@@ yuck */
+		}
 	}
 
 	FLAC__stream_decoder_delete(decoder);
-	retval = EncoderSession_finish_ok(&encoder_session, -1, -1);
+	retval = EncoderSession_finish_ok(&encoder_session, -1, -1, /*foreign_metadata=*/0);
 	/* have to wail until encoder is completely finished before deleting because of the final step of writing the seekpoint offsets */
 	for(i = 0; i < decoder_data.num_metadata_blocks; i++)
-		free(decoder_data.metadata_blocks[i]);
+		FLAC__metadata_object_delete(decoder_data.metadata_blocks[i]);
 	return retval;
 
 fubar2:
 	for(i = 0; i < decoder_data.num_metadata_blocks; i++)
-		free(decoder_data.metadata_blocks[i]);
+		FLAC__metadata_object_delete(decoder_data.metadata_blocks[i]);
 fubar1:
 	FLAC__stream_decoder_delete(decoder);
 	return EncoderSession_finish_error(&encoder_session);
 }
 
-FLAC__bool EncoderSession_construct(EncoderSession *e, FLAC__bool use_ogg, FLAC__bool verify, FILE *infile, const char *infilename, const char *outfilename)
+FLAC__bool EncoderSession_construct(EncoderSession *e, FLAC__bool use_ogg, FLAC__bool verify, FLAC__bool treat_warnings_as_errors, FLAC__bool continue_through_decode_errors, FILE *infile, const char *infilename, const char *outfilename)
 {
 	unsigned i;
 	FLAC__uint32 test = 1;
@@ -1528,11 +1621,14 @@ FLAC__bool EncoderSession_construct(EncoderSession *e, FLAC__bool use_ogg, FLAC_
 	(void)use_ogg;
 #endif
 	e->verify = verify;
+	e->treat_warnings_as_errors = treat_warnings_as_errors;
+	e->continue_through_decode_errors = continue_through_decode_errors;
 
 	e->is_stdout = (0 == strcmp(outfilename, "-"));
 	e->outputfile_opened = false;
 
 	e->inbasefilename = grabbag__file_get_basename(infilename);
+	e->infilename = infilename;
 	e->outfilename = outfilename;
 
 	e->skip = 0; /* filled in later after the sample_rate is known */
@@ -1578,7 +1674,7 @@ void EncoderSession_destroy(EncoderSession *e)
 	}
 }
 
-int EncoderSession_finish_ok(EncoderSession *e, int info_align_carry, int info_align_zero)
+int EncoderSession_finish_ok(EncoderSession *e, int info_align_carry, int info_align_zero, foreign_metadata_t *foreign_metadata)
 {
 	FLAC__StreamEncoderState fse_state = FLAC__STREAM_ENCODER_OK;
 	int ret = 0;
@@ -1613,6 +1709,15 @@ int EncoderSession_finish_ok(EncoderSession *e, int info_align_carry, int info_a
 		}
 	}
 
+	/*@@@@@@ should this go here or somewhere else? */
+	if(ret == 0 && foreign_metadata) {
+		const char *error;
+		if(!flac__foreign_metadata_write_to_flac(foreign_metadata, e->infilename, e->outfilename, &error)) {
+			flac__utils_printf(stderr, 1, "%s: ERROR: updating foreign metadata in FLAC file: %s\n", e->inbasefilename, error);
+			ret = 1;
+		}
+	}
+
 	EncoderSession_destroy(e);
 
 	return ret;
@@ -1636,17 +1741,64 @@ int EncoderSession_finish_error(EncoderSession *e)
 	return 1;
 }
 
-FLAC__bool EncoderSession_init_encoder(EncoderSession *e, encode_options_t options, FLAC__uint32 channel_mask, unsigned channels, unsigned bps, unsigned sample_rate, FLACDecoderData *flac_decoder_data)
+typedef struct {
+	unsigned num_metadata;
+	FLAC__bool *needs_delete;
+	FLAC__StreamMetadata **metadata;
+	FLAC__StreamMetadata *cuesheet; /* always needs to be deleted */
+} static_metadata_t;
+
+static void static_metadata_init(static_metadata_t *m)
 {
-	unsigned num_metadata, i;
-	FLAC__StreamMetadata padding, *cuesheet = 0;
-	FLAC__StreamMetadata *static_metadata[4+64]; /* MAGIC +64 is for pictures metadata in options.pictures */
-	FLAC__StreamMetadata **metadata = static_metadata;
+	m->num_metadata = 0;
+	m->needs_delete = 0;
+	m->metadata = 0;
+	m->cuesheet = 0;
+}
+
+static void static_metadata_clear(static_metadata_t *m)
+{
+	unsigned i;
+	for(i = 0; i < m->num_metadata; i++)
+		if(m->needs_delete[i])
+			FLAC__metadata_object_delete(m->metadata[i]);
+	if(m->metadata)
+		free(m->metadata);
+	if(m->needs_delete)
+		free(m->needs_delete);
+	if(m->cuesheet)
+		FLAC__metadata_object_delete(m->cuesheet);
+	static_metadata_init(m);
+}
+
+static FLAC__bool static_metadata_append(static_metadata_t *m, FLAC__StreamMetadata *d, FLAC__bool needs_delete)
+{
+	void *x;
+	if(0 == (x = safe_realloc_muladd2_(m->metadata, sizeof(*m->metadata), /*times (*/m->num_metadata, /*+*/1/*)*/)))
+		return false;
+	m->metadata = (FLAC__StreamMetadata**)x;
+	if(0 == (x = safe_realloc_muladd2_(m->needs_delete, sizeof(*m->needs_delete), /*times (*/m->num_metadata, /*+*/1/*)*/)))
+		return false;
+	m->needs_delete = (FLAC__bool*)x;
+	m->metadata[m->num_metadata] = d;
+	m->needs_delete[m->num_metadata] = needs_delete;
+	m->num_metadata++;
+	return true;
+}
+
+FLAC__bool EncoderSession_init_encoder(EncoderSession *e, encode_options_t options, FLAC__uint32 channel_mask, unsigned channels, unsigned bps, unsigned sample_rate, const foreign_metadata_t *foreign_metadata, FLACDecoderData *flac_decoder_data)
+{
+	FLAC__StreamMetadata padding;
+	FLAC__StreamMetadata **metadata = 0;
+	static_metadata_t static_metadata;
+	unsigned num_metadata = 0, i;
 	FLAC__StreamEncoderInitStatus init_status;
 	const FLAC__bool is_cdda = (channels == 1 || channels == 2) && (bps == 16) && (sample_rate == 44100);
 	char apodizations[2000];
 
 	FLAC__ASSERT(sizeof(options.pictures)/sizeof(options.pictures[0]) <= 64);
+
+	static_metadata_init(&static_metadata);
 
 	e->replay_gain = options.replay_gain;
 	e->channels = channels;
@@ -1672,24 +1824,196 @@ FLAC__bool EncoderSession_init_encoder(EncoderSession *e, encode_options_t optio
 		}
 	}
 
-	if(!parse_cuesheet(&cuesheet, options.cuesheet_filename, e->inbasefilename, is_cdda, e->total_samples_to_encode))
+	if(!parse_cuesheet(&static_metadata.cuesheet, options.cuesheet_filename, e->inbasefilename, is_cdda, e->total_samples_to_encode, e->treat_warnings_as_errors))
 		return false;
 
-	if(!convert_to_seek_table_template(options.requested_seek_points, options.num_requested_seek_points, options.cued_seekpoints? cuesheet : 0, e)) {
+	if(!convert_to_seek_table_template(options.requested_seek_points, options.num_requested_seek_points, options.cued_seekpoints? static_metadata.cuesheet : 0, e)) {
 		flac__utils_printf(stderr, 1, "%s: ERROR allocating memory for seek table\n", e->inbasefilename);
-		if(0 != cuesheet)
-			FLAC__metadata_object_delete(cuesheet);
+		static_metadata_clear(&static_metadata);
 		return false;
 	}
 
+	/* build metadata */
 	if(flac_decoder_data) {
 		/*
 		 * we're encoding from FLAC so we will use the FLAC file's
-		 * metadata as the basic for the encoded file
+		 * metadata as the basis for the encoded file
 		 */
 		{
 			/*
-			 * first handle padding: if --no-padding was specified,
+			 * first handle pictures: simple append any --pictures
+			 * specified.
+			 */
+			for(i = 0; i < options.num_pictures; i++) {
+				FLAC__StreamMetadata *pic = FLAC__metadata_object_clone(options.pictures[i]);
+				if(0 == pic) {
+					flac__utils_printf(stderr, 1, "%s: ERROR allocating memory for PICTURE block\n", e->inbasefilename);
+					static_metadata_clear(&static_metadata);
+					return false;
+				}
+				flac_decoder_data->metadata_blocks[flac_decoder_data->num_metadata_blocks++] = pic;
+			}
+		}
+		{
+			/*
+			 * next handle vorbis comment: if any tags were specified
+			 * or there is no existing vorbis comment, we create a
+			 * new vorbis comment (discarding any existing one); else
+			 * we keep the existing one.  also need to make sure to
+			 * propagate any channel mask tag.
+			 */
+			/* @@@ change to append -T values from options.vorbis_comment if input has VC already? */
+			size_t i, j;
+			FLAC__bool vc_found = false;
+			for(i = 0, j = 0; i < flac_decoder_data->num_metadata_blocks; i++) {
+				if(flac_decoder_data->metadata_blocks[i]->type == FLAC__METADATA_TYPE_VORBIS_COMMENT)
+					vc_found = true;
+				if(flac_decoder_data->metadata_blocks[i]->type == FLAC__METADATA_TYPE_VORBIS_COMMENT && options.vorbis_comment->data.vorbis_comment.num_comments > 0) {
+					(void) flac__utils_get_channel_mask_tag(flac_decoder_data->metadata_blocks[i], &channel_mask);
+					flac__utils_printf(stderr, 1, "%s: WARNING, replacing tags from input FLAC file with those given on the command-line\n", e->inbasefilename);
+					if(e->treat_warnings_as_errors) {
+						static_metadata_clear(&static_metadata);
+						return false;
+					}
+					FLAC__metadata_object_delete(flac_decoder_data->metadata_blocks[i]);
+					flac_decoder_data->metadata_blocks[i] = 0;
+				}
+				else
+					flac_decoder_data->metadata_blocks[j++] = flac_decoder_data->metadata_blocks[i];
+			}
+			flac_decoder_data->num_metadata_blocks = j;
+			if((!vc_found || options.vorbis_comment->data.vorbis_comment.num_comments > 0) && flac_decoder_data->num_metadata_blocks < sizeof(flac_decoder_data->metadata_blocks)/sizeof(flac_decoder_data->metadata_blocks[0])) {
+				/* prepend ours */
+				FLAC__StreamMetadata *vc = FLAC__metadata_object_clone(options.vorbis_comment);
+				if(0 == vc || (channel_mask && !flac__utils_set_channel_mask_tag(vc, channel_mask))) {
+					flac__utils_printf(stderr, 1, "%s: ERROR allocating memory for VORBIS_COMMENT block\n", e->inbasefilename);
+					static_metadata_clear(&static_metadata);
+					return false;
+				}
+				for(i = flac_decoder_data->num_metadata_blocks; i > 1; i--)
+					flac_decoder_data->metadata_blocks[i] = flac_decoder_data->metadata_blocks[i-1];
+				flac_decoder_data->metadata_blocks[1] = vc;
+				flac_decoder_data->num_metadata_blocks++;
+			}
+		}
+		{
+			/*
+			 * next handle cuesheet: if --cuesheet was specified, use
+			 * it; else if file has existing CUESHEET and cuesheet's
+			 * lead-out offset is correct, keep it; else no CUESHEET
+			 */
+			size_t i, j;
+			for(i = 0, j = 0; i < flac_decoder_data->num_metadata_blocks; i++) {
+				FLAC__bool existing_cuesheet_is_bad = false;
+				/* check if existing cuesheet matches the input audio */
+				if(flac_decoder_data->metadata_blocks[i]->type == FLAC__METADATA_TYPE_CUESHEET && 0 == static_metadata.cuesheet) {
+					const FLAC__StreamMetadata_CueSheet *cs = &flac_decoder_data->metadata_blocks[i]->data.cue_sheet;
+					if(e->total_samples_to_encode == 0) {
+						flac__utils_printf(stderr, 1, "%s: WARNING, cuesheet in input FLAC file cannot be kept if input size is not known, dropping it...\n", e->inbasefilename);
+						if(e->treat_warnings_as_errors) {
+							static_metadata_clear(&static_metadata);
+							return false;
+						}
+						existing_cuesheet_is_bad = true;
+					}
+					else if(e->total_samples_to_encode != cs->tracks[cs->num_tracks-1].offset) {
+						flac__utils_printf(stderr, 1, "%s: WARNING, lead-out offset of cuesheet in input FLAC file does not match input length, dropping existing cuesheet...\n", e->inbasefilename);
+						if(e->treat_warnings_as_errors) {
+							static_metadata_clear(&static_metadata);
+							return false;
+						}
+						existing_cuesheet_is_bad = true;
+					}
+				}
+				if(flac_decoder_data->metadata_blocks[i]->type == FLAC__METADATA_TYPE_CUESHEET && (existing_cuesheet_is_bad || 0 != static_metadata.cuesheet)) {
+					if(0 != static_metadata.cuesheet) {
+						flac__utils_printf(stderr, 1, "%s: WARNING, replacing cuesheet in input FLAC file with the one given on the command-line\n", e->inbasefilename);
+						if(e->treat_warnings_as_errors) {
+							static_metadata_clear(&static_metadata);
+							return false;
+						}
+					}
+					FLAC__metadata_object_delete(flac_decoder_data->metadata_blocks[i]);
+					flac_decoder_data->metadata_blocks[i] = 0;
+				}
+				else
+					flac_decoder_data->metadata_blocks[j++] = flac_decoder_data->metadata_blocks[i];
+			}
+			flac_decoder_data->num_metadata_blocks = j;
+			if(0 != static_metadata.cuesheet && flac_decoder_data->num_metadata_blocks < sizeof(flac_decoder_data->metadata_blocks)/sizeof(flac_decoder_data->metadata_blocks[0])) {
+				/* prepend ours */
+				FLAC__StreamMetadata *cs = FLAC__metadata_object_clone(static_metadata.cuesheet);
+				if(0 == cs) {
+					flac__utils_printf(stderr, 1, "%s: ERROR allocating memory for CUESHEET block\n", e->inbasefilename);
+					static_metadata_clear(&static_metadata);
+					return false;
+				}
+				for(i = flac_decoder_data->num_metadata_blocks; i > 1; i--)
+					flac_decoder_data->metadata_blocks[i] = flac_decoder_data->metadata_blocks[i-1];
+				flac_decoder_data->metadata_blocks[1] = cs;
+				flac_decoder_data->num_metadata_blocks++;
+			}
+		}
+		{
+			/*
+			 * next handle seektable: if -S- was specified, no
+			 * SEEKTABLE; else if -S was specified, use it/them;
+			 * else if file has existing SEEKTABLE and input size is
+			 * preserved (no --skip/--until/etc specified), keep it;
+			 * else use default seektable options
+			 *
+			 * note: meanings of num_requested_seek_points:
+			 *  -1 : no -S option given, default to some value
+			 *   0 : -S- given (no seektable)
+			 *  >0 : one or more -S options given
+			 */
+			size_t i, j;
+			FLAC__bool existing_seektable = false;
+			for(i = 0, j = 0; i < flac_decoder_data->num_metadata_blocks; i++) {
+				if(flac_decoder_data->metadata_blocks[i]->type == FLAC__METADATA_TYPE_SEEKTABLE)
+					existing_seektable = true;
+				if(flac_decoder_data->metadata_blocks[i]->type == FLAC__METADATA_TYPE_SEEKTABLE && (e->total_samples_to_encode != flac_decoder_data->metadata_blocks[0]->data.stream_info.total_samples || options.num_requested_seek_points >= 0)) {
+					if(options.num_requested_seek_points > 0) {
+						flac__utils_printf(stderr, 1, "%s: WARNING, replacing seektable in input FLAC file with the one given on the command-line\n", e->inbasefilename);
+						if(e->treat_warnings_as_errors) {
+							static_metadata_clear(&static_metadata);
+							return false;
+						}
+					}
+					else if(options.num_requested_seek_points == 0)
+						; /* no warning, silently delete existing SEEKTABLE since user specified --no-seektable (-S-) */
+					else {
+						flac__utils_printf(stderr, 1, "%s: WARNING, can't use existing seektable in input FLAC since the input size is changing or unknown, dropping existing SEEKTABLE block...\n", e->inbasefilename);
+						if(e->treat_warnings_as_errors) {
+							static_metadata_clear(&static_metadata);
+							return false;
+						}
+					}
+					FLAC__metadata_object_delete(flac_decoder_data->metadata_blocks[i]);
+					flac_decoder_data->metadata_blocks[i] = 0;
+					existing_seektable = false;
+				}
+				else
+					flac_decoder_data->metadata_blocks[j++] = flac_decoder_data->metadata_blocks[i];
+			}
+			flac_decoder_data->num_metadata_blocks = j;
+			if((options.num_requested_seek_points > 0 || (options.num_requested_seek_points < 0 && !existing_seektable)) && flac_decoder_data->num_metadata_blocks < sizeof(flac_decoder_data->metadata_blocks)/sizeof(flac_decoder_data->metadata_blocks[0])) {
+				/* prepend ours */
+				FLAC__StreamMetadata *st = FLAC__metadata_object_clone(e->seek_table_template);
+				if(0 == st) {
+					flac__utils_printf(stderr, 1, "%s: ERROR allocating memory for SEEKTABLE block\n", e->inbasefilename);
+					static_metadata_clear(&static_metadata);
+					return false;
+				}
+				for(i = flac_decoder_data->num_metadata_blocks; i > 1; i--)
+					flac_decoder_data->metadata_blocks[i] = flac_decoder_data->metadata_blocks[i-1];
+				flac_decoder_data->metadata_blocks[1] = st;
+				flac_decoder_data->num_metadata_blocks++;
+			}
+		}
+		{
+			/*
+			 * finally handle padding: if --no-padding was specified,
 			 * then delete all padding; else if -P was specified,
 			 * use that instead of existing padding (if any); else
 			 * if existing file has padding, move all existing
@@ -1719,146 +2043,13 @@ FLAC__bool EncoderSession_init_encoder(EncoderSession *e, encode_options_t optio
 					flac_decoder_data->metadata_blocks[flac_decoder_data->num_metadata_blocks] = FLAC__metadata_object_new(FLAC__METADATA_TYPE_PADDING);
 					if(0 == flac_decoder_data->metadata_blocks[flac_decoder_data->num_metadata_blocks]) {
 						flac__utils_printf(stderr, 1, "%s: ERROR allocating memory for PADDING block\n", e->inbasefilename);
-						if(0 != cuesheet)
-							FLAC__metadata_object_delete(cuesheet);
+						static_metadata_clear(&static_metadata);
 						return false;
 					}
 					flac_decoder_data->metadata_blocks[flac_decoder_data->num_metadata_blocks]->is_last = false; /* the encoder will set this for us */
 					flac_decoder_data->metadata_blocks[flac_decoder_data->num_metadata_blocks]->length = p;
 					flac_decoder_data->num_metadata_blocks++;
 				}
-			}
-		}
-		{
-			/*
-			 * next handle vorbis comment: if any tags were specified
-			 * or there is no existing vorbis comment, we create a
-			 * new vorbis comment (discarding any existing one); else
-			 * we keep the existing one.  also need to make sure to
-			 * propagate any channel mask tag.
-			 */
-			size_t i, j;
-			FLAC__bool vc_found = false;
-			for(i = 0, j = 0; i < flac_decoder_data->num_metadata_blocks; i++) {
-				if(flac_decoder_data->metadata_blocks[i]->type == FLAC__METADATA_TYPE_VORBIS_COMMENT)
-					vc_found = true;
-				if(flac_decoder_data->metadata_blocks[i]->type == FLAC__METADATA_TYPE_VORBIS_COMMENT && options.vorbis_comment->data.vorbis_comment.num_comments > 0) {
-					(void) flac__utils_get_channel_mask_tag(flac_decoder_data->metadata_blocks[i], &channel_mask);
-					flac__utils_printf(stderr, 1, "%s: WARNING, replacing tags from input FLAC file with those given on the command-line\n", e->inbasefilename);
-					FLAC__metadata_object_delete(flac_decoder_data->metadata_blocks[i]);
-					flac_decoder_data->metadata_blocks[i] = 0;
-				}
-				else
-					flac_decoder_data->metadata_blocks[j++] = flac_decoder_data->metadata_blocks[i];
-			}
-			flac_decoder_data->num_metadata_blocks = j;
-			if((!vc_found || options.vorbis_comment->data.vorbis_comment.num_comments > 0) && flac_decoder_data->num_metadata_blocks < sizeof(flac_decoder_data->metadata_blocks)/sizeof(flac_decoder_data->metadata_blocks[0])) {
-				/* prepend ours */
-				FLAC__StreamMetadata *vc = FLAC__metadata_object_clone(options.vorbis_comment);
-				if(0 == vc || (channel_mask && !flac__utils_set_channel_mask_tag(vc, channel_mask))) {
-					flac__utils_printf(stderr, 1, "%s: ERROR allocating memory for VORBIS_COMMENT block\n", e->inbasefilename);
-					if(0 != cuesheet)
-						FLAC__metadata_object_delete(cuesheet);
-					return false;
-				}
-				for(i = flac_decoder_data->num_metadata_blocks; i > 1; i--)
-					flac_decoder_data->metadata_blocks[i] = flac_decoder_data->metadata_blocks[i-1];
-				flac_decoder_data->metadata_blocks[1] = vc;
-				flac_decoder_data->num_metadata_blocks++;
-			}
-		}
-		{
-			/*
-			 * next handle cuesheet: if --cuesheet was specified, use
-			 * it; else if file has existing CUESHEET and cuesheet's
-			 * lead-out offset is correct, keep it; else no CUESHEET
-			 */
-			size_t i, j;
-			for(i = 0, j = 0; i < flac_decoder_data->num_metadata_blocks; i++) {
-				FLAC__bool existing_cuesheet_is_bad = false;
-				/* check if existing cuesheet matches the input audio */
-				if(flac_decoder_data->metadata_blocks[i]->type == FLAC__METADATA_TYPE_CUESHEET && 0 == cuesheet) {
-					const FLAC__StreamMetadata_CueSheet *cs = &flac_decoder_data->metadata_blocks[i]->data.cue_sheet;
-					if(e->total_samples_to_encode == 0) {
-						flac__utils_printf(stderr, 1, "%s: WARNING, cuesheet in input FLAC file cannot be kept if input size is not known, dropping it...\n", e->inbasefilename);
-						existing_cuesheet_is_bad = true;
-					}
-					else if(e->total_samples_to_encode != cs->tracks[cs->num_tracks-1].offset) {
-						flac__utils_printf(stderr, 1, "%s: WARNING, lead-out offset of cuesheet in input FLAC file does not match input length, dropping existing cuesheet...\n", e->inbasefilename);
-						existing_cuesheet_is_bad = true;
-					}
-				}
-				if(flac_decoder_data->metadata_blocks[i]->type == FLAC__METADATA_TYPE_CUESHEET && (existing_cuesheet_is_bad || 0 != cuesheet)) {
-					if(0 != cuesheet)
-						flac__utils_printf(stderr, 1, "%s: WARNING, replacing cuesheet in input FLAC file with the one given on the command-line\n", e->inbasefilename);
-					FLAC__metadata_object_delete(flac_decoder_data->metadata_blocks[i]);
-					flac_decoder_data->metadata_blocks[i] = 0;
-				}
-				else
-					flac_decoder_data->metadata_blocks[j++] = flac_decoder_data->metadata_blocks[i];
-			}
-			flac_decoder_data->num_metadata_blocks = j;
-			if(0 != cuesheet && flac_decoder_data->num_metadata_blocks < sizeof(flac_decoder_data->metadata_blocks)/sizeof(flac_decoder_data->metadata_blocks[0])) {
-				/* prepend ours */
-				FLAC__StreamMetadata *cs = FLAC__metadata_object_clone(cuesheet);
-				if(0 == cs) {
-					flac__utils_printf(stderr, 1, "%s: ERROR allocating memory for CUESHEET block\n", e->inbasefilename);
-					if(0 != cuesheet)
-						FLAC__metadata_object_delete(cuesheet);
-					return false;
-				}
-				for(i = flac_decoder_data->num_metadata_blocks; i > 1; i--)
-					flac_decoder_data->metadata_blocks[i] = flac_decoder_data->metadata_blocks[i-1];
-				flac_decoder_data->metadata_blocks[1] = cs;
-				flac_decoder_data->num_metadata_blocks++;
-			}
-		}
-		{
-			/*
-			 * finally handle seektable: if -S- was specified, no
-			 * SEEKTABLE; else if -S was specified, use it/them;
-			 * else if file has existing SEEKTABLE and input size is
-			 * preserved (no --skip/--until/etc specified), keep it;
-			 * else use default seektable options
-			 *
-			 * note: meanings of num_requested_seek_points:
-			 *  -1 : no -S option given, default to some value
-			 *   0 : -S- given (no seektable)
-			 *  >0 : one or more -S options given
-			 */
-			size_t i, j;
-			FLAC__bool existing_seektable = false;
-			for(i = 0, j = 0; i < flac_decoder_data->num_metadata_blocks; i++) {
-				if(flac_decoder_data->metadata_blocks[i]->type == FLAC__METADATA_TYPE_SEEKTABLE)
-					existing_seektable = true;
-				if(flac_decoder_data->metadata_blocks[i]->type == FLAC__METADATA_TYPE_SEEKTABLE && (e->total_samples_to_encode != flac_decoder_data->metadata_blocks[0]->data.stream_info.total_samples || options.num_requested_seek_points >= 0)) {
-					if(options.num_requested_seek_points > 0)
-						flac__utils_printf(stderr, 1, "%s: WARNING, replacing seektable in input FLAC file with the one given on the command-line\n", e->inbasefilename);
-					else if(options.num_requested_seek_points == 0)
-						; /* no warning, silently delete existing SEEKTABLE since user specified --no-seektable (-S-) */
-					else
-						flac__utils_printf(stderr, 1, "%s: WARNING, can't use existing seektable in input FLAC since the input size is changing or unknown, dropping existing SEEKTABLE block...\n", e->inbasefilename);
-					FLAC__metadata_object_delete(flac_decoder_data->metadata_blocks[i]);
-					flac_decoder_data->metadata_blocks[i] = 0;
-					existing_seektable = false;
-				}
-				else
-					flac_decoder_data->metadata_blocks[j++] = flac_decoder_data->metadata_blocks[i];
-			}
-			flac_decoder_data->num_metadata_blocks = j;
-			if((options.num_requested_seek_points > 0 || (options.num_requested_seek_points < 0 && !existing_seektable)) && flac_decoder_data->num_metadata_blocks < sizeof(flac_decoder_data->metadata_blocks)/sizeof(flac_decoder_data->metadata_blocks[0])) {
-				/* prepend ours */
-				FLAC__StreamMetadata *st = FLAC__metadata_object_clone(e->seek_table_template);
-				if(0 == st) {
-					flac__utils_printf(stderr, 1, "%s: ERROR allocating memory for SEEKTABLE block\n", e->inbasefilename);
-					if(0 != cuesheet)
-						FLAC__metadata_object_delete(cuesheet);
-					return false;
-				}
-				for(i = flac_decoder_data->num_metadata_blocks; i > 1; i--)
-					flac_decoder_data->metadata_blocks[i] = flac_decoder_data->metadata_blocks[i-1];
-				flac_decoder_data->metadata_blocks[1] = st;
-				flac_decoder_data->num_metadata_blocks++;
 			}
 		}
 		metadata = &flac_decoder_data->metadata_blocks[1]; /* don't include STREAMINFO */
@@ -1869,30 +2060,43 @@ FLAC__bool EncoderSession_init_encoder(EncoderSession *e, encode_options_t optio
 		 * we're not encoding from FLAC so we will build the metadata
 		 * from scratch
 		 */
-		num_metadata = 0;
 		if(e->seek_table_template->data.seek_table.num_points > 0) {
 			e->seek_table_template->is_last = false; /* the encoder will set this for us */
-			metadata[num_metadata++] = e->seek_table_template;
+			static_metadata_append(&static_metadata, e->seek_table_template, /*needs_delete=*/false);
 		}
-		if(0 != cuesheet)
-			metadata[num_metadata++] = cuesheet;
+		if(0 != static_metadata.cuesheet)
+			static_metadata_append(&static_metadata, static_metadata.cuesheet, /*needs_delete=*/false);
 		if(channel_mask) {
 			if(!flac__utils_set_channel_mask_tag(options.vorbis_comment, channel_mask)) {
 				flac__utils_printf(stderr, 1, "%s: ERROR adding channel mask tag\n", e->inbasefilename);
-				if(0 != cuesheet)
-					FLAC__metadata_object_delete(cuesheet);
+				static_metadata_clear(&static_metadata);
 				return false;
 			}
 		}
-		metadata[num_metadata++] = options.vorbis_comment;
+		static_metadata_append(&static_metadata, options.vorbis_comment, /*needs_delete=*/false);
 		for(i = 0; i < options.num_pictures; i++)
-			metadata[num_metadata++] = options.pictures[i];
+			static_metadata_append(&static_metadata, options.pictures[i], /*needs_delete=*/false);
+		if(foreign_metadata) {
+			for(i = 0; i < foreign_metadata->num_blocks; i++) {
+				FLAC__StreamMetadata *p = FLAC__metadata_object_new(FLAC__METADATA_TYPE_PADDING);
+				if(!p) {
+					flac__utils_printf(stderr, 1, "%s: ERROR: out of memory\n", e->inbasefilename);
+					static_metadata_clear(&static_metadata);
+					return false;
+				}
+				static_metadata_append(&static_metadata, p, /*needs_delete=*/true);
+				static_metadata.metadata[static_metadata.num_metadata-1]->length = FLAC__STREAM_METADATA_APPLICATION_ID_LEN/8 + foreign_metadata->blocks[i].size;
+/*fprintf(stderr,"@@@@@@ add PADDING=%u\n",static_metadata.metadata[static_metadata.num_metadata-1]->length);*/
+			}
+		}
 		if(options.padding != 0) {
 			padding.is_last = false; /* the encoder will set this for us */
 			padding.type = FLAC__METADATA_TYPE_PADDING;
 			padding.length = (unsigned)(options.padding>0? options.padding : (e->total_samples_to_encode / e->sample_rate < 20*60? FLAC_ENCODE__DEFAULT_PADDING : FLAC_ENCODE__DEFAULT_PADDING*8));
-			metadata[num_metadata++] = &padding;
+			static_metadata_append(&static_metadata, &padding, /*needs_delete=*/false);
 		}
+		metadata = static_metadata.metadata;
+		num_metadata = static_metadata.num_metadata;
 	}
 
 	/* check for a few things that have not already been checked.  the
@@ -1901,8 +2105,7 @@ FLAC__bool EncoderSession_init_encoder(EncoderSession *e, encode_options_t optio
 	 * up front to give a better error message.
 	 */
 	if(!verify_metadata(e, metadata, num_metadata)) {
-		if(0 != cuesheet)
-			FLAC__metadata_object_delete(cuesheet);
+		static_metadata_clear(&static_metadata);
 		return false;
 	}
 
@@ -1929,8 +2132,7 @@ FLAC__bool EncoderSession_init_encoder(EncoderSession *e, encode_options_t optio
 			case CST_APODIZATION:
 				if(strlen(apodizations)+strlen(options.compression_settings[i].value.t_string)+2 >= sizeof(apodizations)) {
 					flac__utils_printf(stderr, 1, "%s: ERROR: too many apodization functions requested\n", e->inbasefilename);
-					if(0 != cuesheet)
-						FLAC__metadata_object_delete(cuesheet);
+					static_metadata_clear(&static_metadata);
 					return false;
 				}
 				else {
@@ -1972,6 +2174,14 @@ FLAC__bool EncoderSession_init_encoder(EncoderSession *e, encode_options_t optio
 	FLAC__stream_encoder_disable_constant_subframes(e->encoder, options.debug.disable_constant_subframes);
 	FLAC__stream_encoder_disable_fixed_subframes(e->encoder, options.debug.disable_fixed_subframes);
 	FLAC__stream_encoder_disable_verbatim_subframes(e->encoder, options.debug.disable_verbatim_subframes);
+	if(!options.debug.do_md5) {
+		flac__utils_printf(stderr, 1, "%s: WARNING, MD5 computation disabled, resulting file will not have MD5 sum\n", e->inbasefilename);
+		if(e->treat_warnings_as_errors) {
+			static_metadata_clear(&static_metadata);
+			return false;
+		}
+		FLAC__stream_encoder_set_do_md5(e->encoder, false);
+	}
 
 #if FLAC__HAS_OGG
 	if(e->use_ogg) {
@@ -1989,8 +2199,7 @@ FLAC__bool EncoderSession_init_encoder(EncoderSession *e, encode_options_t optio
 		print_error_with_init_status(e, "ERROR initializing encoder", init_status);
 		if(FLAC__stream_encoder_get_state(e->encoder) != FLAC__STREAM_ENCODER_IO_ERROR)
 			e->outputfile_opened = true;
-		if(0 != cuesheet)
-			FLAC__metadata_object_delete(cuesheet);
+		static_metadata_clear(&static_metadata);
 		return false;
 	}
 	else
@@ -2001,8 +2210,7 @@ FLAC__bool EncoderSession_init_encoder(EncoderSession *e, encode_options_t optio
 		(FLAC__stream_encoder_get_do_exhaustive_model_search(e->encoder) || FLAC__stream_encoder_get_do_qlp_coeff_prec_search(e->encoder))? 0x0f :
 		0x3f;
 
-	if(0 != cuesheet)
-		FLAC__metadata_object_delete(cuesheet);
+	static_metadata_clear(&static_metadata);
 
 	return true;
 }
@@ -2012,6 +2220,8 @@ FLAC__bool EncoderSession_process(EncoderSession *e, const FLAC__int32 * const b
 	if(e->replay_gain) {
 		if(!grabbag__replaygain_analyze(buffer, e->channels==2, e->bits_per_sample, samples)) {
 			flac__utils_printf(stderr, 1, "%s: WARNING, error while calculating ReplayGain\n", e->inbasefilename);
+			if(e->treat_warnings_as_errors)
+				return false;
 		}
 	}
 
@@ -2027,7 +2237,13 @@ FLAC__bool convert_to_seek_table_template(const char *requested_seek_points, int
 		return true;
 
 	if(num_requested_seek_points < 0) {
-		requested_seek_points = "10s;";
+#if FLAC__HAS_OGG
+		/*@@@@@@ workaround ogg bug: too many seekpoints makes table not fit in one page */
+		if(e->use_ogg && e->total_samples_to_encode > 0 && e->total_samples_to_encode / e->sample_rate / 10 > 230)
+			requested_seek_points = "230x;";
+		else 
+#endif
+			requested_seek_points = "10s;";
 		num_requested_seek_points = 1;
 	}
 
@@ -2055,6 +2271,8 @@ FLAC__bool convert_to_seek_table_template(const char *requested_seek_points, int
 	if(has_real_points) {
 		if(e->is_stdout) {
 			flac__utils_printf(stderr, 1, "%s: WARNING, cannot write back seekpoints when encoding to stdout\n", e->inbasefilename);
+			if(e->treat_warnings_as_errors)
+				return false;
 		}
 	}
 
@@ -2375,10 +2593,11 @@ void flac_decoder_error_callback(const FLAC__StreamDecoder *decoder, FLAC__Strea
 	(void)decoder;
 
 	flac__utils_printf(stderr, 1, "%s: ERROR got %s while decoding FLAC input\n", data->encoder_session->inbasefilename, FLAC__StreamDecoderErrorStatusString[status]);
-	data->fatal_error = true;
+	if(!data->encoder_session->continue_through_decode_errors)
+		data->fatal_error = true;
 }
 
-FLAC__bool parse_cuesheet(FLAC__StreamMetadata **cuesheet, const char *cuesheet_filename, const char *inbasefilename, FLAC__bool is_cdda, FLAC__uint64 lead_out_offset)
+FLAC__bool parse_cuesheet(FLAC__StreamMetadata **cuesheet, const char *cuesheet_filename, const char *inbasefilename, FLAC__bool is_cdda, FLAC__uint64 lead_out_offset, FLAC__bool treat_warnings_as_errors)
 {
 	FILE *f;
 	unsigned last_line_read;
@@ -2414,6 +2633,8 @@ FLAC__bool parse_cuesheet(FLAC__StreamMetadata **cuesheet, const char *cuesheet_
 	/* if we're expecting CDDA, warn about non-compliance */
 	if(is_cdda && !FLAC__format_cuesheet_is_legal(&(*cuesheet)->data.cue_sheet, /*check_cd_da_subset=*/true, &error_message)) {
 		flac__utils_printf(stderr, 1, "%s: WARNING cuesheet \"%s\" is not audio CD compliant: %s\n", inbasefilename, cuesheet_filename, error_message);
+		if(treat_warnings_as_errors)
+			return false;
 		(*cuesheet)->data.cue_sheet.is_cd = false;
 	}
 
@@ -2431,6 +2652,8 @@ void print_stats(const EncoderSession *encoder_session)
 	const double progress = (double)samples_written / (double)encoder_session->total_samples_to_encode;
 	const double ratio = (double)encoder_session->bytes_written / ((double)encoder_session->unencoded_size * min(1.0, progress));
 #endif
+
+	FLAC__ASSERT(encoder_session->total_samples_to_encode > 0);
 
 	if(samples_written == encoder_session->total_samples_to_encode) {
 		flac__utils_printf(stderr, 2, "\r%s:%s wrote %u bytes, ratio=%0.3f",
@@ -2658,23 +2881,29 @@ FLAC__bool fskip_ahead(FILE *f, FLAC__uint64 offset)
 {
 	static unsigned char dump[8192];
 
-	while(offset > 0) {
-		long need = (long)min(offset, LONG_MAX);
-	   	if(fseeko(f, need, SEEK_CUR) < 0) {
-			need = (long)min(offset, sizeof(dump));
+#ifdef _MSC_VER
+	if(f == stdin) {
+		/* MS' stdio impl can't even seek forward on stdin, have to use pure non-fseek() version: */
+		while(offset > 0) {
+			const long need = (long)min(offset, sizeof(dump));
 			if((long)fread(dump, 1, need, f) < need)
 				return false;
+			offset -= need;
 		}
-		offset -= need;
 	}
-#if 0 /* pure non-fseek() version */
-	while(offset > 0) {
-		const long need = (long)min(offset, sizeof(dump));
-		if(fread(dump, 1, need, f) < need)
-			return false;
-		offset -= need;
-	}
+	else
 #endif
+	{
+		while(offset > 0) {
+			long need = (long)min(offset, LONG_MAX);
+			if(fseeko(f, need, SEEK_CUR) < 0) {
+				need = (long)min(offset, sizeof(dump));
+				if((long)fread(dump, 1, need, f) < need)
+					return false;
+			}
+			offset -= need;
+		}
+	}
 	return true;
 }
 
@@ -2689,6 +2918,7 @@ unsigned count_channel_mask_bits(FLAC__uint32 mask)
 	return count;
 }
 
+#if 0
 FLAC__uint32 limit_channel_mask(FLAC__uint32 mask, unsigned channels)
 {
 	FLAC__uint32 x = 0x80000000;
@@ -2703,3 +2933,4 @@ FLAC__uint32 limit_channel_mask(FLAC__uint32 mask, unsigned channels)
 	FLAC__ASSERT(count_channel_mask_bits(mask) == channels);
 	return mask;
 }
+#endif

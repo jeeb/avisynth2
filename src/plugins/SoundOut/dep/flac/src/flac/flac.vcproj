@@ -1,9 +1,11 @@
 <?xml version="1.0" encoding="Windows-1252"?>
 <VisualStudioProject
 	ProjectType="Visual C++"
-	Version="8,00"
+	Version="8.00"
 	Name="flac"
-	ProjectGUID="{24E4F06F-1E3F-49CD-A538-64D089ABE2E5}"
+	ProjectGUID="{4cefbc7d-c215-11db-8314-0800200c9a66}"
+	RootNamespace="flac"
+	Keyword="Win32Proj"
 	>
 	<Platforms>
 		<Platform
@@ -15,13 +17,9 @@
 	<Configurations>
 		<Configuration
 			Name="Debug|Win32"
-			OutputDirectory=".\..\..\obj\debug\bin"
-			IntermediateDirectory=".\Debug"
+			OutputDirectory="..\..\obj\debug\bin"
+			IntermediateDirectory="Debug"
 			ConfigurationType="1"
-			InheritedPropertySheets="$(VCInstallDir)VCProjectDefaults\UpgradeFromVC60.vsprops"
-			UseOfMFC="0"
-			ATLMinimizesCRunTimeLibraryUsage="false"
-			CharacterSet="2"
 			>
 			<Tool
 				Name="VCPreBuildEventTool"
@@ -37,44 +35,37 @@
 			/>
 			<Tool
 				Name="VCMIDLTool"
-				TypeLibraryName=".\..\..\obj\debug\bin/flac.tlb"
-				HeaderFileName=""
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories=".,..\..\include"
-				PreprocessorDefinitions="_DEBUG;FLAC__NO_DLL;FLAC__HAS_OGG;WIN32;_CONSOLE"
+				AdditionalIncludeDirectories=".;..\..\include"
+				PreprocessorDefinitions="WIN32;_DEBUG;_CONSOLE;FLAC__HAS_OGG;FLAC__NO_DLL;DEBUG"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
-				RuntimeLibrary="3"
-				PrecompiledHeaderFile=".\Debug/flac.pch"
-				AssemblerListingLocation=".\Debug/"
-				ObjectFile=".\Debug/"
-				ProgramDataBaseFileName=".\Debug/"
+				RuntimeLibrary="1"
+				UsePrecompiledHeader="0"
 				WarningLevel="3"
-				SuppressStartupBanner="true"
+				Detect64BitPortabilityProblems="true"
 				DebugInformationFormat="4"
+				CompileAs="0"
+				DisableSpecificWarnings="4267;4996"
 			/>
 			<Tool
 				Name="VCManagedResourceCompilerTool"
 			/>
 			<Tool
 				Name="VCResourceCompilerTool"
-				PreprocessorDefinitions="_DEBUG"
-				Culture="1033"
 			/>
 			<Tool
 				Name="VCPreLinkEventTool"
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="..\..\obj\debug\lib\grabbag_static.lib ..\..\obj\debug\lib\libFLAC_static.lib ..\..\obj\debug\lib\replaygain_analysis_static.lib ..\..\obj\debug\lib\replaygain_synthesis_static.lib ..\..\obj\debug\lib\getopt_static.lib ..\..\obj\debug\lib\utf8_static.lib ..\..\obj\release\lib\ogg_static.lib"
-				OutputFile=".\..\..\obj\debug\bin/flac.exe"
+				AdditionalDependencies="..\..\obj\release\lib\ogg_static.lib"
 				LinkIncremental="2"
-				SuppressStartupBanner="true"
+				IgnoreDefaultLibraryNames="uuid.lib"
 				GenerateDebugInformation="true"
-				ProgramDatabaseFile=".\..\..\obj\debug\bin/flac.pdb"
 				SubSystem="1"
 				TargetMachine="1"
 			/>
@@ -89,8 +80,6 @@
 			/>
 			<Tool
 				Name="VCBscMakeTool"
-				SuppressStartupBanner="true"
-				OutputFile=".\..\..\obj\debug\bin/flac.bsc"
 			/>
 			<Tool
 				Name="VCFxCopTool"
@@ -107,13 +96,9 @@
 		</Configuration>
 		<Configuration
 			Name="Release|Win32"
-			OutputDirectory=".\..\..\obj\release\bin"
-			IntermediateDirectory=".\Release"
+			OutputDirectory="..\..\obj\release\bin"
+			IntermediateDirectory="Release"
 			ConfigurationType="1"
-			InheritedPropertySheets="$(VCInstallDir)VCProjectDefaults\UpgradeFromVC60.vsprops"
-			UseOfMFC="0"
-			ATLMinimizesCRunTimeLibraryUsage="false"
-			CharacterSet="2"
 			>
 			<Tool
 				Name="VCPreBuildEventTool"
@@ -129,44 +114,43 @@
 			/>
 			<Tool
 				Name="VCMIDLTool"
-				TypeLibraryName=".\..\..\obj\release\bin/flac.tlb"
-				HeaderFileName=""
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
-				Optimization="2"
-				InlineFunctionExpansion="1"
-				AdditionalIncludeDirectories=".,..\..\include"
-				PreprocessorDefinitions="NDEBUG;FLAC__NO_DLL;FLAC__HAS_OGG;WIN32;_CONSOLE"
-				StringPooling="true"
-				RuntimeLibrary="2"
-				EnableFunctionLevelLinking="true"
-				PrecompiledHeaderFile=".\Release/flac.pch"
-				AssemblerListingLocation=".\Release/"
-				ObjectFile=".\Release/"
-				ProgramDataBaseFileName=".\Release/"
+				EnableIntrinsicFunctions="true"
+				FavorSizeOrSpeed="1"
+				OmitFramePointers="true"
+				WholeProgramOptimization="true"
+				AdditionalIncludeDirectories=".;..\..\include"
+				PreprocessorDefinitions="WIN32;NDEBUG;_CONSOLE;FLAC__HAS_OGG;FLAC__NO_DLL"
+				RuntimeLibrary="0"
+				BufferSecurityCheck="false"
+				UsePrecompiledHeader="0"
 				WarningLevel="3"
-				SuppressStartupBanner="true"
+				Detect64BitPortabilityProblems="true"
+				DebugInformationFormat="3"
+				CompileAs="0"
+				DisableSpecificWarnings="4267;4996"
 			/>
 			<Tool
 				Name="VCManagedResourceCompilerTool"
 			/>
 			<Tool
 				Name="VCResourceCompilerTool"
-				PreprocessorDefinitions="NDEBUG"
-				Culture="1033"
 			/>
 			<Tool
 				Name="VCPreLinkEventTool"
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="..\..\obj\release\lib\grabbag_static.lib ..\..\obj\release\lib\libFLAC_static.lib ..\..\obj\release\lib\replaygain_analysis_static.lib ..\..\obj\release\lib\replaygain_synthesis_static.lib ..\..\obj\release\lib\getopt_static.lib ..\..\obj\release\lib\utf8_static.lib ..\..\obj\release\lib\ogg_static.lib"
-				OutputFile=".\..\..\obj\release\bin/flac.exe"
+				AdditionalDependencies="..\..\obj\release\lib\ogg_static.lib"
 				LinkIncremental="1"
-				SuppressStartupBanner="true"
-				ProgramDatabaseFile=".\..\..\obj\release\bin/flac.pdb"
+				IgnoreDefaultLibraryNames="uuid.lib"
+				GenerateDebugInformation="true"
 				SubSystem="1"
+				OptimizeReferences="2"
+				EnableCOMDATFolding="2"
+				LinkTimeCodeGeneration="1"
 				TargetMachine="1"
 			/>
 			<Tool
@@ -180,8 +164,6 @@
 			/>
 			<Tool
 				Name="VCBscMakeTool"
-				SuppressStartupBanner="true"
-				OutputFile=".\..\..\obj\release\bin/flac.bsc"
 			/>
 			<Tool
 				Name="VCFxCopTool"
@@ -201,190 +183,74 @@
 	</References>
 	<Files>
 		<Filter
-			Name="Source Files"
-			Filter="cpp;c;cxx;rc;def;r;odl;idl;hpj;bat"
+			Name="Header Files"
+			Filter="h;hpp;hxx;hm;inl;inc;xsd"
+			UniqueIdentifier="{93995380-89BD-4b04-88EB-625FBE52EBFB}"
 			>
 			<File
-				RelativePath="analyze.c"
+				RelativePath=".\analyze.h"
 				>
-				<FileConfiguration
-					Name="Debug|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Release|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
 			</File>
 			<File
-				RelativePath="decode.c"
+				RelativePath=".\decode.h"
 				>
-				<FileConfiguration
-					Name="Debug|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Release|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
 			</File>
 			<File
-				RelativePath="encode.c"
+				RelativePath=".\encode.h"
 				>
-				<FileConfiguration
-					Name="Debug|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Release|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
 			</File>
 			<File
-				RelativePath="local_string_utils.c"
+				RelativePath=".\foreign_metadata.h"
 				>
-				<FileConfiguration
-					Name="Debug|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Release|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
 			</File>
 			<File
-				RelativePath="main.c"
+				RelativePath=".\local_string_utils.h"
 				>
-				<FileConfiguration
-					Name="Debug|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Release|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
 			</File>
 			<File
-				RelativePath="utils.c"
+				RelativePath=".\utils.h"
 				>
-				<FileConfiguration
-					Name="Debug|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Release|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
 			</File>
 			<File
-				RelativePath="vorbiscomment.c"
+				RelativePath=".\vorbiscomment.h"
 				>
-				<FileConfiguration
-					Name="Debug|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Release|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						AdditionalIncludeDirectories=""
-						PreprocessorDefinitions=""
-					/>
-				</FileConfiguration>
 			</File>
 		</Filter>
 		<Filter
-			Name="Header Files"
-			Filter="h;hpp;hxx;hm;inl"
+			Name="Source Files"
+			Filter="cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx"
+			UniqueIdentifier="{4FC737F1-C7A5-4376-A066-2A32D752A2FF}"
 			>
 			<File
-				RelativePath="analyze.h"
+				RelativePath=".\analyze.c"
 				>
 			</File>
 			<File
-				RelativePath="decode.h"
+				RelativePath=".\decode.c"
 				>
 			</File>
 			<File
-				RelativePath="encode.h"
+				RelativePath=".\encode.c"
 				>
 			</File>
 			<File
-				RelativePath="local_string_utils.h"
+				RelativePath=".\foreign_metadata.c"
 				>
 			</File>
 			<File
-				RelativePath="utils.h"
+				RelativePath=".\local_string_utils.c"
 				>
 			</File>
 			<File
-				RelativePath="vorbiscomment.h"
+				RelativePath=".\main.c"
+				>
+			</File>
+			<File
+				RelativePath=".\utils.c"
+				>
+			</File>
+			<File
+				RelativePath=".\vorbiscomment.c"
 				>
 			</File>
 		</Filter>

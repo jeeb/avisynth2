@@ -1,5 +1,5 @@
 /* flac - Command-line FLAC encoder/decoder
- * Copyright (C) 2002,2003,2004,2005,2006  Josh Coalson
+ * Copyright (C) 2002,2003,2004,2005,2006,2007  Josh Coalson
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -18,6 +18,10 @@
 
 #ifndef flac__utils_h
 #define flac__utils_h
+
+#if HAVE_CONFIG_H
+#  include <config.h>
+#endif
 
 #include "FLAC/ordinals.h"
 #include "FLAC/format.h" /* for FLAC__StreamMetadata_CueSheet */

@@ -1,5 +1,5 @@
 /* grabbag - Convenience lib for various routines common to several tools
- * Copyright (C) 2002,2003,2004,2005,2006 Josh Coalson
+ * Copyright (C) 2002,2003,2004,2005,2006,2007  Josh Coalson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -53,8 +53,8 @@ FLAC__bool grabbag__file_are_same(const char *f1, const char *f2);
 FLAC__bool grabbag__file_remove_file(const char *filename);
 
 /* these will forcibly set stdin/stdout to binary mode (for OSes that require it) */
-FILE *grabbag__file_get_binary_stdin();
-FILE *grabbag__file_get_binary_stdout();
+FILE *grabbag__file_get_binary_stdin(void);
+FILE *grabbag__file_get_binary_stdout(void);
 
 #ifdef __cplusplus
 }
