@@ -267,7 +267,7 @@ bool AC3Output::initEncoder() {
   if (vi.AudioChannels() == 2) 
     aften.meta.dsurmod = params["dolbysurround"].AsBool()+1;
 
-  aften.system.n_threads = 1;  // Temporary fix to avoid hanging.
+  //aften.system.n_threads = 4;
 
   if (aften_encode_init(&aften)) {
      MessageBox(NULL,"Could not initialize encoder. Probably invalid input.","AC3 Encoder",MB_OK);
@@ -299,6 +299,10 @@ void AC3Output::encodeBlock(unsigned char* in, bool done) {
     exitThread = true;
     return;
   }
+
+  if (done && out)
+    encodeBlock(in, true);
+
   encodedSamples += done ? 0 : A52_SAMPLES_PER_FRAME;
   this->updateSampleStats(encodedSamples, vi.num_audio_samples);
 }
