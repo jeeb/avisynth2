@@ -79,12 +79,12 @@ static int getPlacement( const char* placement, IScriptEnvironment* env) {
 
 static ResamplingFunction* getResampler( const char* resampler, IScriptEnvironment* env) {
   if (resampler) {
-    if (!lstrcmpi(resampler, "point"))
+    if      (!lstrcmpi(resampler, "point"))
       return new PointFilter();
-    if (!lstrcmpi(resampler, "bilinear"))
+    else if (!lstrcmpi(resampler, "bilinear"))
       return new TriangleFilter();
     else if (!lstrcmpi(resampler, "bicubic"))
-      return new MitchellNetravaliFilter(1./3,1./3);
+      return new MitchellNetravaliFilter(1./3,1./3); // Parse out optional B= and C= from string
     else if (!lstrcmpi(resampler, "lanczos"))
       return new LanczosFilter(3);
     else if (!lstrcmpi(resampler, "lanczos4"))
@@ -95,12 +95,13 @@ static ResamplingFunction* getResampler( const char* resampler, IScriptEnvironme
       return new Spline16Filter();
     else if (!lstrcmpi(resampler, "spline36"))
       return new Spline36Filter();
-    else if (!lstrcmpi(resampler, "splint64"))
+    else if (!lstrcmpi(resampler, "spline64"))
       return new Spline64Filter();
     else if (!lstrcmpi(resampler, "gauss"))
       return new GaussianFilter(30.0);
+    else
+      env->ThrowError("Convert: Unknown chroma resampler, '%s'", resampler);
   }
-  env->ThrowError("Convert: Unknown chroma resampler");
   return new MitchellNetravaliFilter(1./3,1./3); // Default colorspace conversion for AviSynth
 }
 
