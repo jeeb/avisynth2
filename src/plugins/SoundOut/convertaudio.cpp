@@ -666,16 +666,16 @@ c32f_loop:
       break;
     }
     case SAMPLE_INT24: {
-      float multiplier = (float)(1<<23);
-      float maxF = (float)((1<<23) - 1);
-      float minF = -(float)((1<<23) -1);
+      float multiplier =  (float)(1<<23);        // 0x00800000
+      float maxF       =  (float)((1<<23) - 1);  // 0x007fffff
+      float minF       = -(float)(1<<23);        // 0xff800000
       unsigned char* samples = (unsigned char*)outbuf;
-      int c_loop = (count-8) - ((count-8)&3); // in samples
-      int c_miss = count-c_loop;
+      int c_miss = count & 3;
+      if (c_miss == 0 && count != 0) c_miss=4;
+      int c_loop = count-c_miss; // in samples
       if (c_loop) {        
         __asm {
           xor eax,eax                   // input offset count
-          xor ecx,ecx                   // dest offset count
           mov edx, [c_loop]
           shl edx, 2                     // in input bytes (*4)
           movd mm7,[multiplier]
@@ -689,26 +689,26 @@ c32f_loop:
           align 16
 c24f_loop:
           movq mm1, [esi+eax]            //  b b | a a
-            movq mm2, [esi+eax+8]          //  d d | c c
-            pfmul mm1,mm7                  // x * 24 bit
-            pfmul mm2,mm7                  // x * 24 bit
-            pfmax mm1,mm5
-            pfmax mm2,mm5
-            pfmin mm1,mm6
-            pfmin mm2,mm6
-            pf2id mm1, mm1                 //  xb=int(b) | xa=int(a)
-            pf2id mm2, mm2                 //  xb=int(d) | xa=int(c)            
-            pshufw mm3,mm1,11101110b
-            pshufw mm4,mm1,11101110b
-            movd [edi+ecx], mm1            //  store xb | xa
-            movd [edi+ecx+3], mm3            //  store xb | xa
-            movd [edi+ecx+6], mm2          //  store xd | xc
-            movd [edi+ecx+9], mm4          //  store xd | xc
-            add eax,16
-            add ecx,12
-            cmp eax, edx
-            jne c24f_loop
-            emms
+          movq mm2, [esi+eax+8]          //  d d | c c
+          pfmul mm1,mm7                  // x * 24 bit
+          pfmul mm2,mm7                  // x * 24 bit
+          pfmax mm1,mm5
+          pfmax mm2,mm5
+          pfmin mm1,mm6
+          pfmin mm2,mm6
+          pf2id mm1, mm1                 //  xb=int(b) | xa=int(a)
+          pf2id mm2, mm2                 //  xb=int(d) | xa=int(c)            
+          pshufw mm3,mm1,11101110b       //  xb | xb
+          pshufw mm4,mm2,11101110b       //  xd | xd
+          movd [edi], mm1                //  store xa
+          movd [edi+3], mm3              //  store xb
+          movd [edi+6], mm2              //  store xc
+          movd [edi+9], mm4              //  store xd + 1 byte of crap
+          add eax,16
+          add edi,12
+          cmp eax, edx
+          jne c24f_loop
+          emms
         }
       }
       for (i=0;i<c_miss;i++) {
