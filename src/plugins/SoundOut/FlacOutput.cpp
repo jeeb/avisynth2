@@ -56,7 +56,7 @@ BOOL CALLBACK FlacDialogProc(
   return false;
 }
 
-FlacOutput::FlacOutput(PClip _child, IScriptEnvironment* _env) : SoundOutput(ConvertAudio::Create(_child, SAMPLE_INT8|SAMPLE_INT16,SAMPLE_INT16),_env)
+FlacOutput::FlacOutput(PClip _child, IScriptEnvironment* _env) : SoundOutput(ConvertAudio::Create(_child, SAMPLE_INT8|SAMPLE_INT16|SAMPLE_INT24,SAMPLE_INT24),_env)
 {
   params["outputFileFilter"] = AVSValue("FLAC files\0*.flac\0All Files\0*.*\0\0");
   params["extension"] = AVSValue(".flac");
