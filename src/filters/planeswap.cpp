@@ -101,7 +101,8 @@ PVideoFrame __stdcall SwapUV::GetFrame(int n, IScriptEnvironment* env) {
         srcp += src->GetPitch();
       }
       return src;
-    } else { // avoid the cost of a frame blit, we have to parse the frame anyway
+    }
+	else { // avoid the cost of a frame blit, we have to parse the frame anyway
       const BYTE* srcp = src->GetReadPtr();
       PVideoFrame dst = env->NewVideoFrame(vi);
       
@@ -132,10 +133,10 @@ PVideoFrame __stdcall SwapUV::GetFrame(int n, IScriptEnvironment* env) {
         }
       }
       return dst;
-      }
     }
-    return src;
   }
+  return src;
+}
 
 
 void SwapUV::isse_inplace_yuy2_swap(const BYTE* srcp, BYTE* dstp, int rowsize16, int rowsize8, int rowsize4, int height, int srcpitch, int dstpitch) {
@@ -206,7 +207,7 @@ oneleft:
             movd      [edi+eax],mm0
             align     16
 noneleft:
-          add       esi,[srcpitch]
+            add       esi,[srcpitch]
             add       edi,[dstpitch]
             xor       eax,eax
             dec       ecx
@@ -214,7 +215,7 @@ noneleft:
 done:
           emms
         }
-  }
+}
 
 AVSValue __cdecl SwapUVToY::CreateUToY(AVSValue args, void* user_data, IScriptEnvironment* env) {
   return new SwapUVToY(args[0].AsClip(), UToY, env);
@@ -329,7 +330,7 @@ PVideoFrame __stdcall SwapUVToY::GetFrame(int n, IScriptEnvironment* env) {
 
   // Clear chroma
   const int pitch = dst->GetPitch(PLANAR_U)/4;
-  const int myx = dst->GetRowSize(PLANAR_U_ALIGNED)/4;
+  const int myx = (dst->GetRowSize(PLANAR_U)+3)/4;
   const int myy = dst->GetHeight(PLANAR_U);
 
   int *srcpUV = (int*)dst->GetWritePtr(PLANAR_U);
@@ -453,8 +454,8 @@ PVideoFrame __stdcall SwapYToUV::GetFrame(int n, IScriptEnvironment* env) {
     else {
       for (int y=0; y<vi.height; y++) {
         for (int x = 0; x < endx; x+=2) {
-          dstp[x+0] = (srcpU[x] << 8) | 0x7f;  // Luma = 127
-          dstp[x+1] = (srcpV[x] << 8) | 0x7f;
+          dstp[x+0] = (srcpU[x] << 8) | 0x7e;  // Luma = 126
+          dstp[x+1] = (srcpV[x] << 8) | 0x7e;
         }
         srcpU += srcUpitch;
         srcpV += srcVpitch;
@@ -470,14 +471,14 @@ PVideoFrame __stdcall SwapYToUV::GetFrame(int n, IScriptEnvironment* env) {
   env->BitBlt(dst->GetWritePtr(PLANAR_V),dst->GetPitch(PLANAR_V),src->GetReadPtr(PLANAR_Y),src->GetPitch(PLANAR_Y),src->GetRowSize(PLANAR_Y),src->GetHeight(PLANAR_Y));
   
   if (!clipY) {
-    // Luma = 127
+    // Luma = 126
     const int pitch = dst->GetPitch(PLANAR_Y)/4;
     int *dstpY = (int*)dst->GetWritePtr(PLANAR_Y);
-    const int myx = dst->GetRowSize(PLANAR_Y_ALIGNED)/4;
+    const int myx = (dst->GetRowSize(PLANAR_Y)+3)/4;
     const int myy = dst->GetHeight(PLANAR_Y);
     for (int y=0; y<myy; y++) {
       for (int x=0; x<myx; x++) {
-        dstpY[x] = 0x7f7f7f7f;  // mod 4
+        dstpY[x] = 0x7e7e7e7e;  // mod 4
       }
       dstpY += pitch;
     }
