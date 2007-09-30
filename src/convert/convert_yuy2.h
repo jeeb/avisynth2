@@ -41,15 +41,14 @@
 #include "../core/softwire_helpers.h"
 
 
-class ConvertToYUY2 : public GenericVideoFilter, public  CodeGenerator 
+class ConvertToYUY2 : public GenericVideoFilter, public CodeGenerator
 /**
   * Class for conversions to YUY2
  **/
 {
 public:
-  ConvertToYUY2(PClip _child, bool _interlaced, const char *matrix, IScriptEnvironment* env);
+  ConvertToYUY2(PClip _child, bool _dupl, bool _interlaced, const char *matrix, IScriptEnvironment* env);
   ~ConvertToYUY2();
-
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
 
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
@@ -70,15 +69,15 @@ protected:
   const BYTE* dyn_src;
   BYTE* dyn_dst;
 
-  // These must be set BEFORE calling the generator, and CANNOT be changed runtime!
+  // These must be set BEFORE creating the generator, and CANNOT be changed at runtime!
   const __int64* dyn_cybgr;
   const __int64* dyn_fpix_mul;
   const int* dyn_fraction;
   const int* dyn_y1y2_mult;
-  
+
 };
 
-class ConvertBackToYUY2 : public ConvertToYUY2 
+class ConvertBackToYUY2 : public ConvertToYUY2
 /**
   * Class for conversions to YUY2 (With Chroma copy)
  **/
@@ -86,8 +85,12 @@ class ConvertBackToYUY2 : public ConvertToYUY2
 public:
   ConvertBackToYUY2(PClip _child, const char *matrix, IScriptEnvironment* env);
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
+
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
 
+private:
+  void mmxYV24toYUY2(const unsigned char *py, const unsigned char *pu, const unsigned char *pv,
+                     unsigned char *dst, int pitch1Y, int pitch1UV, int pitch2, int width, int height);
 };
 
-#endif
+#endif // __Convert_YUY2_H__

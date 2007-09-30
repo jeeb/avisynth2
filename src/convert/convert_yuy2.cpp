@@ -72,13 +72,13 @@
  *******   Convert to YUY2   ******
  *********************************/
 
-ConvertToYUY2::ConvertToYUY2(PClip _child, bool _interlaced, const char *matrix, IScriptEnvironment* env)
+ConvertToYUY2::ConvertToYUY2(PClip _child, bool _dupl, bool _interlaced, const char *matrix, IScriptEnvironment* env)
   : GenericVideoFilter(_child), interlaced(_interlaced),src_cs(vi.pixel_type)
 {
-  if (vi.height&3 && vi.IsYV12() && interlaced) 
+  if (vi.height&3 && vi.IsYV12() && interlaced)
     env->ThrowError("ConvertToYUY2: Cannot convert from interlaced YV12 if height is not multiple of 4. Use Crop!");
 
-  if (vi.height&1 && vi.IsYV12() ) 
+  if (vi.height&1 && vi.IsYV12() )
     env->ThrowError("ConvertToYUY2: Cannot convert from YV12 if height is not even. Use Crop!");
 
   if (vi.width & 1)
@@ -101,12 +101,12 @@ ConvertToYUY2::ConvertToYUY2(PClip _child, bool _interlaced, const char *matrix,
       env->ThrowError("ConvertToYUY2: invalid \"matrix\" parameter (must be matrix=\"Rec601\", \"Rec709\", \"PC.601\" or \"PC.709\")");
   }
 
-  if (vi.IsRGB()) {  // Generate MMX
+  if ((env->GetCPUFlags() & CPUF_MMX) && vi.IsRGB()) {  // Generate MMX
     dyn_fraction = &fraction[theMatrix];
     dyn_cybgr = &cybgr_64[theMatrix];
     dyn_y1y2_mult = &y1y2_mult[theMatrix];
     dyn_fpix_mul = &fpix_mul[theMatrix];
-    this->GenerateAssembly(vi.IsRGB24(), false, theMatrix < 2, vi.width, env);
+    this->GenerateAssembly(vi.IsRGB24(), _dupl, (theMatrix < 2), vi.width, env);
   }
 
   vi.pixel_type = VideoInfo::CS_YUY2;
@@ -116,46 +116,44 @@ ConvertToYUY2::~ConvertToYUY2() {
   assembly.Free();
 }
 
-PVideoFrame __stdcall ConvertToYUY2::GetFrame(int n, IScriptEnvironment* env) 
+PVideoFrame __stdcall ConvertToYUY2::GetFrame(int n, IScriptEnvironment* env)
 {
   PVideoFrame src = child->GetFrame(n, env);
 
-  if ((env->GetCPUFlags() & CPUF_MMX)) {
-	  if ((src_cs&VideoInfo::CS_BGR32)==VideoInfo::CS_BGR32) {
-			PVideoFrame dst = env->NewVideoFrame(vi);
-			BYTE* yuv = dst->GetWritePtr();
-			mmx_ConvertRGBtoYUY2(src->GetReadPtr(),yuv ,src->GetPitch(), dst->GetPitch(), vi.height);
-		  return dst;
-    } else  if ((src_cs&VideoInfo::CS_BGR24)==VideoInfo::CS_BGR24) {
-			PVideoFrame dst = env->NewVideoFrame(vi);
-			BYTE* yuv = dst->GetWritePtr();
-			mmx_ConvertRGBtoYUY2(src->GetReadPtr(),yuv ,src->GetPitch(), dst->GetPitch(),vi.height);
-		  return dst;
-    }
-  }
-
-  if (((src_cs&VideoInfo::CS_YV12)==VideoInfo::CS_YV12)||((src_cs&VideoInfo::CS_I420)==VideoInfo::CS_I420)) {  
+  if (((src_cs&VideoInfo::CS_YV12)==VideoInfo::CS_YV12)||((src_cs&VideoInfo::CS_I420)==VideoInfo::CS_I420)) {
     PVideoFrame dst = env->NewVideoFrame(vi,32);  // We need a bit more pitch here.
     BYTE* yuv = dst->GetWritePtr();
     if (interlaced) {
-		  if ((env->GetCPUFlags() & CPUF_INTEGER_SSE)) {
-        isse_yv12_i_to_yuy2(src->GetReadPtr(PLANAR_Y), src->GetReadPtr(PLANAR_U), src->GetReadPtr(PLANAR_V), src->GetRowSize(PLANAR_Y_ALIGNED), src->GetPitch(PLANAR_Y), src->GetPitch(PLANAR_U), 
+      if ((env->GetCPUFlags() & CPUF_INTEGER_SSE)) {
+        isse_yv12_i_to_yuy2(src->GetReadPtr(PLANAR_Y), src->GetReadPtr(PLANAR_U), src->GetReadPtr(PLANAR_V),
+                      src->GetRowSize(PLANAR_Y_ALIGNED), src->GetPitch(PLANAR_Y), src->GetPitch(PLANAR_U),
                       yuv, dst->GetPitch() ,src->GetHeight());
       } else {
-        mmx_yv12_i_to_yuy2(src->GetReadPtr(PLANAR_Y), src->GetReadPtr(PLANAR_U), src->GetReadPtr(PLANAR_V), src->GetRowSize(PLANAR_Y_ALIGNED), src->GetPitch(PLANAR_Y), src->GetPitch(PLANAR_U), 
-                    yuv, dst->GetPitch() ,src->GetHeight());
+        mmx_yv12_i_to_yuy2(src->GetReadPtr(PLANAR_Y), src->GetReadPtr(PLANAR_U), src->GetReadPtr(PLANAR_V),
+                      src->GetRowSize(PLANAR_Y_ALIGNED), src->GetPitch(PLANAR_Y), src->GetPitch(PLANAR_U),
+                      yuv, dst->GetPitch() ,src->GetHeight());
       }
     } else {
-		  if ((env->GetCPUFlags() & CPUF_INTEGER_SSE)) {
-        isse_yv12_to_yuy2(src->GetReadPtr(PLANAR_Y), src->GetReadPtr(PLANAR_U), src->GetReadPtr(PLANAR_V), src->GetRowSize(PLANAR_Y_ALIGNED), src->GetPitch(PLANAR_Y), src->GetPitch(PLANAR_U), 
+      if ((env->GetCPUFlags() & CPUF_INTEGER_SSE)) {
+        isse_yv12_to_yuy2(src->GetReadPtr(PLANAR_Y), src->GetReadPtr(PLANAR_U), src->GetReadPtr(PLANAR_V),
+                      src->GetRowSize(PLANAR_Y_ALIGNED), src->GetPitch(PLANAR_Y), src->GetPitch(PLANAR_U),
                       yuv, dst->GetPitch() ,src->GetHeight());
       } else {
-        mmx_yv12_to_yuy2(src->GetReadPtr(PLANAR_Y), src->GetReadPtr(PLANAR_U), src->GetReadPtr(PLANAR_V), src->GetRowSize(PLANAR_Y_ALIGNED), src->GetPitch(PLANAR_Y), src->GetPitch(PLANAR_U), 
+        mmx_yv12_to_yuy2(src->GetReadPtr(PLANAR_Y), src->GetReadPtr(PLANAR_U), src->GetReadPtr(PLANAR_V),
+                      src->GetRowSize(PLANAR_Y_ALIGNED), src->GetPitch(PLANAR_Y), src->GetPitch(PLANAR_U),
                       yuv, dst->GetPitch() ,src->GetHeight());
       }
     }
     return dst;
   }
+
+  if (env->GetCPUFlags() & CPUF_MMX) {
+    PVideoFrame dst = env->NewVideoFrame(vi);
+    BYTE* yuv = dst->GetWritePtr();
+    mmx_ConvertRGBtoYUY2(src->GetReadPtr(), yuv ,src->GetPitch(), dst->GetPitch(), vi.height);
+    return dst;
+  }
+
 // non MMX machines.
 
   PVideoFrame dst = env->NewVideoFrame(vi);
@@ -166,6 +164,44 @@ PVideoFrame __stdcall ConvertToYUY2::GetFrame(int n, IScriptEnvironment* env)
   const int rgb_offset = -src->GetPitch() - src->GetRowSize();
   const int rgb_inc = ((src_cs&VideoInfo::CS_BGR32)==VideoInfo::CS_BGR32) ? 4 : 3;
 
+/* Prototype 1-2-1 Kernel version
+  if (theMatrix == PC_601) {
+    const int cyb = int(0.114*65536+0.5);
+    const int cyg = int(0.587*65536+0.5);
+    const int cyr = int(0.299*65536+0.5);
+
+    const int ku  = int(127./(255.*(1.0-0.114))*16384+0.5);
+    const int kv  = int(127./(255.*(1.0-0.299))*16384+0.5);
+
+    for (int y=vi.height; y>0; --y)
+    {
+      const BYTE* rgb_prev = rgb;
+      int y0 = (cyb*rgb_prev[0] + cyg*rgb_prev[1] + cyr*rgb_prev[2] + 0x8000) >> 16;
+      for (int x = 0; x < vi.width; x += 2)
+      {
+        const BYTE* const rgb_next = rgb + rgb_inc;
+        // y1 and y2 can't overflow
+        const int y1       = (cyb*rgb[0] + cyg*rgb[1] + cyr*rgb[2] + 0x8000) >> 16;
+        yuv[0]             = y1;
+        const int y2       = (cyb*rgb_next[0] + cyg*rgb_next[1] + cyr*rgb_next[2] + 0x8000) >> 16;
+        yuv[2]             = y2;
+        const int scaled_y = y0+y1*2+y2;
+        y0                 = y2;
+        const int b_y      = (rgb_prev[0]+rgb[0]*2+rgb_next[0]) - scaled_y;
+        yuv[1]             = ScaledPixelClip(b_y * ku + 0x800000);  // u
+        const int r_y      = (rgb_prev[2]+rgb[2]*2+rgb_next[2]) - scaled_y;
+        yuv[3]             = ScaledPixelClip(r_y * kv + 0x800000);  // v
+        rgb_prev           = rgb_next;
+        rgb                = rgb_next + rgb_inc;
+        yuv               += 4;
+      }
+      rgb += rgb_offset;
+      yuv += yuv_offset;
+    }
+  }
+*/
+
+/* Existing 0-1-1 Kernel version */
   if (theMatrix == PC_601) {
     const int cyb = int(0.114*65536+0.5);
     const int cyg = int(0.587*65536+0.5);
@@ -174,9 +210,9 @@ PVideoFrame __stdcall ConvertToYUY2::GetFrame(int n, IScriptEnvironment* env)
     const int ku  = int(127./(255.*(1.0-0.114))*32768+0.5);
     const int kv  = int(127./(255.*(1.0-0.299))*32768+0.5);
 
-    for (int y=vi.height; y>0; --y) 
+    for (int y=vi.height; y>0; --y)
     {
-      for (int x = 0; x < vi.width; x += 2) 
+      for (int x = 0; x < vi.width; x += 2)
       {
         const BYTE* const rgb_next = rgb + rgb_inc;
         // y1 and y2 can't overflow
@@ -197,15 +233,15 @@ PVideoFrame __stdcall ConvertToYUY2::GetFrame(int n, IScriptEnvironment* env)
     }
   } else if (theMatrix == PC_709) {
     const int cyb = int(0.0721*65536+0.5);
-    const int cyg = int(0.7154*65536+0.5); 
+    const int cyg = int(0.7154*65536+0.5);
     const int cyr = int(0.2125*65536+0.5);
 
     const int ku  = int(127./(255.*(1.0-0.0721))*32768+0.5);
     const int kv  = int(127./(255.*(1.0-0.2125))*32768+0.5);
 
-    for (int y=vi.height; y>0; --y) 
+    for (int y=vi.height; y>0; --y)
     {
-      for (int x = 0; x < vi.width; x += 2) 
+      for (int x = 0; x < vi.width; x += 2)
       {
         const BYTE* const rgb_next = rgb + rgb_inc;
         // y1 and y2 can't overflow
@@ -232,9 +268,9 @@ PVideoFrame __stdcall ConvertToYUY2::GetFrame(int n, IScriptEnvironment* env)
     const int ku  = int(112./(255.*(1.0-0.0721))*32768+0.5);
     const int kv  = int(112./(255.*(1.0-0.2125))*32768+0.5);
 
-    for (int y=vi.height; y>0; --y) 
+    for (int y=vi.height; y>0; --y)
     {
-      for (int x = 0; x < vi.width; x += 2) 
+      for (int x = 0; x < vi.width; x += 2)
       {
         const BYTE* const rgb_next = rgb + rgb_inc;
         // y1 and y2 can't overflow
@@ -257,10 +293,10 @@ PVideoFrame __stdcall ConvertToYUY2::GetFrame(int n, IScriptEnvironment* env)
     const int cyb = int(0.114*219/255*65536+0.5);
     const int cyg = int(0.587*219/255*65536+0.5);
     const int cyr = int(0.299*219/255*65536+0.5);
- 
-    for (int y=vi.height; y>0; --y) 
+
+    for (int y=vi.height; y>0; --y)
     {
-      for (int x = 0; x < vi.width; x += 2) 
+      for (int x = 0; x < vi.width; x += 2)
       {
         const BYTE* const rgb_next = rgb + rgb_inc;
         // y1 and y2 can't overflow
@@ -285,7 +321,7 @@ PVideoFrame __stdcall ConvertToYUY2::GetFrame(int n, IScriptEnvironment* env)
 }
 
 
-AVSValue __cdecl ConvertToYUY2::Create(AVSValue args, void*, IScriptEnvironment* env) 
+AVSValue __cdecl ConvertToYUY2::Create(AVSValue args, void*, IScriptEnvironment* env)
 {
   PClip clip = args[0].AsClip();
   if (clip->GetVideoInfo().IsYUY2())
@@ -294,10 +330,10 @@ AVSValue __cdecl ConvertToYUY2::Create(AVSValue args, void*, IScriptEnvironment*
     AVSValue new_args[5] = { clip, args[1].AsBool(false), args[2].AsString("rec601"), args[3].AsString("MPEG2"), args[4].AsString("Bicubic") }; 
     clip = ConvertToPlanarGeneric::CreateYV16(AVSValue(new_args, 5), NULL,  env).AsClip();
   }
-  if (clip->GetVideoInfo().IsYV16()) 
+  if (clip->GetVideoInfo().IsYV16())
     return new ConvertYV16ToYUY2(clip,  env);
   bool i=args[1].AsBool(false);
-  return new ConvertToYUY2(clip, i, args[2].AsString(0), env);
+  return new ConvertToYUY2(clip, false, i, args[2].AsString(0), env);
 }
 
 
@@ -312,37 +348,105 @@ AVSValue __cdecl ConvertToYUY2::Create(AVSValue args, void*, IScriptEnvironment*
  ****************************************************/
 
 ConvertBackToYUY2::ConvertBackToYUY2(PClip _child, const char *matrix, IScriptEnvironment* env)
-  : ConvertToYUY2(_child, false, matrix, env)
+  : ConvertToYUY2(_child, true, false, matrix, env)
 {
-  if (!_child->GetVideoInfo().IsRGB())
+  if (!_child->GetVideoInfo().IsRGB() && !_child->GetVideoInfo().IsYV24())
     env->ThrowError("ConvertBackToYUY2: Use ConvertToYUY2 to convert non-RGB material to YUY2.");
+}
 
-  if (_child->GetVideoInfo().IsRGB()) {  // Generate MMX
-    assembly.Free(); // Release old version
-    // Regenerate setting duplicate to true.
-    this->GenerateAssembly(_child->GetVideoInfo().IsRGB24(), true, theMatrix < 2, vi.width, env);
+
+void ConvertBackToYUY2::mmxYV24toYUY2(const unsigned char *py, const unsigned char *pu, const unsigned char *pv,
+                                       unsigned char *dst, 
+                                       int pitch1Y, int pitch1UV, int pitch2, int width, int height)
+{
+    __asm
+  {
+      mov       ecx,[py]
+      mov       edx,[pu]
+      mov       esi,[pv]
+      mov       edi,[dst]
+      pcmpeqb   mm7,mm7             ;ffffffffffffffff
+      psrlw     mm7,8               ;00ff00ff00ff00ff
+yloop:
+      xor       eax,eax
+      align     16
+xloop:
+      movq      mm1,[edx+eax]       ;uUuUuUuU
+      movq      mm2,[esi+eax]       ;vVvVvVvV
+      pand      mm1,mm7             ;.U.U.U.U
+      psllw     mm2,8               ;V.V.V.V.
+      movq      mm0,[ecx+eax]       ;YYYYYYYY
+      por       mm1,mm2             ;VUVUVUVU
+      movq      mm3,mm0
+      punpcklbw mm0,mm1             ;VYUYVYUY
+      add       eax,8
+      punpckhbw mm3,mm1             ;VYUYVYUY
+      movq      [edi+eax*2-16],mm0  ;store
+      cmp       eax,width
+      movq      [edi+eax*2-8],mm3   ;store
+      jl        xloop
+
+      add       ecx,pitch1Y
+      add       edx,pitch1UV
+      add       esi,pitch1UV
+      add       edi,pitch2
+      dec       height
+      jnz       yloop
+      emms
   }
 }
 
 
-PVideoFrame __stdcall ConvertBackToYUY2::GetFrame(int n, IScriptEnvironment* env) 
+PVideoFrame __stdcall ConvertBackToYUY2::GetFrame(int n, IScriptEnvironment* env)
 {
   PVideoFrame src = child->GetFrame(n, env);
-	if ((env->GetCPUFlags() & CPUF_MMX)) {
-			PVideoFrame dst = env->NewVideoFrame(vi);
-			BYTE* yuv = dst->GetWritePtr();
-			mmx_ConvertRGBtoYUY2(src->GetReadPtr(),yuv ,src->GetPitch(), dst->GetPitch(), vi.height);
-			return dst;
-	}
+
+  if ((src_cs&VideoInfo::CS_YV24)==VideoInfo::CS_YV24) {
+    PVideoFrame dst = env->NewVideoFrame(vi, 16);
+    BYTE* dstp = dst->GetWritePtr();
+
+    const BYTE* srcY = src->GetReadPtr(PLANAR_Y);
+    const BYTE* srcU = src->GetReadPtr(PLANAR_U);
+    const BYTE* srcV = src->GetReadPtr(PLANAR_V);
+
+    const int awidth = min(src->GetPitch(PLANAR_Y), (vi.width+7) & -8);
+
+    if (!(awidth&7) && (env->GetCPUFlags() & CPUF_MMX)) {  // Use MMX
+      mmxYV24toYUY2(srcY, srcU, srcV, dstp,
+                    src->GetPitch(PLANAR_Y), src->GetPitch(PLANAR_U), dst->GetPitch(),
+                    awidth, vi.height);
+    }
+
+    for (int y=0; y<vi.height; y++) {
+      for (int x2=0, x4=0; x2<vi.width; x2+=2, x4+=4) {
+        dstp[x4+0] = srcY[x2];
+        dstp[x4+1] = srcU[x2];
+        dstp[x4+2] = srcY[x2+1];
+        dstp[x4+3] = srcV[x2];
+      }
+      srcY += src->GetPitch(PLANAR_Y);
+      srcU += src->GetPitch(PLANAR_U);
+      srcV += src->GetPitch(PLANAR_V);
+      dstp += dst->GetPitch();
+    }
+    return dst;
+  }
 
   PVideoFrame dst = env->NewVideoFrame(vi);
   BYTE* yuv = dst->GetWritePtr();
+
+  if (env->GetCPUFlags() & CPUF_MMX) {
+      mmx_ConvertRGBtoYUY2(src->GetReadPtr(),yuv ,src->GetPitch(), dst->GetPitch(), vi.height);
+      return dst;
+  }
+
   const BYTE* rgb = src->GetReadPtr() + (vi.height-1) * src->GetPitch();
 
   const int yuv_offset = dst->GetPitch() - dst->GetRowSize();
   const int rgb_offset = -src->GetPitch() - src->GetRowSize();
   const int rgb_inc = (src_cs&VideoInfo::CS_BGR32)==VideoInfo::CS_BGR32 ? 4 : 3;
 
+/* Existing 0-1-0 Kernel version */
   if (theMatrix == PC_601) {
     const int cyb = int(0.114*65536+0.5);
     const int cyg = int(0.587*65536+0.5);
@@ -351,9 +455,9 @@ PVideoFrame __stdcall ConvertBackToYUY2::GetFrame(int n, IScriptEnvironment* env
     const int ku  = int(127./(255.*(1.0-0.114))*65536+0.5);
     const int kv  = int(127./(255.*(1.0-0.299))*65536+0.5);
 
-    for (int y=vi.height; y>0; --y) 
+    for (int y=vi.height; y>0; --y)
     {
-      for (int x = 0; x < vi.width; x += 2) 
+      for (int x = 0; x < vi.width; x += 2)
       {
         const BYTE* const rgb_next = rgb + rgb_inc;
         // y1 and y2 can't overflow
@@ -380,9 +484,9 @@ PVideoFrame __stdcall ConvertBackToYUY2::GetFrame(int n, IScriptEnvironment* env
     const int ku  = int(127./(255.*(1.0-0.0721))*65536+0.5);
     const int kv  = int(127./(255.*(1.0-0.2125))*65536+0.5);
 
-    for (int y=vi.height; y>0; --y) 
+    for (int y=vi.height; y>0; --y)
     {
-      for (int x = 0; x < vi.width; x += 2) 
+      for (int x = 0; x < vi.width; x += 2)
       {
         const BYTE* const rgb_next = rgb + rgb_inc;
         // y1 and y2 can't overflow
@@ -409,9 +513,9 @@ PVideoFrame __stdcall ConvertBackToYUY2::GetFrame(int n, IScriptEnvironment* env
     const int ku  = int(112./(255.*(1.0-0.0721))*32768+0.5);
     const int kv  = int(112./(255.*(1.0-0.2125))*32768+0.5);
 
-    for (int y=vi.height; y>0; --y) 
+    for (int y=vi.height; y>0; --y)
     {
-      for (int x = 0; x < vi.width; x += 2) 
+      for (int x = 0; x < vi.width; x += 2)
       {
         const BYTE* const rgb_next = rgb + rgb_inc;
         // y1 and y2 can't overflow
@@ -435,9 +539,9 @@ PVideoFrame __stdcall ConvertBackToYUY2::GetFrame(int n, IScriptEnvironment* env
     const int cyg = int(0.587*219/255*65536+0.5);
     const int cyr = int(0.299*219/255*65536+0.5);
 
-    for (int y=vi.height; y>0; --y) 
+    for (int y=vi.height; y>0; --y)
     {
-      for (int x = 0; x < vi.width; x += 2) 
+      for (int x = 0; x < vi.width; x += 2)
       {
         const BYTE* const rgb_next = rgb + rgb_inc;
         // y1 and y2 can't overflow
@@ -461,13 +565,11 @@ PVideoFrame __stdcall ConvertBackToYUY2::GetFrame(int n, IScriptEnvironment* env
   return dst;
 }
 
-AVSValue __cdecl ConvertBackToYUY2::Create(AVSValue args, void*, IScriptEnvironment* env) 
+AVSValue __cdecl ConvertBackToYUY2::Create(AVSValue args, void*, IScriptEnvironment* env)
 {
   PClip clip = args[0].AsClip();
   if (!clip->GetVideoInfo().IsYUY2())
     return new ConvertBackToYUY2(clip, args[1].AsString(0), env);
-  if (clip->GetVideoInfo().IsYV16()) 
-    return new ConvertYV16ToYUY2(clip,  env);
 
   return clip;
 }
@@ -486,16 +588,16 @@ AVSValue __cdecl ConvertBackToYUY2::Create(AVSValue args, void*, IScriptEnvironm
    ********************************/
 
   /********************************
-	 * - Notes on MMX:
-	 * Fractions are one bit less than integer code,
-	 *  but otherwise the algorithm is the same, except
-	 *  r_y and b_y are calculated at the same time.
-	 * Order of executin has been changed much for better pairing possibilities.
-	 * It is important that the 64bit values are 8 byte-aligned
-	 *  otherwise it will give a huge penalty when accessing them.
-	 * Instructions pair rather ok, instructions from the top is merged
-	 *  into last part, to avoid dependency stalls.
-	 *****************************/
+   * - Notes on MMX:
+   * Fractions are one bit less than integer code,
+   *  but otherwise the algorithm is the same, except
+   *  r_y and b_y are calculated at the same time.
+   * Order of executin has been changed much for better pairing possibilities.
+   * It is important that the 64bit values are 8 byte-aligned
+   *  otherwise it will give a huge penalty when accessing them.
+   * Instructions pair rather ok, instructions from the top is merged
+   *  into last part, to avoid dependency stalls.
+   *****************************/
 
 void ConvertToYUY2::GenerateAssembly(bool rgb24, bool dupl, bool sub, int w, IScriptEnvironment* env)  {
   bool isse = !!(env->GetCPUFlags() & CPUF_INTEGER_SSE);
@@ -517,102 +619,102 @@ void ConvertToYUY2::GenerateAssembly(bool rgb24, bool dupl, bool sub, int w, ISc
   x86.push(esi);
   x86.push(edi);
   x86.push(ebp);
-  
-          
-	x86.movd(mm0,dword_ptr[dyn_fraction]);
-	x86.movq(mm7,qword_ptr[dyn_cybgr]);
-	x86.movd(mm5,dword_ptr[dyn_y1y2_mult]);
 
-	x86.mov(SRC,dword_ptr[&dyn_src]);  // Get first
+
+  x86.movd(mm0,dword_ptr[dyn_fraction]);
+  x86.movq(mm7,qword_ptr[dyn_cybgr]);
+  x86.movd(mm5,dword_ptr[dyn_y1y2_mult]);
+
+  x86.mov(SRC,dword_ptr[&dyn_src]);  // Get first
   x86.mov(DST,dword_ptr[&dyn_dst]);
-	x86.mov(RGBOFFSET,0);
-	x86.mov(YUVOFFSET,0);
+  x86.mov(RGBOFFSET,0);
+  x86.mov(YUVOFFSET,0);
 
-	x86.movq(mm2,qword_ptr[SRC+RGBOFFSET]);      //mm2= XXR2 G2B2 XXR1 G1B1
+  x86.movq(mm2,qword_ptr[SRC+RGBOFFSET]);      //mm2= XXR2 G2B2 XXR1 G1B1
   x86.cmp(RGBOFFSET,lwidth_bytes);
-	x86.punpcklbw(mm1,mm2);             // mm1= XXxx R1xx G1xx B1xx
+  x86.punpcklbw(mm1,mm2);             // mm1= XXxx R1xx G1xx B1xx
   if (rgb24) {
-		x86.psllq(mm2,8);                  // Compensate for RGB24
+    x86.psllq(mm2,8);                  // Compensate for RGB24
   }
 
-	x86.align(16);
+  x86.align(16);
   x86.label("re_enter");
 
-	x86.punpckhbw(mm2,mm0);             // mm2= 00XX 00R2 00G2 00B2 
-	x86.psrlw(mm1,8);               // mm1= 00XX 00R1 00G1 00B1
+  x86.punpckhbw(mm2,mm0);             // mm2= 00XX 00R2 00G2 00B2
+  x86.psrlw(mm1,8);               // mm1= 00XX 00R1 00G1 00B1
   x86.jge("outloop");             // Jump out of loop if true (width==0)
 
-	x86.movq(mm6,mm1);             // mm6= 00XX 00R1 00G1 00B1
-	x86.pmaddwd(mm1,mm7);             // mm1= v2v2 v2v2 v1v1 v1v1   y1 //(cyb*rgb[0] + cyg*rgb[1] + cyr*rgb[2] + 0x108000)
+  x86.movq(mm6,mm1);             // mm6= 00XX 00R1 00G1 00B1
+  x86.pmaddwd(mm1,mm7);             // mm1= v2v2 v2v2 v1v1 v1v1   y1 //(cyb*rgb[0] + cyg*rgb[1] + cyr*rgb[2] + 0x108000)
   if(!dupl) {
-		x86.paddw(mm6,mm2);             // mm6 = accumulated RGB values (for b_y and r_y) One factional bit more must be shifted.
+    x86.paddw(mm6,mm2);             // mm6 = accumulated RGB values (for b_y and r_y) One factional bit more must be shifted.
   }
   x86.pmaddwd(mm2,mm7);             // mm2= w2w2 w2w2 w1w1 w1w1   y2 //(cyb*rgbnext[0] + cyg*rgbnext[1] + cyr*rgbnext[2] + 0x108000)
-	x86.paddd(mm1,mm0);             // Add rounding fraction (16.5)<<15 to lower dword only
-	x86.paddd(mm2,mm0);             // Add rounding fraction (16.5)<<15 to lower dword only
-	x86.movq(mm3,mm1);
-	x86.movq(mm4,mm2);
-	x86.psrlq(mm3,32);
-	x86.pand(mm6,qword_ptr[&rb_mask]);       // Clear out accumulated G-value mm6= 0000 RRRR 0000 BBBB
+  x86.paddd(mm1,mm0);             // Add rounding fraction (16.5)<<15 to lower dword only
+  x86.paddd(mm2,mm0);             // Add rounding fraction (16.5)<<15 to lower dword only
+  x86.movq(mm3,mm1);
+  x86.movq(mm4,mm2);
+  x86.psrlq(mm3,32);
+  x86.pand(mm6,qword_ptr[&rb_mask]);       // Clear out accumulated G-value mm6= 0000 RRRR 0000 BBBB
   x86.psrlq(mm4,32);
-	x86.paddd(mm1,mm3);
-	x86.paddd(mm2,mm4);
-	x86.psrld(mm1,15);              // mm1= xxxx xxxx 0000 00y1 final value
+  x86.paddd(mm1,mm3);
+  x86.paddd(mm2,mm4);
+  x86.psrld(mm1,15);              // mm1= xxxx xxxx 0000 00y1 final value
 
   if (sub) {
     x86.movd(mm3,dword_ptr[&sub_32]);// mm3 = -32
   }
 
-	x86.psrld(mm2,15);              // mm2= xxxx xxxx 0000 00y2 final value
+  x86.psrld(mm2,15);              // mm2= xxxx xxxx 0000 00y2 final value
 
   if (sub) {
-	  x86.paddw(mm3,mm1);           // mm3: y1 - 32
+    x86.paddw(mm3,mm1);           // mm3: y1 - 32
   } else {
-	  x86.movq(mm3,mm1);            // mm3: y1
+    x86.movq(mm3,mm1);            // mm3: y1
   }
 
   if (dupl) {
-	  x86.pslld(mm6,15);              // Shift up accumulated R and B values (<<15 in C)
+    x86.pslld(mm6,15);              // Shift up accumulated R and B values (<<15 in C)
   } else {
-	  x86.pslld(mm6,14);              // Shift up accumulated R and B values (<<15 in C)
+    x86.pslld(mm6,14);              // Shift up accumulated R and B values (<<15 in C)
   }
 
   if(dupl) {
-		x86.paddw(mm3,mm1);             // mm3 = y1+y1-32
+    x86.paddw(mm3,mm1);             // mm3 = y1+y1-32
   } else {
-		x86.paddw(mm3,mm2);             // mm3 = y1+y2-32
+    x86.paddw(mm3,mm2);             // mm3 = y1+y2-32
   }
 
-	x86.psllq(mm2,16);              // mm2 Y2 shifted up(to clear fraction) mm2 ready
+  x86.psllq(mm2,16);              // mm2 Y2 shifted up(to clear fraction) mm2 ready
   x86.pmaddwd(mm3,mm5);             // mm3=scaled_y(latency 2 cycles)
-	x86.por(mm1,mm2);             // mm1 = 0000 0000 00Y2 00Y1
-	x86.punpckldq(mm3,mm3);             // Move scaled_y to upper dword mm3=SCAL ED_Y SCAL ED_Y 
-	x86.movq(mm2,qword_ptr[dyn_fpix_mul]);
-	x86.psubd(mm6,mm3);             // mm6 = b_y and r_y
-	x86.movq(mm4,qword_ptr[&fpix_add]);
-	x86.psrad(mm6,14);              // Shift down b_y and r_y(>>10 in C-code) 
-	x86.movq(mm3,qword_ptr[&chroma_mask2]);
-	x86.pmaddwd(mm6,mm2);             // Mult b_y and r_y 
-	x86.add(YUVOFFSET,4);         // Two pixels(packed)
-	x86.paddd(mm6,mm4);             // Add 0x808000 to r_y and b_y 
+  x86.por(mm1,mm2);             // mm1 = 0000 0000 00Y2 00Y1
+  x86.punpckldq(mm3,mm3);             // Move scaled_y to upper dword mm3=SCAL ED_Y SCAL ED_Y
+  x86.movq(mm2,qword_ptr[dyn_fpix_mul]);
+  x86.psubd(mm6,mm3);             // mm6 = b_y and r_y
+  x86.movq(mm4,qword_ptr[&fpix_add]);
+  x86.psrad(mm6,14);              // Shift down b_y and r_y(>>10 in C-code)
+  x86.movq(mm3,qword_ptr[&chroma_mask2]);
+  x86.pmaddwd(mm6,mm2);             // Mult b_y and r_y
+  x86.add(YUVOFFSET,4);         // Two pixels(packed)
+  x86.paddd(mm6,mm4);             // Add 0x808000 to r_y and b_y
 
   if(rgb24) {
-	  x86.add(RGBOFFSET,6);
+    x86.add(RGBOFFSET,6);
   } else {
-	  x86.add(RGBOFFSET,8);
+    x86.add(RGBOFFSET,8);
   }
 
-	x86.pand(mm6,mm3);             // Clear out fractions
-	x86.movq(mm2,qword_ptr[SRC+RGBOFFSET]); // mm2= XXR2 G2B2 XXR1 G1B1
-	x86.packuswb(mm6,mm6);             // mm6 = VV00 UU00 VV00 UU00
-	x86.cmp(RGBOFFSET,lwidth_bytes);
-	x86.por(mm6,mm1);             // Or luma and chroma together			
-	x86.punpcklbw(mm1,mm2);             // mm1= XXxx R1xx G1xx B1xx
-	x86.movd(dword_ptr[DST+YUVOFFSET-4],mm6); // Store final pixel						
+  x86.pand(mm6,mm3);             // Clear out fractions
+  x86.movq(mm2,qword_ptr[SRC+RGBOFFSET]); // mm2= XXR2 G2B2 XXR1 G1B1
+  x86.packuswb(mm6,mm6);             // mm6 = VV00 UU00 VV00 UU00
+  x86.cmp(RGBOFFSET,lwidth_bytes);
+  x86.por(mm6,mm1);             // Or luma and chroma together
+  x86.punpcklbw(mm1,mm2);             // mm1= XXxx R1xx G1xx B1xx
+  x86.movd(dword_ptr[DST+YUVOFFSET-4],mm6); // Store final pixel
   if (rgb24) {
-	  x86.psllq(mm2,8);               // Compensate for RGB24
+    x86.psllq(mm2,8);               // Compensate for RGB24
   }
-	x86.jmp("re_enter");            // loop if true
+  x86.jmp("re_enter");            // loop if true
 
 
   x86.align(16);
@@ -638,9 +740,109 @@ void ConvertToYUY2::mmx_ConvertRGBtoYUY2(const BYTE *src,BYTE *dst,int src_pitch
 
   dyn_src += src_pitch*(h-1);       // ;Move source to bottom line (read top->bottom)
 
-	for (int y=0;y<h;y++) {
+  for (int y=0;y<h;y++) {
     assembly.Call();
-		dyn_src -= src_pitch;
-		dyn_dst += dst_pitch;
-	} // end for y
+    dyn_src -= src_pitch;
+    dyn_dst += dst_pitch;
+  } // end for y
 }
+
+
+/* Unwrapped code for analysis, 0-1-1 kernel
+
+void ConvertToYUY2::GenerateAssembly(bool rgb24, bool dupl, bool sub, int w, IScriptEnvironment* env)  {
+  bool isse = !!(env->GetCPUFlags() & CPUF_INTEGER_SSE);
+  int lwidth_bytes = w;
+  lwidth_bytes *= (rgb24) ? 3 : 4;    // Width in bytes
+
+#define SRC eax
+#define DST edi
+#define RGBOFFSET ecx
+#define YUVOFFSET edx
+
+  Assembler x86;   // This is the class that assembles the code.
+
+  // Store registers
+  x86.push(      eax);
+  x86.push(      ebx);
+  x86.push(      ecx);
+  x86.push(      edx);
+  x86.push(      esi);
+  x86.push(      edi);
+  x86.push(      ebp);
+// mm0 mm1 mm2 mm3 mm4 mm5 mm6 mm7
+  x86.movd(      mm0,dword_ptr[dyn_fraction]);
+  x86.movq(      mm7,qword_ptr[dyn_cybgr]);
+  x86.movd(      mm5,dword_ptr[dyn_y1y2_mult]);
+  x86.mov(       SRC,dword_ptr[&dyn_src]);  // Get first
+  x86.mov(       DST,dword_ptr[&dyn_dst]);
+  x86.mov(       RGBOFFSET,0);
+  x86.mov(       YUVOFFSET,0);
+
+  x86.align(     16);
+  x86.label("re_enter");
+  x86.cmp(       RGBOFFSET,lwidth_bytes);
+  x86.jge(       "outloop");           // Jump out of loop if true (width==0)
+
+  x86.movq(      mm2,qword_ptr[SRC+RGBOFFSET]);      //mm2= XXR2 G2B2 XXR1 G1B1
+  x86.punpcklbw( mm1,mm2);             // mm1= XXxx R1xx G1xx B1xx
+  x86.psrlw(     mm1,8);               // mm1= 00XX 00R1 00G1 00B1
+  x86.movq(      mm6,mm1);             // mm6= 00XX 00R1 00G1 00B1
+  x86.punpckhbw( mm2,mm0);             // mm2= 00XX 00R2 00G2 00B2
+  x86.paddw(     mm6,mm2);             // mm6 = accumulated RGB values (for b_y and r_y) One factional bit more must be shifted.
+  x86.pand(      mm6,qword_ptr[&rb_mask]); // Clear out accumulated G-value mm6= 0000 RRRR 0000 BBBB
+
+  x86.pmaddwd(   mm1,mm7);             // mm1= v2v2 v2v2 v1v1 v1v1   y1 //(cyb*rgb[0] + cyg*rgb[1] + cyr*rgb[2] + 0x108000)
+  x86.paddd(     mm1,mm0);             // Add rounding fraction (16.5)<<15 to lower dword only
+  x86.movq(      mm3,mm1);
+  x86.psrlq(     mm3,32);
+  x86.paddd(     mm1,mm3);
+  x86.psrld(     mm1,15);              // mm1= xxxx xxxx 0000 00y1 final value
+
+  x86.pmaddwd(   mm2,mm7);             // mm2= w2w2 w2w2 w1w1 w1w1   y2 //(cyb*rgbnext[0] + cyg*rgbnext[1] + cyr*rgbnext[2] + 0x108000)
+  x86.paddd(     mm2,mm0);             // Add rounding fraction (16.5)<<15 to lower dword only
+  x86.movq(      mm4,mm2);
+  x86.psrlq(     mm4,32);
+  x86.paddd(     mm2,mm4);
+  x86.psrld(     mm2,15);              // mm2= xxxx xxxx 0000 00y2 final value
+
+  x86.movd(      mm3,dword_ptr[&sub_32]);// mm3 = -32
+  x86.paddw(     mm3,mm1);             // mm3: y1 - 32
+  x86.paddw(     mm3,mm2);             // mm3 = y1+y2-32
+  x86.pmaddwd(   mm3,mm5);             // mm3=scaled_y(latency 2 cycles)
+  x86.punpckldq( mm3,mm3);             // Move scaled_y to upper dword mm3=SCALED_Y SCALED_Y
+
+  x86.pslld(     mm6,14);              // Shift up accumulated R and B values (<<15 in C)
+  x86.psubd(     mm6,mm3);             // mm6 = b_y and r_y
+  x86.psrad(     mm6,14);              // Shift down b_y and r_y(>>10 in C-code)
+  x86.pmaddwd(   mm6,qword_ptr[dyn_fpix_mul]); // Mult b_y and r_y
+  x86.paddd(     mm6,qword_ptr[&fpix_add]); // Add 0x808000 to r_y and b_y
+  x86.pand(      mm6,qword_ptr[&chroma_mask2]); // Clear out fractions
+  x86.packuswb(  mm6,mm6);             // mm6 = VV00 UU00 VV00 UU00
+
+  x86.psllq(     mm2,16);              // mm2 Y2 shifted up(to clear fraction) mm2 ready
+  x86.por(       mm1,mm2);             // mm1 = 0000 0000 00Y2 00Y1
+  x86.por(       mm6,mm1);             // Or luma and chroma together
+
+  x86.movd(      dword_ptr[DST+YUVOFFSET],mm6); // Store final pixel
+
+  x86.add(       YUVOFFSET,4);         // Two pixels(packed)
+  x86.add(       RGBOFFSET,8);
+  x86.jmp(       "re_enter");          // loop if true
+
+  x86.align(     16);
+  x86.label("outloop");
+  x86.emms(      );
+   // Restore registers
+  x86.pop(       ebp);
+  x86.pop(       edi);
+  x86.pop(       esi);
+  x86.pop(       edx);
+  x86.pop(       ecx);
+  x86.pop(       ebx);
+  x86.pop(       eax);
+  x86.ret(       );
+                
+  assembly = DynamicAssembledCode(x86, env, "ConvertToYUY2: Dynamic MMX code could not be compiled.");
+}
+*/
