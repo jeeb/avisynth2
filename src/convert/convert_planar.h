@@ -86,7 +86,7 @@ static ResamplingFunction* getResampler( const char* resampler, IScriptEnvironme
     else if (!lstrcmpi(resampler, "bicubic"))
       return new MitchellNetravaliFilter(1./3,1./3); // Parse out optional B= and C= from string
     else if (!lstrcmpi(resampler, "lanczos"))
-      return new LanczosFilter(3);
+      return new LanczosFilter(3); // Parse out optional Taps= from string
     else if (!lstrcmpi(resampler, "lanczos4"))
       return new LanczosFilter(4);
     else if (!lstrcmpi(resampler, "blackman"))
@@ -98,7 +98,7 @@ static ResamplingFunction* getResampler( const char* resampler, IScriptEnvironme
     else if (!lstrcmpi(resampler, "spline64"))
       return new Spline64Filter();
     else if (!lstrcmpi(resampler, "gauss"))
-      return new GaussianFilter(30.0);
+      return new GaussianFilter(30.0); // Parse out optional P= from string
     else
       env->ThrowError("Convert: Unknown chroma resampler, '%s'", resampler);
   }
@@ -114,6 +114,7 @@ public:
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);  
   ~ConvertToY8();
 private:
+//  void convRGB32toY8 (const unsigned char *src, unsigned char *py, int pitch1, int pitch2y, int width, int height, int offset_y);
   void convYUV422toY8(const unsigned char *src, unsigned char *py, int pitch1, int pitch2y, int width, int height);
   bool blit_luma_only;
   bool yuy2_input;
@@ -132,6 +133,7 @@ public:
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
   ~ConvertRGBToYV24();
 private:
+//  void BuildMatrix(double Kr, double Kb, int Sy, int Suv, int Oy);
   signed short* matrix;
   int offset_y;
   int mul_out;
@@ -159,6 +161,7 @@ public:
   static AVSValue __cdecl Create32(AVSValue args, void*, IScriptEnvironment* env);
   ~ConvertYV24ToRGB();
 private:
+//  void BuildMatrix(double Kr, double Kb, int Sy, int Suv, int Oy);
   signed short* matrix;
   int offset_y;
   int pixel_step;
