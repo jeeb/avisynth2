@@ -215,12 +215,17 @@ AVSValue ExpExceptionTranslator::Evaluate(IScriptEnvironment* env)
     TrapEval(av, excode, env);
     return av;
   }
+  catch (IScriptEnvironment::NotFound) {
+    throw;
+  }
   catch (AvisynthError) {
     throw;
   }
   catch (...) {
-	if ( (excode != 0xE06D7363) // C++ Exception, 0xE0000000 | "\0msc"
-	  && (excode != 0) ) {
+	if (excode == 0xE06D7363) // C++ Exception, 0xE0000000 | "\0msc"
+      env->ThrowError("Evaluate: Unhandled C++ exception!");
+
+	if (excode != 0) {
 	  const char * const extext = StringSystemError(excode);
 	  if (extext)
 		env->ThrowError(extext);
@@ -591,9 +596,11 @@ ExpFunctionCall::~ExpFunctionCall(void)
 AVSValue ExpFunctionCall::Evaluate(IScriptEnvironment* env)
 {
   AVSValue result = Call(env);
+
   if (result.IsClip()) {
     return Cache::Create_Cache(result, 0, env);
   }
+
   return result;
 }
 
