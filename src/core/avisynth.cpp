@@ -62,7 +62,7 @@ extern AVSFunction Audio_filters[], Combine_filters[], Convert_filters[],
                    Script_functions[], Source_filters[], Text_filters[],
                    Transform_filters[], Merge_filters[], Color_filters[],
                    Debug_filters[], Image_filters[], Turn_filters[],
-                                     Conditional_filters[], Conditional_funtions_filters[],
+                   Conditional_filters[], Conditional_funtions_filters[],
                    CPlugin_filters[], Cache_filters[],SSRC_filters[],
                    CacheMT_filters[],MT_filters[],
                    Greyscale_filters[], Swap_filters[],
@@ -78,7 +78,7 @@ AVSFunction* builtin_functions[] = {
                    Script_functions, Source_filters, Text_filters,
                    Transform_filters, Merge_filters, Color_filters,
                    Debug_filters, Image_filters, Turn_filters,
-                                     Conditional_filters, Conditional_funtions_filters,
+                   Conditional_filters, Conditional_funtions_filters,
                    Plugin_functions, CPlugin_filters, Cache_filters,
                    SSRC_filters, SuperEq_filters, Overlay_filters,
                    CacheMT_filters,MT_filters,
@@ -878,6 +878,7 @@ private:
   Cache* CacheHead;
 
   HRESULT hrfromcoinit;
+  DWORD coinitThreadId;
 
   static long refcount; // Global to all ScriptEnvironment objects
   
@@ -900,7 +901,7 @@ extern long CPUCheckForExtensions();  // in cpuaccel.cpp
 ScriptEnvironment::ScriptEnvironment()
   : at_exit(This()),
     function_table(This()),
-    CacheHead(0), hrfromcoinit(E_FAIL),
+    CacheHead(0), hrfromcoinit(E_FAIL), coinitThreadId(0),
     unpromotedvfbs(&video_frame_buffers),
     mt_mode(-1),
     temp_mt_mode(-5),
@@ -911,7 +912,17 @@ ScriptEnvironment::ScriptEnvironment()
     PlanarChromaAlignmentState(true){ // Change to "true" for 2.5.7
 
   try {
+    // Make sure COM is initialised
     hrfromcoinit = CoInitialize(NULL);
+
+    // If it was already init'd then decrement
+    // the use count and leave it alone!
+    if(hrfromcoinit == S_FALSE) {
+      hrfromcoinit=E_FAIL;
+      CoUninitialize();
+    }
+    // Remember our threadId.
+    coinitThreadId=GetCurrentThreadId();
 
     CPU_id = CPUCheckForExtensions();
 
@@ -958,7 +969,10 @@ ScriptEnvironment::ScriptEnvironment()
     ExportFilters();
   }
   catch (AvisynthError err) {
-    if(SUCCEEDED(hrfromcoinit)) CoUninitialize();
+    if(SUCCEEDED(hrfromcoinit)) {
+      hrfromcoinit=E_FAIL;
+      CoUninitialize();
+    }
     // Needs must, to not loose the text we
     // must leak a little memory.
     throw AvisynthError(strdup(err.msg));
@@ -989,7 +1003,12 @@ ScriptEnvironment::~ScriptEnvironment() {
 	DeleteCriticalSection(&cs_relink_video_frame_buffer);//tsp July 2005
   }
   DeleteCriticalSection(&cs_var_table);
-  if(SUCCEEDED(hrfromcoinit)) CoUninitialize();
+  // If we init'd COM and this is the right thread then release it
+  // If it's the wrong threadId then tuff, nothing we can do.
+  if(SUCCEEDED(hrfromcoinit) && (coinitThreadId == GetCurrentThreadId())) {
+    hrfromcoinit=E_FAIL;
+    CoUninitialize();
+  }
 }
 
 int ScriptEnvironment::SetMemoryMax(int mem) {
