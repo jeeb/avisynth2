@@ -46,15 +46,18 @@ RSC=rc.exe
 # ADD CPP /nologo /MT /W3 /GX /O2 /D "WIN32" /D "NDEBUG" /D "_WINDOWS" /D "_MBCS" /D "_USRDLL" /D "TCPDELIVER_EXPORTS" /YX /FD /c
 # ADD BASE MTL /nologo /D "NDEBUG" /mktyplib203 /win32
 # ADD MTL /nologo /D "NDEBUG" /mktyplib203 /win32
-# ADD BASE RSC /l 0x406 /d "NDEBUG"
-# ADD RSC /l 0x406 /d "NDEBUG"
+# ADD BASE RSC /l 0x417 /d "NDEBUG"
+# ADD RSC /l 0x417 /d "NDEBUG"
 BSC32=bscmake.exe
 # ADD BASE BSC32 /nologo
 # ADD BSC32 /nologo
 LINK32=link.exe
 # ADD BASE LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /nologo /dll /machine:I386
-# ADD LINK32 nafxcw.lib libcmt.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib ws2_32.lib lzo/lzo2.lib zlib/lib/zlibstat.lib /nologo /dll /incremental:yes /machine:I386 /nodefaultlib:"libcmt.lib nafxcw.lib"
-# SUBTRACT LINK32 /profile /nodefaultlib
+# ADD LINK32 lzo/lzo2.lib zlib/lib/zlibstat.lib ws2_32.lib kernel32.lib user32.lib /nologo /dll /incremental:yes /machine:I386 /nodefaultlib:"msvcrt" /nodefaultlib:"libc"
+# Begin Special Build Tool
+SOURCE="$(InputPath)"
+PostBuild_Cmds=..\..\..\distrib\upx -9 release\TCPDeliver.dll
+# End Special Build Tool
 
 !ELSEIF  "$(CFG)" == "TCPDeliver - Win32 Debug"
 
@@ -73,15 +76,14 @@ LINK32=link.exe
 # ADD CPP /nologo /G6 /MTd /W3 /Gm /GX /ZI /Od /D "WIN32" /D "_DEBUG" /D "_WINDOWS" /D "_MBCS" /D "_USRDLL" /D "TCPDELIVER_EXPORTS" /FR /YX /FD /GZ /c
 # ADD BASE MTL /nologo /D "_DEBUG" /mktyplib203 /win32
 # ADD MTL /nologo /D "_DEBUG" /mktyplib203 /win32
-# ADD BASE RSC /l 0x406 /d "_DEBUG"
-# ADD RSC /l 0x406 /d "_DEBUG"
+# ADD BASE RSC /l 0x417 /d "_DEBUG"
+# ADD RSC /l 0x417 /d "_DEBUG"
 BSC32=bscmake.exe
 # ADD BASE BSC32 /nologo
 # ADD BSC32 /nologo
 LINK32=link.exe
 # ADD BASE LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /nologo /dll /debug /machine:I386 /pdbtype:sept
-# ADD LINK32 nafxcwd.lib libcmtd.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib ws2_32.lib lzo/debug/lzo.lib zlib/lib/zlibstat.lib /nologo /dll /debug /machine:I386 /nodefaultlib:"nafxcwd.lib libcmtd.lib" /pdbtype:sept
-# SUBTRACT LINK32 /pdb:none
+# ADD LINK32 lzo/lzo2.lib zlib/lib/zlibstat.lib ws2_32.lib kernel32.lib user32.lib /nologo /dll /debug /machine:I386 /nodefaultlib:"libc" /nodefaultlib:"libcmt" /nodefaultlib:"msvcrt" /pdbtype:sept
 
 !ENDIF 
 
@@ -95,6 +97,10 @@ LINK32=link.exe
 # Begin Source File
 
 SOURCE=.\huffman.c
+# End Source File
+# Begin Source File
+
+SOURCE=.\rle.c
 # End Source File
 # Begin Source File
 
@@ -135,6 +141,14 @@ SOURCE=.\avisynth.h
 # Begin Source File
 
 SOURCE=.\huffman.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\resource.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\rle.h
 # End Source File
 # Begin Source File
 
