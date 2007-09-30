@@ -53,15 +53,13 @@ AVSFunction Convert_filters[] = {
   { "ConvertToRGB32", "c[matrix]s[interlaced]b[chromaplacement]s[chromaresample]s", ConvertToRGB::Create32 },
   { "ConvertToY8", "c[matrix]s", ConvertToY8::Create },
   { "ConvertToYV12", "c[interlaced]b[matrix]s[chromaplacement]s[chromaresample]s", ConvertToYV12::Create },
-  { "ConvertToYV24", "c[interlaced]b[matrix]s[chromaplacement]s[chromaresample]s",  ConvertToPlanarGeneric::CreateYV24},  
-  { "ConvertToYV16", "c[interlaced]b[matrix]s[chromaplacement]s[chromaresample]s",  ConvertToPlanarGeneric::CreateYV16}, 
+  { "ConvertToYV24", "c[interlaced]b[matrix]s[chromaplacement]s[chromaresample]s",  ConvertToPlanarGeneric::CreateYV24},
+  { "ConvertToYV16", "c[interlaced]b[matrix]s[chromaplacement]s[chromaresample]s",  ConvertToPlanarGeneric::CreateYV16},
   { "ConvertToYV411", "c[interlaced]b[matrix]s[chromaplacement]s[chromaresample]s", ConvertToPlanarGeneric::CreateYV411},
-  { "ConvertToYUY2", "c[interlaced]b[matrix]s[chromaplacement]s[chromaresample]s", ConvertToYUY2::Create },  
-  { "ConvertBackToYUY2", "c[matrix]s", ConvertBackToYUY2::Create },  
+  { "ConvertToYUY2", "c[interlaced]b[matrix]s[chromaplacement]s[chromaresample]s", ConvertToYUY2::Create },
+  { "ConvertBackToYUY2", "c[matrix]s", ConvertBackToYUY2::Create },
   { 0 }
 };
-
-
 
 
 
@@ -71,9 +69,9 @@ AVSFunction Convert_filters[] = {
  *******   Convert to RGB / RGBA   ******
  ***************************************/
 
-ConvertToRGB::ConvertToRGB( PClip _child, bool rgb24, const char* matrix, 
-                            IScriptEnvironment* env ) 
-  : GenericVideoFilter(_child) 
+ConvertToRGB::ConvertToRGB( PClip _child, bool rgb24, const char* matrix,
+                            IScriptEnvironment* env )
+  : GenericVideoFilter(_child)
 {
   theMatrix = Rec601;
   is_yv12=false;
@@ -97,12 +95,12 @@ ConvertToRGB::ConvertToRGB( PClip _child, bool rgb24, const char* matrix,
 }
 
 
-PVideoFrame __stdcall ConvertToRGB::GetFrame(int n, IScriptEnvironment* env) 
+PVideoFrame __stdcall ConvertToRGB::GetFrame(int n, IScriptEnvironment* env)
 {
   PVideoFrame src = child->GetFrame(n, env);
   const int src_pitch = src->GetPitch();
   const BYTE* srcp = src->GetReadPtr();
-  
+
   int src_rowsize = __min(src_pitch, (src->GetRowSize()+7) & -8);
   // assumption: is_yuy2
   if (use_mmx && ((src_rowsize & 7) == 0) && (src_rowsize >= 16)) {
@@ -113,7 +111,7 @@ PVideoFrame __stdcall ConvertToRGB::GetFrame(int n, IScriptEnvironment* env)
 
     (vi.IsRGB24() ? mmx_YUY2toRGB24 : mmx_YUY2toRGB32)(srcp, dstp,
       srcp + vi.height * src_pitch, src_pitch, src_rowsize, theMatrix);
-	  
+
 	if (vi.width & 3) {  // Did we extend off the right edge of picture?
 	  const int dst_pitch = dst->GetPitch();
 	  const int x2 = (vi.width-2) * 2;
@@ -132,7 +130,7 @@ PVideoFrame __stdcall ConvertToRGB::GetFrame(int n, IScriptEnvironment* env)
 	const int dst_pitch = dst->GetPitch();
 	BYTE* dstp = dst->GetWritePtr();
 
-	if (vi.IsRGB32()) {    
+	if (vi.IsRGB32()) {
 	  srcp += vi.height * src_pitch;
 	  for (int y=vi.height; y>0; --y) {
 		srcp -= src_pitch;
@@ -161,14 +159,14 @@ PVideoFrame __stdcall ConvertToRGB::GetFrame(int n, IScriptEnvironment* env)
 }
 
 
-AVSValue __cdecl ConvertToRGB::Create(AVSValue args, void*, IScriptEnvironment* env) 
+AVSValue __cdecl ConvertToRGB::Create(AVSValue args, void*, IScriptEnvironment* env)
 {
   PClip clip = args[0].AsClip();
   const char* const matrix = args[1].AsString(0);
   const VideoInfo& vi = clip->GetVideoInfo();
   if (vi.IsYUV()) {
     if (vi.IsPlanar()) {
-      AVSValue new_args[5] = { clip, args[2].AsBool(false), matrix, args[3].AsString("MPEG2"), args[4].AsString("Bicubic") }; 
+      AVSValue new_args[5] = { clip, args[2].AsBool(false), matrix, args[3].AsString("MPEG2"), args[4].AsString("Bicubic") };
       clip = ConvertToPlanarGeneric::CreateYV24(AVSValue(new_args, 5), NULL, env).AsClip();
       return new ConvertYV24ToRGB(clip, getMatrix(args[1].AsString("rec601"), env), 4 , env);
     }
@@ -179,14 +177,14 @@ AVSValue __cdecl ConvertToRGB::Create(AVSValue args, void*, IScriptEnvironment* 
 }
 
 
-AVSValue __cdecl ConvertToRGB::Create32(AVSValue args, void*, IScriptEnvironment* env) 
+AVSValue __cdecl ConvertToRGB::Create32(AVSValue args, void*, IScriptEnvironment* env)
 {
   PClip clip = args[0].AsClip();
   const char* const matrix = args[1].AsString(0);
   const VideoInfo vi = clip->GetVideoInfo();
   if (vi.IsYUV()) {
     if (vi.IsPlanar()) {
-      AVSValue new_args[5] = { clip, args[2].AsBool(false), matrix, args[3].AsString("MPEG2"), args[4].AsString("Bicubic") }; 
+      AVSValue new_args[5] = { clip, args[2].AsBool(false), matrix, args[3].AsString("MPEG2"), args[4].AsString("Bicubic") };
       clip = ConvertToPlanarGeneric::CreateYV24(AVSValue(new_args, 5), NULL, env).AsClip();
       return new ConvertYV24ToRGB(clip, getMatrix(args[1].AsString("rec601"), env), 4 , env);
     }
@@ -198,14 +196,14 @@ AVSValue __cdecl ConvertToRGB::Create32(AVSValue args, void*, IScriptEnvironment
 }
 
 
-AVSValue __cdecl ConvertToRGB::Create24(AVSValue args, void*, IScriptEnvironment* env) 
+AVSValue __cdecl ConvertToRGB::Create24(AVSValue args, void*, IScriptEnvironment* env)
 {
   PClip clip = args[0].AsClip();
   const char* const matrix = args[1].AsString(0);
   const VideoInfo& vi = clip->GetVideoInfo();
   if (vi.IsYUV()) {
     if (vi.IsPlanar()) {
-      AVSValue new_args[5] = { clip, args[2].AsBool(false), matrix, args[3].AsString("MPEG2"), args[4].AsString("Bicubic") }; 
+      AVSValue new_args[5] = { clip, args[2].AsBool(false), matrix, args[3].AsString("MPEG2"), args[4].AsString("Bicubic") };
       clip = ConvertToPlanarGeneric::CreateYV24(AVSValue(new_args, 5), NULL, env).AsClip();
       return new ConvertYV24ToRGB(clip, getMatrix(args[1].AsString("rec601"), env), 3 , env);
     }
@@ -222,7 +220,7 @@ AVSValue __cdecl ConvertToRGB::Create24(AVSValue args, void*, IScriptEnvironment
 
 
 ConvertToYV12::ConvertToYV12(PClip _child, bool _interlaced, IScriptEnvironment* env)
-  : GenericVideoFilter(_child), 
+  : GenericVideoFilter(_child),
   interlaced(_interlaced)
 {
   if (vi.width & 1)
@@ -235,7 +233,7 @@ ConvertToYV12::ConvertToYV12(PClip _child, bool _interlaced, IScriptEnvironment*
   if (vi.IsYUY2()) isYUY2 = true;
   if (vi.IsRGB32()) isRGB32 = true;
   if (vi.IsRGB24()) isRGB24 = true;
- 
+
   vi.pixel_type = VideoInfo::CS_YV12;
 
   if ((env->GetCPUFlags() & CPUF_MMX) == 0)
@@ -243,27 +241,27 @@ ConvertToYV12::ConvertToYV12(PClip _child, bool _interlaced, IScriptEnvironment*
 }
 
 PVideoFrame __stdcall ConvertToYV12::GetFrame(int n, IScriptEnvironment* env) {
-  PVideoFrame src = child->GetFrame(n, env);  
+  PVideoFrame src = child->GetFrame(n, env);
   PVideoFrame dst = env->NewVideoFrame(vi);
 
   if (isYUY2) {
     if (interlaced) {
 		  if ((env->GetCPUFlags() & CPUF_INTEGER_SSE)) {
-        isse_yuy2_i_to_yv12(src->GetReadPtr(), src->GetRowSize(), src->GetPitch(), 
+        isse_yuy2_i_to_yv12(src->GetReadPtr(), src->GetRowSize(), src->GetPitch(),
           dst->GetWritePtr(PLANAR_Y), dst->GetWritePtr(PLANAR_U), dst->GetWritePtr(PLANAR_V), dst->GetPitch(PLANAR_Y),dst->GetPitch(PLANAR_U),
           src->GetHeight());
       } else {
-        mmx_yuy2_i_to_yv12(src->GetReadPtr(), src->GetRowSize(), src->GetPitch(), 
+        mmx_yuy2_i_to_yv12(src->GetReadPtr(), src->GetRowSize(), src->GetPitch(),
           dst->GetWritePtr(PLANAR_Y), dst->GetWritePtr(PLANAR_U), dst->GetWritePtr(PLANAR_V), dst->GetPitch(PLANAR_Y),dst->GetPitch(PLANAR_U),
           src->GetHeight());
       }
     } else {
 		  if ((env->GetCPUFlags() & CPUF_INTEGER_SSE)) {
-        isse_yuy2_to_yv12(src->GetReadPtr(), src->GetRowSize(), src->GetPitch(), 
+        isse_yuy2_to_yv12(src->GetReadPtr(), src->GetRowSize(), src->GetPitch(),
           dst->GetWritePtr(PLANAR_Y), dst->GetWritePtr(PLANAR_U), dst->GetWritePtr(PLANAR_V), dst->GetPitch(PLANAR_Y),dst->GetPitch(PLANAR_U),
           src->GetHeight());
       } else {
-        mmx_yuy2_to_yv12(src->GetReadPtr(), src->GetRowSize(), src->GetPitch(), 
+        mmx_yuy2_to_yv12(src->GetReadPtr(), src->GetRowSize(), src->GetPitch(),
           dst->GetWritePtr(PLANAR_Y), dst->GetWritePtr(PLANAR_U), dst->GetWritePtr(PLANAR_V), dst->GetPitch(PLANAR_Y),dst->GetPitch(PLANAR_U),
           src->GetHeight());
       }
@@ -274,7 +272,7 @@ PVideoFrame __stdcall ConvertToYV12::GetFrame(int n, IScriptEnvironment* env) {
 
 }
 
-AVSValue __cdecl ConvertToYV12::Create(AVSValue args, void*, IScriptEnvironment* env) 
+AVSValue __cdecl ConvertToYV12::Create(AVSValue args, void*, IScriptEnvironment* env)
 {
   PClip clip = args[0].AsClip();
   const VideoInfo& vi = clip->GetVideoInfo();

@@ -54,6 +54,7 @@
  *************************************/
 
 __declspec(align(8)) static const __int64 add_ones=0x0101010101010101;
+
 #pragma warning (disable: 4731)   // ebx modified by inline assembly code
 
 void isse_yv12_i_to_yuy2(const BYTE* srcY, const BYTE* srcU, const BYTE* srcV, int src_rowsize, int src_pitch, int src_pitch_uv, 

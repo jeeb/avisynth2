@@ -43,14 +43,14 @@
  *******   RGB Helper Classes   ******
  *************************************/
 
-RGB24to32::RGB24to32(PClip src) 
-  : GenericVideoFilter(src) 
+RGB24to32::RGB24to32(PClip src)
+  : GenericVideoFilter(src)
 {
   vi.pixel_type = VideoInfo::CS_BGR32;
 }
 
 
-PVideoFrame __stdcall RGB24to32::GetFrame(int n, IScriptEnvironment* env) 
+PVideoFrame __stdcall RGB24to32::GetFrame(int n, IScriptEnvironment* env)
 {
   PVideoFrame src = child->GetFrame(n, env);
   PVideoFrame dst = env->NewVideoFrame(vi);
@@ -165,8 +165,8 @@ copy_1:
     align 16
 no_copy:
     add			esi,[src_pitch]
-    add			edi,[dst_pitch]    
-    
+    add			edi,[dst_pitch]
+
     dec			[h]
     jnz			yloop
     emms
@@ -191,14 +191,14 @@ no_copy:
 
 
 
-RGB32to24::RGB32to24(PClip src) 
-: GenericVideoFilter(src) 
+RGB32to24::RGB32to24(PClip src)
+: GenericVideoFilter(src)
 {
   vi.pixel_type = VideoInfo::CS_BGR24;
 }
 
 
-PVideoFrame __stdcall RGB32to24::GetFrame(int n, IScriptEnvironment* env) 
+PVideoFrame __stdcall RGB32to24::GetFrame(int n, IScriptEnvironment* env)
 {
   PVideoFrame src = child->GetFrame(n, env);
   PVideoFrame dst = env->NewVideoFrame(vi);
@@ -231,19 +231,19 @@ yloop:
 xloop:
     movq mm0,[ebx+esi]    ; a1r1 g1b1 a0r0 g0b0
     movq mm1,[ebx+esi+8]  ; a3r3 g3b3 a2r2 g2b2
-    
+
     movq mm2,mm0      ; a1r1 g1b1 a0r0 g0b0
     movq mm3,mm1      ; a3r3 g3b3 a2r2 g2b2
-    
+
     pand mm0,mm6      ; 0000 0000 00r0 g0b0
-    pand mm1,mm6      ; 0000 0000 00r2 g2b2 
+    pand mm1,mm6      ; 0000 0000 00r2 g2b2
 
     pand mm2,mm7      ; 00r1 g1b1 0000 0000
-    movq mm4,mm1      ; 0000 0000 00r2 g2b2 
+    movq mm4,mm1      ; 0000 0000 00r2 g2b2
 
     psrlq mm2,8       ; 0000 r1g1 b100 0000
     pand mm3,mm7      ; 00r3 g3b3 0000 0000
-    
+
     psllq mm4,48      ; g2b2 0000 0000 0000
     por mm0,mm2       ; 0000 r1g1 b1r0 g0b0
 
@@ -261,7 +261,7 @@ xloop:
     cmp ebx,[x_loops]
     jl xloop
 
-    
+
     cmp edx,0
     je no_copy
     cmp edx,2
@@ -271,7 +271,7 @@ xloop:
 //copy 3
     add esi,ebx
     add edi,ecx
-    movsb 
+    movsb
     movsb
     movsb
     inc esi
@@ -317,8 +317,8 @@ copy_1:
     align 16
 no_copy:
     add esi,[src_pitch]
-    add edi,[dst_pitch]    
-    
+    add edi,[dst_pitch]
+
     dec eax
     jnz yloop
     emms

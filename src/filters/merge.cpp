@@ -230,10 +230,10 @@ PVideoFrame __stdcall MergeLuma::GetFrame(int n, IScriptEnvironment* env)
     return src;
   }  // Planar
   if (weight>0.9999f) {
-	const VideoInfo& vi2 = clip->GetVideoInfo();
+    const VideoInfo& vi2 = clip->GetVideoInfo();
     if (TEST(1, 2) luma->IsWritable() && vi.IsSameColorspace(vi2)) {
       if (luma->GetRowSize(PLANAR_U)) {
-		luma->GetWritePtr(PLANAR_Y); //Must be requested BUT only if we actually do something
+        luma->GetWritePtr(PLANAR_Y); //Must be requested BUT only if we actually do something
         env->BitBlt(luma->GetWritePtr(PLANAR_U),luma->GetPitch(PLANAR_U),src->GetReadPtr(PLANAR_U),src->GetPitch(PLANAR_U),src->GetRowSize(PLANAR_U),src->GetHeight(PLANAR_U));
         env->BitBlt(luma->GetWritePtr(PLANAR_V),luma->GetPitch(PLANAR_V),src->GetReadPtr(PLANAR_V),src->GetPitch(PLANAR_V),src->GetRowSize(PLANAR_V),src->GetHeight(PLANAR_V));
       }

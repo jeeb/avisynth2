@@ -134,7 +134,6 @@ FilteredResizeH::FilteredResizeH( PClip _child, double subrange_left, double sub
 	catch (...) { throw; }
 }
 
-
 /***********************************
  * Dynamically Assembled Resampler
  *

@@ -32,10 +32,8 @@
 // which is not derived from or based on Avisynth, such as 3rd-party filters,
 // import and export plugins, or graphical user interfaces.
 
-
 #ifndef __Greyscale_H__
 #define __Greyscale_H__
-
 
 #include "../internal.h"
 
@@ -57,5 +55,8 @@ private:
   enum {Rec601 = 0, Rec709, Average };
 
 };
+
+
+
 
 #endif  // __Greyscale_H__

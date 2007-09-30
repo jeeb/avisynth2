@@ -35,7 +35,6 @@
 #ifndef __Convert_RGB_H__
 #define __Convert_RGB_H__
 
-
 #include "../internal.h"
 
 
@@ -59,5 +58,6 @@ public:
   RGB32to24(PClip src);
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
 };
+
 
 #endif  // __Convert_RGB_H__

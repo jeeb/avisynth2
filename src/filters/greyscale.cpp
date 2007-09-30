@@ -68,7 +68,7 @@ Greyscale::Greyscale(PClip _child, const char* matrix, IScriptEnvironment* env)
 }
 
 
-PVideoFrame Greyscale::GetFrame(int n, IScriptEnvironment* env) 
+PVideoFrame Greyscale::GetFrame(int n, IScriptEnvironment* env)
 {
   PVideoFrame frame = child->GetFrame(n, env);
   if (vi.IsY8())
@@ -104,8 +104,8 @@ PVideoFrame Greyscale::GetFrame(int n, IScriptEnvironment* env)
   }
 
   else if (vi.IsYUY2() && (env->GetCPUFlags() & CPUF_MMX)) {
-                                                                                       
-	  myx = __min(pitch>>1, (myx+3) & -4);	// Try for mod 8                           
+
+	  myx = __min(pitch>>1, (myx+3) & -4);	// Try for mod 8
 	  __asm {
 		pcmpeqw		mm7,mm7
 		pcmpeqw		mm6,mm6
@@ -146,7 +146,7 @@ xloop1:
 		por			mm1,mm6
 		movq		[esi+0],mm0				; update 2 pixels
 		movq		[esi+8],mm1
-		
+
 		movq		mm2,[esi+16]
 		movq		mm3,[esi+24]
 		pand		mm2,mm7
@@ -173,7 +173,7 @@ xloop1:
 		por			mm3,mm6
 		movq		[esi+48],mm2
 		movq		[esi+56],mm3
-		
+
 		sub			ecx,16					; count-=16
 		add			esi,64					; srcp+=16
 
@@ -230,7 +230,7 @@ xlend3:
 	const int cyr709 = int(0.2125*32768+0.5);
 
 	__int64 rgb2lum;
-	
+
 	if (theMatrix == Rec709)
 	  rgb2lum = ((__int64)cyr709 << 32) | (cyg709 << 16) | cyb709;
 	else if (theMatrix == Average)
@@ -324,7 +324,7 @@ rgb2lum_even:
 		  int greyscale=((srcp[0]*4725)+(srcp[1]*46884)+(srcp[2]*13927)+32768)>>16; // This is the correct brigtness calculations (standardized in Rec. 709)
 		  srcp[0]=srcp[1]=srcp[2]=greyscale;
 		  srcp += rgb_inc;
-		} 
+		}
 		p_count+=pitch;
 		srcp=p_count;
 	  }
@@ -337,7 +337,7 @@ rgb2lum_even:
 		  int greyscale=((srcp[0]+srcp[1]+srcp[2])*21845+32768)>>16; // This is the average of R, G & B
 		  srcp[0]=srcp[1]=srcp[2]=greyscale;
 		  srcp += rgb_inc;
-		} 
+		}
 		p_count+=pitch;
 		srcp=p_count;
 	  }
@@ -352,7 +352,7 @@ rgb2lum_even:
 		  int greyscale=((srcp[0]*7471)+(srcp[1]*38470)+(srcp[2]*19595)+32768)>>16; // This produces similar results as YUY2 (luma calculation)
 		  srcp[0]=srcp[1]=srcp[2]=greyscale;
 		  srcp += rgb_inc;
-		} 
+		}
 		p_count+=pitch;
 		srcp=p_count;
 	  }
@@ -362,7 +362,7 @@ rgb2lum_even:
 }
 
 
-AVSValue __cdecl Greyscale::Create(AVSValue args, void*, IScriptEnvironment* env) 
+AVSValue __cdecl Greyscale::Create(AVSValue args, void*, IScriptEnvironment* env)
 {
   PClip clip = args[0].AsClip();
   const VideoInfo& vi = clip->GetVideoInfo();
