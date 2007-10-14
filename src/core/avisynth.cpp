@@ -150,50 +150,32 @@ void* VideoFrame::operator new(unsigned) {
 }
 
 
-VideoFrame::VideoFrame(VideoFrameBuffer* _vfb, int _offset, int _pitch, int _row_size, int _height, int _pixel_type)
-  : refcount(1), vfb(_vfb), offset(_offset), pitch(_pitch), row_size(_row_size), height(_height),offsetU(_offset),offsetV(_offset),pitchUV(0),pixel_type(_pixel_type), row_sizeUV(0), heightUV(0)  // PitchUV=0 so this doesn't take up additional space
+VideoFrame::VideoFrame(VideoFrameBuffer* _vfb, int _offset, int _pitch, int _row_size, int _height)
+  : refcount(1), vfb(_vfb), offset(_offset), pitch(_pitch), row_size(_row_size), height(_height),offsetU(_offset),offsetV(_offset),pitchUV(0), row_sizeUV(0), heightUV(0)  // PitchUV=0 so this doesn't take up additional space
 {
   InterlockedIncrement(&vfb->refcount);
 }
 
-VideoFrame::VideoFrame(VideoFrameBuffer* _vfb, int _offset, int _pitch, int _row_size, int _height, int _offsetU, int _offsetV, int _pitchUV, int _row_sizeUV, int _heightUV, int _pixel_type)
-  : refcount(1), vfb(_vfb), offset(_offset), pitch(_pitch), row_size(_row_size), height(_height),offsetU(_offsetU),offsetV(_offsetV),pitchUV(_pitchUV),pixel_type(_pixel_type), row_sizeUV(_row_sizeUV), heightUV(_heightUV)
+VideoFrame::VideoFrame(VideoFrameBuffer* _vfb, int _offset, int _pitch, int _row_size, int _height, int _offsetU, int _offsetV, int _pitchUV, int _row_sizeUV, int _heightUV)
+  : refcount(1), vfb(_vfb), offset(_offset), pitch(_pitch), row_size(_row_size), height(_height),offsetU(_offsetU),offsetV(_offsetV),pitchUV(_pitchUV), row_sizeUV(_row_sizeUV), heightUV(_heightUV)
 {
   InterlockedIncrement(&vfb->refcount);
 }
+
+// Hack note :- Use of SubFrame will require an "InterlockedDecrement((long*)&retval->refcount);" after
+// assignement to a PVideoFrame, the same as for a "New VideoFrame" to keep the refcount consistant.
 
 VideoFrame* VideoFrame::Subframe(int rel_offset, int new_pitch, int new_row_size, int new_height) const {
-	VideoFrame* Retval=new VideoFrame(vfb, offset+rel_offset, new_pitch, new_row_size, new_height, pixel_type); 
-	InterlockedDecrement((long*)&Retval->refcount);//This is not threadsafe so filters should use IScriptEnviroment->Subframe instead
-	return Retval;
+	return new VideoFrame(vfb, offset+rel_offset, new_pitch, new_row_size, new_height); 
 }
 
 
-VideoFrame* VideoFrame::Subframe(int rel_offset, int new_pitch, int new_row_size, int new_height, int rel_offsetU, int rel_offsetV, int new_pitchUV) const {  //int _row_sizeUV, int _heightUV
-  int UVnew_row_size = new_row_size;
-  int UVnew_height = new_height;
-  switch (pixel_type) {  // WILL BREAK EASY! Not very safe!
-    case VideoInfo::CS_YV12:
-    case VideoInfo::CS_I420:
-      UVnew_row_size /=2;
-      UVnew_height /=2;
-      break;
-    case VideoInfo::CS_Y8:
-      UVnew_row_size = 0;
-      UVnew_height = 0;
-      break;
-    case VideoInfo::CS_YV16:
-      UVnew_row_size /=2;
-      break;
-    case VideoInfo::CS_YV411:
-      UVnew_row_size /=4;
-      break;
+VideoFrame* VideoFrame::Subframe(int rel_offset, int new_pitch, int new_row_size, int new_height, int rel_offsetU, int rel_offsetV, int new_pitchUV) const {
+  // Maintain plane size relationship
+  const int new_row_sizeUV = !row_size ? 0 : muldiv(new_row_size, row_sizeUV, row_size);
+  const int new_heightUV   = !height   ? 0 : muldiv(new_height,   heightUV,   height);
 
-  }
- 	VideoFrame* Retval=new VideoFrame(vfb, offset+rel_offset, new_pitch, new_row_size, new_height, rel_offsetU+offsetU, rel_offsetV+offsetV, new_pitchUV, UVnew_row_size, UVnew_height, pixel_type);
-	InterlockedDecrement((long*)&Retval->refcount);//This is not threadsafe so filters should use IScriptEnviroment->Subframe instead
-	return Retval;
-//  return new VideoFrame(vfb, offset+rel_offset, new_pitch, new_row_size, new_height, rel_offsetU+offsetU, rel_offsetV+offsetV, new_pitchUV, UVnew_row_size, UVnew_height, pixel_type);
+  return new VideoFrame(vfb, offset+rel_offset, new_pitch, new_row_size, new_height, rel_offsetU+offsetU, rel_offsetV+offsetV, new_pitchUV, new_row_sizeUV, new_heightUV);
 }
 
 
@@ -746,7 +728,7 @@ char* StringDump::SaveString(const char* s, int len) {
   char* result = current_block+block_pos;
   memcpy(result, s, len);
   result[len] = 0;
-  block_pos += (len+sizeof(char*)) & -sizeof(char*); // Keep 32bit aligned
+  block_pos += (len+1+sizeof(char*)) & -sizeof(char*); // Keep 32bit aligned
   return result;
 }
 
@@ -819,11 +801,9 @@ public:
   void __stdcall PushContext(int level=0);
   void __stdcall PopContext();
   void __stdcall PopContextGlobal();
-  unsigned int PlaneWidth(const VideoInfo& vi, int plane);
-  unsigned int PlaneHeight(const VideoInfo& vi, int plane);
   PVideoFrame __stdcall NewVideoFrame(const VideoInfo& vi, int align);
-  PVideoFrame NewIVideoFrame(const VideoInfo& vi, int align);
-  PVideoFrame NewPlanarVideoFrame(const VideoInfo& vi, int align);
+  PVideoFrame NewVideoFrame(int row_size, int height, int align);
+  PVideoFrame NewPlanarVideoFrame(int row_size, int height, int row_sizeUV, int heightUV, int align, bool U_first);
   bool __stdcall MakeWritable(PVideoFrame* pvf);
   void __stdcall BitBlt(BYTE* dstp, int dst_pitch, const BYTE* srcp, int src_pitch, int row_size, int height);
   void __stdcall AtExit(IScriptEnvironment::ShutdownFunc function, void* user_data);
@@ -1218,91 +1198,24 @@ void ScriptEnvironment::ExportFilters()
   SetGlobalVar("$InternalFunctions$", AVSValue( SaveString(builtin_names.c_str(), builtin_names.length() + 1) ));
 }
 
-unsigned int ScriptEnvironment::PlaneWidth(const VideoInfo& vi, int plane) {
-  if (!vi.IsPlanar())
-    ThrowError("PlaneWidth: Only planar formats are supported.");
+PVideoFrame ScriptEnvironment::NewPlanarVideoFrame(int row_size, int height, int row_sizeUV, int heightUV, int align, bool U_first) {
+  int pitchUV, Uoffset, Voffset;
+  const int pitch = (row_size+align-1) / align * align;
 
-  if (PLANAR_Y == plane)  // We have no formats where Y is subsampled.
-    return vi.width;
-
-  if (PLANAR_U != plane && PLANAR_V != plane)
-    ThrowError("PlaneWidth: Unknown plane.");
-
-  if (vi.IsYV12()) {
-    return vi.width >> 1;
-  }
-  if (vi.IsYV16()) {
-    return vi.width >> 1;
-  }
-  if (vi.IsY8()) {
-    return 0;
-  }
-  if (vi.IsYV24()) {
-    return vi.width;
-  }
-  if (vi.IsYV411()) {
-    return vi.width >> 2;  // w/4
-  }
-  ThrowError("PlaneWidth: Unknown colorspace.");
-  return 0;
-}
-
-unsigned int ScriptEnvironment::PlaneHeight(const VideoInfo& vi, int plane) {
-  if (!vi.IsPlanar())
-    ThrowError("PlaneHeight: Only planar formats are supported.");
-
-  if (PLANAR_Y == plane)  // We have no formats where Y is subsampled.
-    return vi.height;
-
-  if (PLANAR_U != plane && PLANAR_V != plane)
-    ThrowError("PlaneHeight: Unknown plane.");
-
-  if (vi.IsYV12()) {
-    return vi.height >> 1;
-  }
-  if (vi.IsYV16()) {
-    return vi.height;
-  }
-  if (vi.IsY8()) {
-    return 0;
-  }
-  if (vi.IsYV24()) {
-    return vi.height;
-  }
-  if (vi.IsYV411()) {
-    return vi.height;  // w
-  }
-  ThrowError("PlaneHeight: Unknown colorspace.");
-  return 0;
-}
-
-
-PVideoFrame ScriptEnvironment::NewPlanarVideoFrame(const VideoInfo& vi, int align) {
-  int UVpitch, pitch;
-  int Ywidth = PlaneWidth(vi, PLANAR_Y);
-  int UVwidth = PlaneWidth(vi, PLANAR_U);
-
-  int Yheight = PlaneHeight(vi, PLANAR_Y);
-  int UVheight = PlaneHeight(vi, PLANAR_U);
-
-  if (align<0) align = -align;
-
-  if (!PlanarChromaAlignmentState && vi.IsYV12()) { // Meet old 2.5 series API expectations
+  if (!PlanarChromaAlignmentState && (row_size == row_sizeUV*2) && (height == heightUV*2)) { // Meet old 2.5 series API expectations for YV12
     // Forced alignment - pack Y as specified, pack UV half that
-	pitch = (Ywidth+align-1) / align * align;  // Y plane, width = 1 byte per pixel
-	UVpitch = (pitch+1)>>1;  // UV plane, width = 1/2 byte per pixel - can't align UV planes seperately.
+    pitchUV = (pitch+1)>>1;  // UV plane, width = 1/2 byte per pixel - don't align UV planes seperately.
   } else {
     // Align planes seperately
-    pitch = (Ywidth+align-1) / align * align;
-    UVpitch = (UVwidth+align-1) / align * align;
+    pitchUV = (row_sizeUV+align-1) / align * align;
   }
 
-  int size = pitch *  Yheight + 2 * UVpitch * UVheight;
+  const int size = pitch *  height + 2 * pitchUV * heightUV;
 
-  int _align = (align < FRAME_ALIGN) ? FRAME_ALIGN : align;
+  const int _align = (align < FRAME_ALIGN) ? FRAME_ALIGN : align;
   VideoFrameBuffer* vfb = GetFrameBuffer(size+(_align*4));
   if (!vfb)
-    ThrowError("NewPlanarVideoFrame: Returned 0 size image!");
+    ThrowError("NewPlanarVideoFrame: Returned 0 image pointer!");
 #ifdef _DEBUG
   {
     static const BYTE filler[] = { 0x0A, 0x11, 0x0C, 0xA7, 0xED };
@@ -1313,29 +1226,26 @@ PVideoFrame ScriptEnvironment::NewPlanarVideoFrame(const VideoInfo& vi, int alig
     }
   }
 #endif
-//  int offset = (-int(vfb->GetWritePtr())) & (align-1);  // align first line offset
-  int offset = int(vfb->GetWritePtr()) & (FRAME_ALIGN-1);  // align first line offset
-  offset = (FRAME_ALIGN - offset)%FRAME_ALIGN;
-  int Uoffset, Voffset;
+  const int offset = (-int(vfb->GetWritePtr())) & (FRAME_ALIGN-1);  // align first line offset
 
-  if (vi.IsVPlaneFirst()) {
-    Voffset = offset + pitch * Yheight;
-    Uoffset = offset + pitch * Yheight + UVpitch * UVheight;
+  if (U_first) {
+    Uoffset = offset + pitch * height;
+    Voffset = offset + pitch * height + pitchUV * heightUV;
   } else {
-    Uoffset = offset + pitch * Yheight;
-    Voffset = offset + pitch * Yheight + UVpitch * UVheight;
+    Voffset = offset + pitch * height;
+    Uoffset = offset + pitch * height + pitchUV * heightUV;
   }
-  return new VideoFrame(vfb, offset, pitch, Ywidth, Yheight, Uoffset, Voffset, UVpitch, UVwidth, UVheight, vi.pixel_type);
+  return new VideoFrame(vfb, offset, pitch, row_size, height, Uoffset, Voffset, pitchUV, row_sizeUV, heightUV);
 }
 
 
-PVideoFrame ScriptEnvironment::NewIVideoFrame(const VideoInfo& vi, int align) {
-  int row_size = vi.RowSize();
-  int height = vi.height;
-  int pitch = (row_size+align-1) / align * align;
-  int size = pitch * height;
-  int _align = (align < FRAME_ALIGN) ? FRAME_ALIGN : align;
+PVideoFrame ScriptEnvironment::NewVideoFrame(int row_size, int height, int align) {
+  const int pitch = (row_size+align-1) / align * align;
+  const int size = pitch * height;
+  const int _align = (align < FRAME_ALIGN) ? FRAME_ALIGN : align;
   VideoFrameBuffer* vfb = GetFrameBuffer(size+(_align*4));
+  if (!vfb)
+    ThrowError("NewVideoFrame: Returned 0 image pointer!");
 #ifdef _DEBUG
   {
     static const BYTE filler[] = { 0x0A, 0x11, 0x0C, 0xA7, 0xED };
@@ -1346,10 +1256,8 @@ PVideoFrame ScriptEnvironment::NewIVideoFrame(const VideoInfo& vi, int align) {
     }
   }
 #endif
-  int offset = int(vfb->GetWritePtr()) & (FRAME_ALIGN-1);  // align first line offset
-  offset = (FRAME_ALIGN - offset)%FRAME_ALIGN;
-//  int offset = (-int(vfb->GetWritePtr())) & (align-1);  // align first line offset  (alignment is free here!)
-  return new VideoFrame(vfb, offset, pitch, row_size, height, vi.pixel_type);
+  const int offset = (-int(vfb->GetWritePtr())) & (FRAME_ALIGN-1);  // align first line offset  (alignment is free here!)
+  return new VideoFrame(vfb, offset, pitch, row_size, height);
 }
 
 
@@ -1369,35 +1277,34 @@ PVideoFrame __stdcall ScriptEnvironment::NewVideoFrame(const VideoInfo& vi, int 
     default:
       ThrowError("Filter Error: Filter attempted to create VideoFrame with invalid pixel_type.");
   }
-  PVideoFrame retval;
-  // If align is negative, it will be forced, if not it may be made bigger
-  if (vi.IsPlanar()) { // Planar requires different math ;)
-    if (align>=0) {
-      align = max(align,FRAME_ALIGN);
-    }
-    if (vi.IsYV12()) {
-      if ((vi.height&1)||(vi.width&1))
-        ThrowError("Filter Error: Attempted to request an YV12 frame that wasn't mod2 in width and height!");
-    }
-    if (vi.IsYV16()) {
-      if (vi.width&1)
-        ThrowError("Filter Error: Attempted to request an YV16 frame that wasn't mod2 in width!");      
-    }
-    if (vi.IsYV411()) {
-      if (vi.width&3)
-        ThrowError("Filter Error: Attempted to request an YV411 frame that wasn't mod4 in width!");      
-    }
 
- 	  retval=ScriptEnvironment::NewPlanarVideoFrame(vi, align);  // If planar, maybe swap U&V
-  } else {
+  PVideoFrame retval;
+
+  // If align is negative, it will be forced, if not it may be made bigger
+  if (align < 0)
+    align = -align;
+  else
+    align = max(align,FRAME_ALIGN);
+
+  if (vi.IsPlanar() && !vi.IsY8()) { // Planar requires different math ;)
+    const int xmod  = 1 << vi.GetPlaneWidthSubsampling (PLANAR_U);
+    const int xmask = xmod - 1;
+    if (vi.width & xmask)
+      ThrowError("Filter Error: Attempted to request a planar frame that wasn't mod%d in width!", xmod);      
+
+    const int ymod  = 1 << vi.GetPlaneHeightSubsampling(PLANAR_U);
+    const int ymask = ymod - 1;
+    if (vi.height & ymask)
+      ThrowError("Filter Error: Attempted to request a planar frame that wasn't mod%d in height!", ymod);
+
+    const int heightUV = vi.height >> vi.GetPlaneHeightSubsampling(PLANAR_U);
+    retval=NewPlanarVideoFrame(vi.RowSize(PLANAR_Y), vi.height, vi.RowSize(PLANAR_U), heightUV, align, !vi.IsVPlaneFirst());
+  }
+  else {
     if ((vi.width&1)&&(vi.IsYUY2()))
       ThrowError("Filter Error: Attempted to request an YUY2 frame that wasn't mod2 in width.");
-    if (align<0) {
-      align *= -1;
-    } else {
-      align = max(align,FRAME_ALIGN);
-    }
-    retval=ScriptEnvironment::NewIVideoFrame(vi, align);
+
+    retval=NewVideoFrame(vi.RowSize(), vi.height, align);
   }
   InterlockedDecrement((long*)&retval->vfb->refcount);//After the VideoFrame has been assigned to a PVideoFrame it is safe to decrement the refcount (from 2 to 1)
   InterlockedDecrement((long*)&retval->refcount);
@@ -1406,10 +1313,11 @@ PVideoFrame __stdcall ScriptEnvironment::NewVideoFrame(const VideoInfo& vi, int 
 
 bool ScriptEnvironment::MakeWritable(PVideoFrame* pvf) {
   const PVideoFrame& vf = *pvf;
+
   EnterCriticalSection(&cs_relink_video_frame_buffer);//we don't want cacheMT::LockVFB to mess up the refcount
   // If the frame is already writable, do nothing.
   if (vf->IsWritable()) {
-	  InterlockedIncrement(&vf->vfb->sequence_number);
+    InterlockedIncrement(&vf->vfb->sequence_number); // Bad hack -- this is really the job of GetWritePtr
     LeaveCriticalSection(&cs_relink_video_frame_buffer);
     return false;
   }
@@ -1418,40 +1326,27 @@ bool ScriptEnvironment::MakeWritable(PVideoFrame* pvf) {
   // Otherwise, allocate a new frame (using NewVideoFrame) and
   // copy the data into it.  Then modify the passed PVideoFrame
   // to point to the new buffer.
-    const int row_size = vf->GetRowSize();
-    const int height = vf->GetHeight();
-    PVideoFrame dst;
+  const int row_size = vf->GetRowSize();
+  const int height   = vf->GetHeight();
+  PVideoFrame dst;
 
-      // Create new VideoInfo and fill needed fields
-    VideoInfo new_vi;
-    new_vi.pixel_type = vf->pixel_type;
-    new_vi.height = height;
+  if (vf->GetPitch(PLANAR_U)) {  // we have no videoinfo, so we assume that it is Planar if it has a U plane.
+    const int row_sizeUV = vf->GetRowSize(PLANAR_U);
+    const int heightUV   = vf->GetHeight(PLANAR_U);
 
-    if (new_vi.IsPlanar()) {
-      new_vi.width = vf->GetRowSize(PLANAR_Y);
-      dst = NewPlanarVideoFrame(new_vi, FRAME_ALIGN);  // Always V first on internal images
-      new_vi.width = row_size;
-    } else {
-      if (new_vi.IsRGB24()) {
-        new_vi.width = vf->GetRowSize() / 3;
-      } else if (new_vi.IsRGB32()) {
-        new_vi.width = vf->GetRowSize() >> 2;
-      } else if (new_vi.IsYUY2()) {
-        new_vi.width = vf->GetRowSize() >> 1;
-      } else {
-        ThrowError("MakeWriteable: Unknown Interleaved Format");
-      }
-      dst = NewIVideoFrame(new_vi, FRAME_ALIGN);
-    }
-	InterlockedDecrement((long*)&dst->vfb->refcount);//After the VideoFrame has been assigned to a PVideoFrame it is safe to decrement the refcount (from 2 to 1)
-	InterlockedDecrement((long*)&dst->refcount);
-    BitBlt(dst->GetWritePtr(), dst->GetPitch(), vf->GetReadPtr(), vf->GetPitch(), row_size, height);
-    // Blit More planes (pitch, rowsize and height should be 0, if none is present)
-    BitBlt(dst->GetWritePtr(PLANAR_V), dst->GetPitch(PLANAR_V), vf->GetReadPtr(PLANAR_V), vf->GetPitch(PLANAR_V), vf->GetRowSize(PLANAR_V), vf->GetHeight(PLANAR_V));
-    BitBlt(dst->GetWritePtr(PLANAR_U), dst->GetPitch(PLANAR_U), vf->GetReadPtr(PLANAR_U), vf->GetPitch(PLANAR_U), vf->GetRowSize(PLANAR_U), vf->GetHeight(PLANAR_U));
+    dst = NewPlanarVideoFrame(row_size, height, row_sizeUV, heightUV, FRAME_ALIGN, false);  // Always V first on internal images
+  } else {
+    dst = NewVideoFrame(row_size, height, FRAME_ALIGN);
+  }
+  InterlockedDecrement((long*)&dst->vfb->refcount);//After the VideoFrame has been assigned to a PVideoFrame it is safe to decrement the refcount (from 2 to 1)
+  InterlockedDecrement((long*)&dst->refcount);
+  BitBlt(dst->GetWritePtr(), dst->GetPitch(), vf->GetReadPtr(), vf->GetPitch(), row_size, height);
+  // Blit More planes (pitch, rowsize and height should be 0, if none is present)
+  BitBlt(dst->GetWritePtr(PLANAR_V), dst->GetPitch(PLANAR_V), vf->GetReadPtr(PLANAR_V), vf->GetPitch(PLANAR_V), vf->GetRowSize(PLANAR_V), vf->GetHeight(PLANAR_V));
+  BitBlt(dst->GetWritePtr(PLANAR_U), dst->GetPitch(PLANAR_U), vf->GetReadPtr(PLANAR_U), vf->GetPitch(PLANAR_U), vf->GetRowSize(PLANAR_U), vf->GetHeight(PLANAR_U));
 
-    *pvf = dst;
-    return true;
+  *pvf = dst;
+  return true;
 }
 
 
@@ -1479,37 +1374,17 @@ void ScriptEnvironment::PopContextGlobal() {
 
 
 PVideoFrame __stdcall ScriptEnvironment::Subframe(PVideoFrame src, int rel_offset, int new_pitch, int new_row_size, int new_height) {
-  //return src->Subframe(rel_offset, new_pitch, new_row_size, new_height); Thread unsafe to do it like this  
-	PVideoFrame retval=new VideoFrame(src->vfb, src->offset+rel_offset, new_pitch, new_row_size, new_height, src->pixel_type);
-	InterlockedDecrement((long*)&retval->refcount);
-	return retval;
+  PVideoFrame retval = src->Subframe(rel_offset, new_pitch, new_row_size, new_height);
+  InterlockedDecrement((long*)&retval->refcount);
+  return retval;
 }
 
 //tsp June 2005 new function compliments the above function
-PVideoFrame __stdcall ScriptEnvironment::SubframePlanar(PVideoFrame src, int rel_offset, int new_pitch, int new_row_size, int new_height, int rel_offsetU, int rel_offsetV, int new_pitchUV) {
-  //return src->Subframe(rel_offset, new_pitch, new_row_size, new_height, rel_offsetU, rel_offsetV, new_pitchUV);
-  int UVnew_row_size = new_row_size;
-  int UVnew_height = new_height;
-  switch (src->pixel_type) {  // WILL BREAK EASY! Not very safe!
-    case VideoInfo::CS_YV12:
-    case VideoInfo::CS_I420:
-      UVnew_row_size /=2;
-      UVnew_height /=2;
-      break;
-    case VideoInfo::CS_Y8:
-      UVnew_row_size = 0;
-      UVnew_height = 0;
-      break;
-    case VideoInfo::CS_YV16:
-      UVnew_row_size /=2;
-      break;
-    case VideoInfo::CS_YV411:
-      UVnew_row_size /=4;
-      break;
-  }
-	PVideoFrame retval=new VideoFrame(src->vfb, src->offset+rel_offset, new_pitch, new_row_size, new_height, rel_offsetU+src->offsetU, rel_offsetV+src->offsetV, new_pitchUV, UVnew_row_size, UVnew_height, src->pixel_type);
-	InterlockedDecrement((long*)&retval->refcount);
-	return retval;
+PVideoFrame __stdcall ScriptEnvironment::SubframePlanar(PVideoFrame src, int rel_offset, int new_pitch, int new_row_size,
+                                                        int new_height, int rel_offsetU, int rel_offsetV, int new_pitchUV) {
+  PVideoFrame retval = src->Subframe(rel_offset, new_pitch, new_row_size, new_height, rel_offsetU, rel_offsetV, new_pitchUV);
+  InterlockedDecrement((long*)&retval->refcount);
+  return retval;
 }
 
 void* ScriptEnvironment::ManageCache(int key, void* data){
