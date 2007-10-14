@@ -728,7 +728,7 @@ char* StringDump::SaveString(const char* s, int len) {
   char* result = current_block+block_pos;
   memcpy(result, s, len);
   result[len] = 0;
-  block_pos += (len+1+sizeof(char*)) & -sizeof(char*); // Keep 32bit aligned
+  block_pos += (len+sizeof(char*)) & -sizeof(char*); // Keep 32bit aligned
   return result;
 }
 
