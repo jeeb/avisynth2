@@ -172,8 +172,8 @@ VideoFrame* VideoFrame::Subframe(int rel_offset, int new_pitch, int new_row_size
 
 VideoFrame* VideoFrame::Subframe(int rel_offset, int new_pitch, int new_row_size, int new_height, int rel_offsetU, int rel_offsetV, int new_pitchUV) const {
   // Maintain plane size relationship
-  const int new_row_sizeUV = !row_size ? 0 : muldiv(new_row_size, row_sizeUV, row_size);
-  const int new_heightUV   = !height   ? 0 : muldiv(new_height,   heightUV,   height);
+  const int new_row_sizeUV = !row_size ? 0 : MulDiv(new_row_size, row_sizeUV, row_size);
+  const int new_heightUV   = !height   ? 0 : MulDiv(new_height,   heightUV,   height);
 
   return new VideoFrame(vfb, offset+rel_offset, new_pitch, new_row_size, new_height, rel_offsetU+offsetU, rel_offsetV+offsetV, new_pitchUV, new_row_sizeUV, new_heightUV);
 }
