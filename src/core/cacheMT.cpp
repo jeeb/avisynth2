@@ -567,7 +567,7 @@ PVideoFrame __stdcall CacheMT::GetFrame(int n, IScriptEnvironment* env)
 VideoFrame* CacheMT::BuildVideoFrame(CachedVideoFrame *i, int n)
 {
   Relink(&video_frames, i, video_frames.next);   // move the matching cache entry to the front of the list
-  VideoFrame* result = new VideoFrame(i->vfb, i->offset, i->pitch, i->row_size, i->height, i->offsetU, i->offsetV, i->pitchUV, i->row_sizeUV, i->heightUV, i->pixel_type);
+  VideoFrame* result = new VideoFrame(i->vfb, i->offset, i->pitch, i->row_size, i->height, i->offsetU, i->offsetV, i->pitchUV, i->row_sizeUV, i->heightUV);
 
   // If we have asked for any same stale frame twice, leave frames locked.
   if (  (fault_rate <= 160)     // Reissued frames are not subject to locking at the lower fault rate
@@ -620,7 +620,6 @@ void CacheMT::RegisterVideoFrame(CachedVideoFrame *i, const PVideoFrame& frame)
   i->height = frame->height;
   i->row_sizeUV = frame->row_sizeUV;
   i->heightUV = frame->heightUV;
-  i->pixel_type = frame->pixel_type;
 
 }
 
