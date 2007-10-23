@@ -77,14 +77,14 @@ ConvertToY8::ConvertToY8(PClip src, int in_matrix, IScriptEnvironment* env) : Ge
       *m++ = (signed short)(0.299*32768.0+0.5);  //R
       offset_y = 0;
     } else if (in_matrix == Rec709) {
-      *m++ = (signed short)((219.0/255.0)*0.0721*32768.0+0.5);  //B
-      *m++ = (signed short)((219.0/255.0)*0.7154*32768.0+0.5);  //G
-      *m++ = (signed short)((219.0/255.0)*0.2125*32768.0+0.5);  //R
+      *m++ = (signed short)((219.0/255.0)*0.0722*32768.0+0.5);  //B
+      *m++ = (signed short)((219.0/255.0)*0.7152*32768.0+0.5);  //G
+      *m++ = (signed short)((219.0/255.0)*0.2126*32768.0+0.5);  //R
       offset_y = 16;
     } else if (in_matrix == PC_709) {
-      *m++ = (signed short)(0.0721*32768.0+0.5);  //B
-      *m++ = (signed short)(0.7154*32768.0+0.5);  //G
-      *m++ = (signed short)(0.2125*32768.0+0.5);  //R
+      *m++ = (signed short)(0.0722*32768.0+0.5);  //B
+      *m++ = (signed short)(0.7152*32768.0+0.5);  //G
+      *m++ = (signed short)(0.2126*32768.0+0.5);  //R
       offset_y = 0;
     } else {
       _aligned_free(matrix);
@@ -427,9 +427,9 @@ ConvertRGBToYV24::ConvertRGBToYV24(PClip src, int in_matrix, IScriptEnvironment*
 
 
   /*
-  Kr   = {0.299, 0.2125}
-  Kb   = {0.114, 0.0721}
-  Kg   = 1 - Kr - Kb // {0.587, 0.7154}
+  Kr   = {0.299, 0.2126}
+  Kb   = {0.114, 0.0722}
+  Kg   = 1 - Kr - Kb // {0.587, 0.7152}
   Srgb = 255
   Sy   = {219, 255}
   Suv  = {112, 127}
@@ -490,7 +490,7 @@ ConvertRGBToYV24::ConvertRGBToYV24(PClip src, int in_matrix, IScriptEnvironment*
     Cb=-0.1145*R' - 0.3855*G' + 0.5000*B'
     Cr= 0.5016*R' - 0.4556*G' - 0.0459*B'
 
-    Y'= 0.2125*R' + 0.7154*G' + 0.0721*B'  IB thinks this
+    Y'= 0.2126*R' + 0.7152*G' + 0.0722*B'  IB thinks this
     Cr= 0.5000*R' - 0.4542*G' - 0.0458*B'
     */
     *m++ = (signed short)((219.0/255.0)*0.0721*mulfac+0.5);  //B
@@ -557,8 +557,8 @@ ConvertRGBToYV24::~ConvertRGBToYV24() {
 
 //    BuildMatrix(0.299,  /* 0.587  */ 0.114,  219, 112, 16);
 //    BuildMatrix(0.299,  /* 0.587  */ 0.114,  255, 127,  0);
-//    BuildMatrix(0.2125, /* 0.7154 */ 0.0721, 219, 112, 16);
-//    BuildMatrix(0.2125, /* 0.7154 */ 0.0721, 255, 127,  0);
+//    BuildMatrix(0.2126, /* 0.7152 */ 0.0722, 219, 112, 16);
+//    BuildMatrix(0.2126, /* 0.7152 */ 0.0722, 255, 127,  0);
 
 /*
 void ConvertRGBToYV24::BuildMatrix(double Kr, double Kb, int Sy, int Suv, int Oy)
@@ -687,9 +687,9 @@ ConvertYV24ToRGB::ConvertYV24ToRGB(PClip src, int in_matrix, int _pixel_step, IS
 
 
   /*
-  Kr   = {0.299, 0.2125}
-  Kb   = {0.114, 0.0721}
-  Kg   = 1 - Kr - Kb // {0.587, 0.7154}
+  Kr   = {0.299, 0.2126}
+  Kb   = {0.114, 0.0722}
+  Kg   = 1 - Kr - Kb // {0.587, 0.7152}
   Srgb = 255
   Sy   = {219, 255}
   Suv  = {112, 127}
@@ -819,8 +819,8 @@ ConvertYV24ToRGB::~ConvertYV24ToRGB() {
 
 //    BuildMatrix(0.299,  /* 0.587  */ 0.114,  219, 112, 16);
 //    BuildMatrix(0.299,  /* 0.587  */ 0.114,  255, 127,  0);
-//    BuildMatrix(0.2125, /* 0.7154 */ 0.0721, 219, 112, 16);
-//    BuildMatrix(0.2125, /* 0.7154 */ 0.0721, 255, 127,  0);
+//    BuildMatrix(0.2126, /* 0.7152 */ 0.0722, 219, 112, 16);
+//    BuildMatrix(0.2126, /* 0.7152 */ 0.0722, 255, 127,  0);
 
 /*
 void ConvertYV24ToRGB::BuildMatrix(double Kr, double Kb, int Sy, int Suv, int Oy)
