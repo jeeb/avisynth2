@@ -380,9 +380,9 @@ void Antialiaser::GetAlphaRect() {
     fInited = true;
     int i;
 
-    const double scale = 516*64/sqrt(128);
+    const double scale = 516*64/sqrt((double)128);
     for(i=0; i<=128; i++)
-      gamma[i]=unsigned short(sqrt(i) * scale + 0.5); // Gamma = 2.0
+      gamma[i]=unsigned short(sqrt((double)i) * scale + 0.5); // Gamma = 2.0
 
     for(i=0; i<256; i++) {
       BYTE b=0, l=0, r=0;

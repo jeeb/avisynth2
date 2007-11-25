@@ -105,21 +105,21 @@ long __declspec(naked) CPUCheckForExtensions() {
 		mov		ebx,ecx
 		shr		ebx,8		//SSSE3 is bit 9
 		and		ebx,1 	
-		shl		ebx,8
+		shl		ebx,9
 		and		ebx,00000200h	//set bit 9
 		or		ebp,ebx
 
 		mov		ebx,ecx
 		shr		ebx,18		//SSE4 is bit 19
 		and		ebx,1 	
-		shl		ebx,9
+		shl		ebx,10
 		and		ebx,00000400h	//set bit 10
 		or		ebp,ebx
 
 		mov		ebx,ecx
 		shr		ebx,19		//SSE4.2 is bit 20
 		and		ebx,1 	
-		shl		ebx,10
+		shl		ebx,11
 		and		ebx,00000800h	//set bit 10
 		or		ebp,ebx
 

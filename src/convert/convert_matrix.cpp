@@ -249,7 +249,7 @@ void MatrixGenerator3x3::GenerateAssembly(int width, int frac_bits, bool rgb_out
   Assembler x86;   // This is the class that assembles the code.
 
   bool unroll = false;   // Unrolled code ~30% slower on Athlon XP.
-
+  bool ssse3 = !!(env->GetCPUFlags() & CPUF_SSSE3);
   int loops = width / 2;
 
   if (pre_add && post_add)
@@ -300,6 +300,24 @@ void MatrixGenerator3x3::GenerateAssembly(int width, int frac_bits, bool rgb_out
     x86.label("loopback");
     loops = 1;
   }
+
+  if (ssse3) {   //SSSE3 does not modify mm5 or mm7, so we only load/initialize it once
+    x86.movq(       mm5, qword_ptr [ebx+16]);            // matrix[2]
+    if (src_pixel_step == 4) {  // Load both.
+      if (rgb_out) {
+        x86.pxor(    mm7, mm7);
+      } else {
+        x86.movq(    mm7, qword_ptr [ebx+24]);            // matrix[3] = 0xff000000ff000000
+      }
+    } else {
+      if (rgb_out) {
+        x86.pxor(    mm7, mm7);
+      } else {
+        x86.movq(    mm7, qword_ptr [ebx+24]);            // matrix[3] = 0xff000000ff000000
+      }
+    }
+  }
+
 /****
  * Inloop usage:
  * eax: pre/post-add pointer
@@ -312,9 +330,9 @@ void MatrixGenerator3x3::GenerateAssembly(int width, int frac_bits, bool rgb_out
     if (src_pixel_step == 4) {  // Load both.
       x86.movq(      mm0, qword_ptr[esi]);
       if (rgb_out) {
-        x86.pxor(    mm7, mm7);
+        if (!ssse3) x86.pxor(    mm7, mm7);
       } else {
-        x86.movq(    mm7, qword_ptr [ebx+24]);            // matrix[3] = 0xff000000ff000000
+        if (!ssse3) x86.movq(    mm7, qword_ptr [ebx+24]);            // matrix[3] = 0xff000000ff000000
         x86.por(     mm0, mm7);
       }
       x86.movq(      mm1, mm0);
@@ -323,10 +341,10 @@ void MatrixGenerator3x3::GenerateAssembly(int width, int frac_bits, bool rgb_out
     } else {
       x86.movd(      mm0, dword_ptr[esi]);
       if (rgb_out) {
-        x86.pxor(    mm7, mm7);
+        if (!ssse3) x86.pxor(    mm7, mm7);
         x86.movd(    mm1, dword_ptr[esi+src_pixel_step]);
       } else {
-        x86.movq(    mm7, qword_ptr [ebx+24]);            // matrix[3] = 0xff000000ff000000
+        if (!ssse3) x86.movq(    mm7, qword_ptr [ebx+24]);            // matrix[3] = 0xff000000ff000000
         x86.movd(    mm1, dword_ptr[esi+src_pixel_step]);
         x86.por(     mm0, mm7);
         x86.por(     mm1, mm7);
@@ -346,51 +364,81 @@ void MatrixGenerator3x3::GenerateAssembly(int width, int frac_bits, bool rgb_out
     x86.movq(        mm3, mm1);
     x86.pmaddwd(     mm1, mm4);                           // mm4 free
 
-    x86.punpckldq(   mm6, mm0);                           // Move mm0 lower to mm6 upper
-    x86.punpckldq(   mm5, mm1);                           // Move mm1 lower to mm5 upper
+    if (ssse3) {                                           //mm5 free for further optimization
+      x86.phaddd(      mm0, mm1);
+      x86.movq(        mm4, qword_ptr [ebx+8]);             // matrix[1]
 
-    x86.paddd(       mm6, mm0);                           // First Lo ready in upper
-    x86.paddd(       mm5, mm1);                           // First Hi ready in upper
+      x86.movq(        mm6, mm0);
+      x86.movq(        mm0, mm2);
 
-    x86.movq(        mm4, qword_ptr [ebx+8]);             // matrix[1]
-    x86.punpckhdq(   mm6, mm5);                           // Move [mm5, mm6] uppers to mm6[upper, lower]
+      x86.pmaddwd(     mm2, mm4);                           // Part 2/3
+      x86.movq(        mm1, mm3);
+
+      x86.pmaddwd(     mm3, mm4);                           // mm4 free
+
+      x86.phaddd(    mm2, mm3);                           // Note result is in mm2, not mm7 as below
+      x86.pmaddwd(    mm0, mm5);                           // Part 3/3
+
+      x86.psrad(       mm6, frac_bits);                     // Shift down
+      x86.pmaddwd(    mm1, mm5);                           // mm4 free
+
+      x86.phaddd(     mm0, mm1);
+      x86.psrad(       mm2, frac_bits);                     // Shift down
+
+      x86.movq(       mm4, mm0);
+      x86.movq(        mm0, mm6);                           // pixel 1
+
+      x86.psrad(       mm4, frac_bits);                     // Shift down
+
+      x86.punpckldq(   mm0, mm2);                           // Move mm2 lower to mm0 upper
+      x86.punpckhdq(   mm6, mm2);                           // Move mm6 high to low, put mm2 high in upper pixel 2
+
+    } else {  // we don't have phaddd
+
+      x86.punpckldq(   mm6, mm0);                           // Move mm0 lower to mm6 upper
+      x86.punpckldq(   mm5, mm1);                           // Move mm1 lower to mm5 upper
+
+      x86.paddd(       mm6, mm0);                           // First Lo ready in upper
+      x86.paddd(       mm5, mm1);                           // First Hi ready in upper
+        
+      x86.movq(        mm4, qword_ptr [ebx+8]);             // matrix[1]
+      x86.punpckhdq(   mm6, mm5);                           // Move [mm5, mm6] uppers to mm6[upper, lower]
+      x86.movq(        mm0, mm2);
+      x86.pmaddwd(     mm2, mm4);                           // Part 2/3
 
 // Element 2/3
-    x86.movq(        mm0, mm2);
-    x86.pmaddwd(     mm2, mm4);                           // Part 2/3
+      x86.movq(        mm1, mm3);
+      x86.pmaddwd(     mm3, mm4);                           // mm4 free
+      x86.punpckldq(   mm7, mm2);                           // Move mm2 lower to mm7 upper
+      x86.punpckldq(   mm5, mm3);                           // Move mm3 lower to mm5 upper
 
-    x86.movq(        mm1, mm3);
-    x86.pmaddwd(     mm3, mm4);                           // mm4 free
+      x86.movq(       mm4, qword_ptr [ebx+16]);            // matrix[2]
+      x86.paddd(       mm7, mm2);                           // Second Lo ready in upper
 
-    x86.punpckldq(   mm7, mm2);                           // Move mm2 lower to mm7 upper
-    x86.punpckldq(   mm5, mm3);                           // Move mm3 lower to mm5 upper
+      x86.pmaddwd(    mm0, mm4);                           // Part 3/3
+      x86.paddd(       mm5, mm3);                           // Second Hi ready in upper
 
-     x86.movq(       mm4, qword_ptr [ebx+16]);            // matrix[2]
-    x86.paddd(       mm7, mm2);                           // Second Lo ready in upper
+      x86.pmaddwd(    mm1, mm4);                           // mm4 free
+      x86.punpckhdq(   mm7, mm5);                           // Move uppers[mm5, mm7]  to mm7[upper, lower]
+ // Element 3/3
 
-     x86.pmaddwd(    mm0, mm4);                           // Part 3/3
-    x86.paddd(       mm5, mm3);                           // Second Hi ready in upper
+      x86.punpckldq(   mm4, mm0);                           // Move mm2 lower to mm4 upper
+      x86.punpckldq(   mm5, mm1);                           // Move mm3 lower to mm5 upper
 
-     x86.pmaddwd(    mm1, mm4);                           // mm4 free
-    x86.punpckhdq(   mm7, mm5);                           // Move uppers[mm5, mm7]  to mm7[upper, lower]
+      x86.paddd(       mm4, mm0);                           // Third Lo ready in upper
+      x86.paddd(       mm5, mm1);                           // Third Hi ready in upper
 
-// Element 3/3
+      x86.punpckhdq(   mm4, mm5);                           // Move uppers[mm5, mm4]  to mm4[upper, lower]
 
-    x86.punpckldq(   mm4, mm0);                           // Move mm2 lower to mm4 upper
-    x86.punpckldq(   mm5, mm1);                           // Move mm3 lower to mm5 upper
+      x86.psrad(       mm6, frac_bits);                     // Shift down
+      x86.psrad(       mm7, frac_bits);                     // Shift down
+      x86.movq(        mm0, mm6);                           // pixel 1
+      x86.psrad(       mm4, frac_bits);                     // Shift down
 
-    x86.paddd(       mm4, mm0);                           // Third Lo ready in upper
-    x86.paddd(       mm5, mm1);                           // Third Hi ready in upper
+      x86.punpckldq(   mm0, mm7);                           // Move mm7 lower to mm0 upper
+      x86.punpckhdq(   mm6, mm7);                           // Move mm6 high to low, put mm7 high in upper pixel 2
+    }
 
-    x86.punpckhdq(   mm4, mm5);                           // Move uppers[mm5, mm4]  to mm4[upper, lower]
-
-    x86.psrad(       mm6, frac_bits);                     // Shift down
-    x86.psrad(       mm7, frac_bits);                     // Shift down
-    x86.movq(        mm0, mm6);                           // pixel 1
-    x86.psrad(       mm4, frac_bits);                     // Shift down
-
-    x86.punpckldq(   mm0, mm7);                           // Move mm7 lower to mm0 upper
-    x86.punpckhdq(   mm6, mm7);                           // Move mm6 high to low, put mm7 high in upper pixel 2
 
     if (post_add) {
       x86.movq(      mm2, qword_ptr[eax]);
@@ -428,6 +476,7 @@ void MatrixGenerator3x3::GenerateAssembly(int width, int frac_bits, bool rgb_out
 
     x86.add(         edi, dest_pixel_step*2);
   }
+
   if (!unroll) {  // Loop on if not unrolling
     x86.dec(         ecx);
     x86.jnz(         "loopback");

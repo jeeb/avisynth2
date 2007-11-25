@@ -190,17 +190,6 @@ DynamicAssembledCode FilteredResizeH::GenerateResizer(int gen_plane, IScriptEnvi
     unroll_fetch = false;
   }
 
-  bool avoid_stlf = false;
-  if (env->GetCPUFlags() & CPUF_3DNOW_EXT) {
-    // We have an Athlon.
-    // Avoid Store->Load forward penalty (8 to 4 mismatch)
-    // NOT faster on Athlon!
-//    avoid_stlf = false;
-    if (!isse) {
-      avoid_stlf = false;
-    }
-  }
-
   if (!(vi_src_width && vi_dst_width && vi_height)) { // Skip
     x86.ret();
     return DynamicAssembledCode(x86, env, "ResizeH: ISSE code could not be compiled.");
@@ -264,25 +253,10 @@ DynamicAssembledCode FilteredResizeH::GenerateResizer(int gen_plane, IScriptEnvi
        x86.punpckhbw(mm3,mm6);
       if (!unroll_fetch)   // Loop on if not unrolling
         x86.dec(ebx);
-      if ((!avoid_stlf) || (!isse)) {
         x86.movq(qword_ptr[edi-32],mm0);        // Store unpacked pixels in temporary space.
         x86.movq(qword_ptr[edi+8-32],mm2);
         x86.movq(qword_ptr[edi+16-32],mm1);
         x86.movq(qword_ptr[edi+24-32],mm3);
-      } else {  // Code to avoid store->load forward size mismatch.
-        x86.movd(dword_ptr [edi-32],mm0);
-        x86.movd(dword_ptr [edi+8-32],mm2);
-        x86.movd(dword_ptr [edi+16-32],mm1);
-        x86.movd(dword_ptr [edi+24-32],mm3);
-        x86.pswapd(mm0,mm0);				// 3DNow instruction!!
-        x86.pswapd(mm1,mm1);
-        x86.pswapd(mm2,mm2);
-        x86.pswapd(mm3,mm3);
-        x86.movd(dword_ptr [edi+4-32],mm0);
-        x86.movd(dword_ptr [edi+8+4-32],mm2);
-        x86.movd(dword_ptr [edi+16+4-32],mm1);
-        x86.movd(dword_ptr [edi+24+4-32],mm3);
-      }
       if (!unroll_fetch)   // Loop on if not unrolling
         x86.jnz("fetch_loopback");
     }
