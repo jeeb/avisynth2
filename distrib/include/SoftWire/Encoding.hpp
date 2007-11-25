@@ -112,6 +112,8 @@ namespace SoftWire
 			bool P3 : 1;
 			bool P4 : 1;
 			bool REX : 1;
+			bool O4 : 1;
+			bool O3 : 1;
 			bool O2 : 1;
 			bool O1 : 1;
 			bool modRM : 1;
@@ -148,6 +150,8 @@ namespace SoftWire
 		} REX;
 		unsigned char O1;   // Opcode
 		unsigned char O2;
+		unsigned char O3;   
+		unsigned char O4;
 		struct
 		{
 			union
