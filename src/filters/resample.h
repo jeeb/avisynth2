@@ -77,7 +77,7 @@ private:
 
  
 
-class FilteredResizeV : public GenericVideoFilter 
+class FilteredResizeV : public GenericVideoFilter, public  CodeGenerator 
 /**
   * Class to resize in the vertical direction using a specified sampling filter
   * Helper for resample functions
@@ -88,7 +88,12 @@ public:
                    ResamplingFunction* func, IScriptEnvironment* env );
   virtual ~FilteredResizeV(void);
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
-
+  DynamicAssembledCode GenerateResizer(int gen_plane, bool aligned, IScriptEnvironment* env);
+private:
+  DynamicAssembledCode assemblerY;
+  DynamicAssembledCode assemblerUV;
+  DynamicAssembledCode assemblerY_aligned;
+  DynamicAssembledCode assemblerUV_aligned;
 
 private:
   int* /*const*/ resampling_pattern;
@@ -97,6 +102,14 @@ private:
   int *yOfsUV;
   int pitch_gY;
   int pitch_gUV;
+
+  // Used for Dynamic code:
+  int src_pitch;
+  int dst_pitch;
+  const BYTE* srcp;
+  BYTE* dstp;
+  int y;
+  int *yOfs2;
 };
 
 

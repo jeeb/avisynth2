@@ -326,7 +326,7 @@ namespace SoftWire
 
 					encoding.format.O1 = true;
         }
-				else if((!encoding.format.O2) &&
+				else if((!encoding.format.O2)/* &&
 				        (encoding.O1 == 0x0F ||
 				         encoding.O1 == 0xD8 ||
 				         encoding.O1 == 0xD9 ||
@@ -335,7 +335,7 @@ namespace SoftWire
 				         encoding.O1 == 0xDC ||
 				         encoding.O1 == 0xDD ||
 				         encoding.O1 == 0xDE ||
-				         encoding.O1 == 0xDF))
+				         encoding.O1 == 0xDF || encoding.O1 == 0x66)*/)
 				{
 					encoding.O2 = encoding.O1;
 					encoding.O1 = opcode;
