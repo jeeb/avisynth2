@@ -1483,14 +1483,15 @@ FilteredResizeV::~FilteredResizeV(void)
  * The inner loop filter is unrolled based on the
  *  exact filter size.
  * SSSE3 version is approximately twice as fast as MMX, 
- * PSNR is more than 70dB to MMX version.
+ * PSNR is more than 67dB to MMX version.
  **********************************/
 
 
 
 DynamicAssembledCode FilteredResizeV::GenerateResizer(int gen_plane, bool aligned, IScriptEnvironment* env) {
   __declspec(align(16)) static const __int64 FPround   =     0x0000200000002000; // 16384/2
-  __declspec(align(16)) static const __int64 FProundSSSE3 =  0x0040004000400040; // 128/2
+  __declspec(align(16)) static const __int64 FProundSSSE3 =  0x0020002000200020; // 128/2
+  __declspec(align(16)) static const __int64 UnpackByteShuffle =  0x0100010001000100; // 128/2
 
   Assembler x86;   // This is the class that assembles the code.
   bool ssse3 = !!(env->GetCPUFlags() & CPUF_SSSE3);  // We have one version for SSSE3 and one for plain MMX.
@@ -1582,10 +1583,11 @@ x86.label("xloop");
     x86.mov(ebp, dword_ptr[(int)&src_pitch]);
     x86.mov(ebx, dword_ptr[(int)&dst_pitch]);
     x86.mov(edi, y);
-    x86.pxor(xmm0, xmm0); 
     x86.movq(xmm6, qword_ptr[(int)&FProundSSSE3]);  // Rounder for final division. Not touched!
+    x86.movq(xmm0, qword_ptr[(int)&UnpackByteShuffle]);  // Rounder for final division. Not touched!
     x86.pxor(xmm5, xmm5);                // zeroes
     x86.punpcklqdq(xmm6,xmm6);
+    x86.punpcklqdq(xmm0,xmm0);
     x86.align(16);
 
     x86.label("yloop");
@@ -1602,37 +1604,34 @@ x86.label("xloop");
     x86.label("xloop");
     x86.lea(eax, dword_ptr[esi+ecx]);        //eax = srcp2 = srcp + x
     if (aligned)
-      x86.movdqa(   xmm0, xmmword_ptr[eax]);            //xmm2 = p|o|n|m|l|k|j|i|h|g|f|e|d|c|b|a
+      x86.movdqa(   xmm4, xmmword_ptr[eax]);            //xmm4 = p|o|n|m|l|k|j|i|h|g|f|e|d|c|b|a
     else
-      x86.movdqu(   xmm0, xmmword_ptr[eax]);
+      x86.movdqu(   xmm4, xmmword_ptr[eax]);
     for (int i = 0; i< fir_filter_size; i++) {
       x86.movd(       xmm3, dword_ptr[edx+i*4]);          //mm3 = cur[b] = 0|co
-      x86.movdqa(     xmm2, xmm0);
-      x86.movdqa(     xmm4, xmm0);
-      x86.pshufd(     xmm3, xmm3,0);                      // 00co|00co|00co|00co
+      x86.movdqa(     xmm2, xmm4);
       x86.punpcklbw(  xmm2, xmm5);                        // mm2 = *srcp2 = 0h|0g|0f|0e|0d|0c|0b|0a
-      x86.packssdw(   xmm3, xmm3);                        // Unpack multiplier
       x86.punpckhbw(  xmm4, xmm5);                        // mm4 = *srcp2 = 0p|0o|0n|0m|0l|0k|0j|0i
+      x86.pshufb(     xmm3, xmm0);                        // Unpack coefficient to all words
       x86.psllw(      xmm2, 7);                           // Extend to signed word
-      x86.psllw(      xmm3, 1);                           // Extend to signed word (14 -> 15 bit)
       x86.psllw(      xmm4, 7);                           // Extend to signed word
       x86.add(        eax, ebp);                          //srcp2 += src_pitch
       x86.pmulhrsw(   xmm2, xmm3);                        //Multiply
+      x86.pmulhrsw(   xmm3, xmm4);                        //Multiply
       if (i<fir_filter_size-1) {                          // Load early for next loop
         if (aligned)
-          x86.movdqa(   xmm0, xmmword_ptr[eax]);            //xmm2 = p|o|n|m|l|k|j|i|h|g|f|e|d|c|b|a
+          x86.movdqa(   xmm4, xmmword_ptr[eax]);            //xmm4 = p|o|n|m|l|k|j|i|h|g|f|e|d|c|b|a
         else
-          x86.movdqu(   xmm0, xmmword_ptr[eax]);
+          x86.movdqu(   xmm4, xmmword_ptr[eax]);
       }
-      x86.pmulhrsw(   xmm4, xmm3);                        //Multiply
       x86.paddsw(     xmm1, xmm2);                        // Add
-      x86.paddsw(     xmm7, xmm4);
+      x86.paddsw(     xmm7, xmm3);
     }
     x86.mov(        eax, dword_ptr[(int)&dstp]);
-    x86.paddsw(     xmm1,xmm6);                 // Add rounder
-    x86.paddsw(     xmm7,xmm6);
-    x86.psraw(      xmm1, 7);                   // Compensate fraction
-    x86.psraw(      xmm7, 7);                   // Compensate fraction
+    x86.paddsw(     xmm1, xmm6);                 // Add rounder
+    x86.paddsw(     xmm7, xmm6);
+    x86.psraw(      xmm1, 6);                   // Compensate fraction
+    x86.psraw(      xmm7, 6);                   // Compensate fraction
     x86.packuswb(   xmm1, xmm7);                // mm1 = p|o|n|m|l|k|j|i|h|g|f|e|d|c|b|a
     x86.movdqa(     xmmword_ptr[eax+ecx], xmm1);
     x86.pxor(       xmm7, xmm7);
