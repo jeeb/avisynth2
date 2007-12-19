@@ -667,7 +667,7 @@ SeekExit:
       return E_POINTER;
     }
     dssRPT0(dssCMD, "GetSample::QueryFilterInfo()\n");
-    lstrcpyW(pInfo->achName, L"GetSample");
+    lstrcpynW(pInfo->achName, L"GetSample",128);
     pInfo->pGraph = filter_graph;
     if (filter_graph) filter_graph->AddRef();
     return S_OK;
@@ -772,7 +772,7 @@ SeekExit:
     pInfo->pFilter = static_cast<IBaseFilter*>(this);
     AddRef();
     pInfo->dir = PINDIR_INPUT;
-    lstrcpyW(pInfo->achName, L"GetSample");
+    lstrcpynW(pInfo->achName, L"GetSample",128);
 	dssRPT1(dssCMD, "GetSample::QueryPinInfo() 0x%08x\n", this);
     return S_OK;
   }

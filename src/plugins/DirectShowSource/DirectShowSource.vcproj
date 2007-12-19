@@ -73,10 +73,13 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="odbc32.lib odbccp32.lib strmbase.lib msacm32.lib quartz.lib ddraw.lib amstrmid.lib winmm.lib ole32.lib oleaut32.lib User32.lib"
+				AdditionalDependencies="strmbase.lib msacm32.lib quartz.lib ddraw.lib amstrmid.lib winmm.lib ole32.lib oleaut32.lib User32.lib"
+				ShowProgress="0"
 				OutputFile=".\Release/DirectShowSource.dll"
 				LinkIncremental="1"
 				SuppressStartupBanner="true"
+				IgnoreAllDefaultLibraries="false"
+				IgnoreDefaultLibraryNames="atlthunk.lib; libcmt.lib"
 				ProgramDatabaseFile=".\Release/DirectShowSource.pdb"
 				ImportLibrary=".\Release/DirectShowSource.lib"
 				TargetMachine="1"
@@ -168,11 +171,11 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="odbc32.lib odbccp32.lib strmbase.lib msacm32.lib quartz.lib ddraw.lib amstrmid.lib winmm.lib ole32.lib oleaut32.lib User32.lib"
+				AdditionalDependencies="strmbase.lib msacm32.lib quartz.lib ddraw.lib amstrmid.lib winmm.lib ole32.lib oleaut32.lib User32.lib MSVCRTD.LIB"
 				OutputFile=".\Debug/DirectShowSource.dll"
 				LinkIncremental="2"
 				SuppressStartupBanner="true"
-				IgnoreDefaultLibraryNames="LIBCMT"
+				IgnoreDefaultLibraryNames="LIBCMTD.lib;atlthunk.lib"
 				GenerateDebugInformation="true"
 				ProgramDatabaseFile=".\Debug/DirectShowSource.pdb"
 				ImportLibrary=".\Debug/DirectShowSource.lib"
