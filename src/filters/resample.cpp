@@ -37,7 +37,6 @@
 #include "resample.h"
 
 
-#define USE_DYNAMIC_COMPILER true
 
 
 /********************************************************************
@@ -120,18 +119,13 @@ FilteredResizeH::FilteredResizeH( PClip _child, double subrange_left, double sub
 
   vi.width = target_width;
 
-  use_dynamic_code = USE_DYNAMIC_COMPILER;
-
-  if (use_dynamic_code) {
-    if (vi.IsPlanar()) {
-      assemblerY = GenerateResizer(PLANAR_Y, env);
-      if (!vi.IsY8()) {
-        assemblerUV = GenerateResizer(PLANAR_U, env);
-      }
+  if (vi.IsPlanar()) {
+    assemblerY = GenerateResizer(PLANAR_Y, env);
+    if (!vi.IsY8()) {
+      assemblerUV = GenerateResizer(PLANAR_U, env);
     }
   }
-	}
-	catch (...) { throw; }
+	}	catch (...) { throw; }
 }
 
 /***********************************
@@ -515,347 +509,25 @@ PVideoFrame __stdcall FilteredResizeH::GetFrame(int n, IScriptEnvironment* env)
   int dst_pitch = dst->GetPitch();
   if (vi.IsPlanar()) {
     int plane = 0;
-    if (use_dynamic_code) {  // Use dynamic compilation?
-      gen_src_pitch = src_pitch;
-      gen_dst_pitch = dst_pitch;
-      gen_srcp = (BYTE*)srcp;
-      gen_dstp = dstp;
-      assemblerY.Call();
-      if (src->GetRowSize(PLANAR_U)) {  // Y8 is finished here
-        gen_src_pitch = src->GetPitch(PLANAR_U);
-        gen_dst_pitch = dst->GetPitch(PLANAR_U);
+    gen_src_pitch = src_pitch;
+    gen_dst_pitch = dst_pitch;
+    gen_srcp = (BYTE*)srcp;
+    gen_dstp = dstp;
+    assemblerY.Call();
+    if (src->GetRowSize(PLANAR_U)) {  // Y8 is finished here
+      gen_src_pitch = src->GetPitch(PLANAR_U);
+      gen_dst_pitch = dst->GetPitch(PLANAR_U);
 
-        gen_srcp = (BYTE*)src->GetReadPtr(PLANAR_U);
-        gen_dstp = dst->GetWritePtr(PLANAR_U);
-        assemblerUV.Call();
+      gen_srcp = (BYTE*)src->GetReadPtr(PLANAR_U);
+      gen_dstp = dst->GetWritePtr(PLANAR_U);
+      assemblerUV.Call();
 
-        gen_srcp = (BYTE*)src->GetReadPtr(PLANAR_V);
-        gen_dstp = dst->GetWritePtr(PLANAR_V);
-        assemblerUV.Call();
-      }
-      return dst;
+      gen_srcp = (BYTE*)src->GetReadPtr(PLANAR_V);
+      gen_dstp = dst->GetWritePtr(PLANAR_V);
+      assemblerUV.Call();
     }
-    while (plane++<3) {
-//    int org_width = (plane==1) ? original_width : (original_width+1)>>1;
-      int org_width = (plane==1) ? src->GetRowSize(PLANAR_Y_ALIGNED) : src->GetRowSize(PLANAR_V_ALIGNED);
-      int dst_height= (plane==1) ? dst->GetHeight() : dst->GetHeight(PLANAR_U);
-      int* array = (plane==1) ? pattern_luma : pattern_chroma;
-      int dst_width = (plane==1) ? dst->GetRowSize(PLANAR_Y_ALIGNED) : dst->GetRowSize(PLANAR_U_ALIGNED);
-      switch (plane) {
-      case 2:
-        srcp = src->GetReadPtr(PLANAR_U);
-        dstp = dst->GetWritePtr(PLANAR_U);
-        src_pitch = src->GetPitch(PLANAR_U);
-        dst_pitch = dst->GetPitch(PLANAR_U);
-        break;
-      case 3:
-        srcp = src->GetReadPtr(PLANAR_V);
-        dstp = dst->GetWritePtr(PLANAR_V);
-        src_pitch = src->GetPitch(PLANAR_U);
-        dst_pitch = dst->GetPitch(PLANAR_U);
-      }
-      int fir_filter_size_luma = array[0];
-      int* temp_dst;
-      int loopc;
-      static const __int64 x0000000000FF00FF = 0x0000000000FF00FF;
-      static const __int64 xFFFF0000FFFF0000 = 0xFFFF0000FFFF0000;
-      static const __int64 FPround =           0x0000200000002000;  // 16384/2
-      int filter_offset=fir_filter_size_luma*8+8;
-      __asm {
-        pxor        mm0, mm0
-        movq        mm7, x0000000000FF00FF
-        movq        mm6, FPround
-        movq        mm5, xFFFF0000FFFF0000
-      }
-      if ((env->GetCPUFlags() & CPUF_INTEGER_SSE)) {
-        for (int y=0; y<dst_height; ++y)
-        {
-          int* cur_luma = array+2;
-          int x = dst_width / 4;
-
-        __asm {  //
-		    push ebx    // stupid compiler forgets to save ebx!!
-        mov         edi, this
-        mov         ecx, org_width
-        mov         edx, [edi].tempY;
-        mov         esi, srcp
-        mov         eax, -1
-      // deinterleave current line to 00yy 00yy 00yy 00yy
-        align 16
-
-      yv_deintloop:
-        prefetchnta [esi+256]
-        movd        mm1, [esi]          ;mm1 = 00 00 YY YY
-        inc         eax
-        punpcklbw   mm1, mm0            ;mm1 = 0Y 0Y 0Y 0Y
-        movq        [edx+eax*8], mm1
-        add         esi, 4
-        sub         ecx, 4
-
-        jnz         yv_deintloop
-      // use this as source from now on
-        mov         edx, dstp
-        mov         eax, cur_luma
-        mov         temp_dst,edx
-        align 16
-      yv_xloopYUV:
-        mov         ebx, [filter_offset]  ; Offset to next pixel pair
-        mov         ecx, fir_filter_size_luma
-        mov         esi, [eax]          ;esi=&tempY[ofs0]
-        movq        mm1, mm0            ;Clear mm0
-        movq        mm3, mm0            ;Clear mm3
-        mov         edi, [eax+4]        ;edi=&tempY[ofs1]
-        mov         loopc,ecx
-        mov         edx, [eax+ebx]      ;edx = next &tempY[ofs0]
-        mov         ecx, [eax+ebx+4]    ;ecx = next &tempY[ofs1]
-        add         eax, 8              ;cur_luma++
-        align 16
-      yv_aloopY:
-        // Identifiers:
-        // Ya, Yb: Y values in srcp[ofs0]
-        // Ym, Yn: Y values in srcp[ofs1]
-        // Equivalent pixels of next two pixels are in mm4
-        movd        mm2, [esi]          ;mm2 =  0| 0|Yb|Ya
-         movd        mm4, [edx]
-        punpckldq   mm2, [edi]          ;mm2 = Yn|Ym|Yb|Ya
-         add         esi, 4
-         add         edx, 4
-        pmaddwd     mm2, [eax]          ;mm2 = Y1|Y0 (DWORDs)
-         punpckldq   mm4, [ecx]         ;[eax] = COn|COm|COb|COa
-         add         edi, 4
-         add         ecx, 4
-        pmaddwd     mm4, [eax+ebx]      ;mm4 = Y1|Y0 (DWORDs)
-         add         eax, 8              ;cur_luma++
-         dec         loopc
-        paddd       mm1, mm2            ;accumulate
-         paddd       mm3, mm4            ;accumulate
-
-        jz         out_yv_aloopY
-//unroll1
-        movd        mm2, [esi]          ;mm2 =  0| 0|Yb|Ya
-         movd        mm4, [edx]
-        punpckldq   mm2, [edi]          ;mm2 = Yn|Ym|Yb|Ya
-         add         esi, 4
-         add         edx, 4
-        pmaddwd     mm2, [eax]          ;mm2 = Y1|Y0 (DWORDs)
-         punpckldq   mm4, [ecx]         ;[eax] = COn|COm|COb|COa
-         add         edi, 4
-         add         ecx, 4
-        pmaddwd     mm4, [eax+ebx]      ;mm4 = Y1|Y0 (DWORDs)
-         add         eax, 8              ;cur_luma++
-         dec         loopc
-        paddd       mm1, mm2            ;accumulate
-         paddd       mm3, mm4            ;accumulate
-
-        jz         out_yv_aloopY
-//unroll2
-        movd        mm2, [esi]          ;mm2 =  0| 0|Yb|Ya
-         movd        mm4, [edx]
-        punpckldq   mm2, [edi]          ;mm2 = Yn|Ym|Yb|Ya
-         add         esi, 4
-         add         edx, 4
-        pmaddwd     mm2, [eax]          ;mm2 = Y1|Y0 (DWORDs)
-         punpckldq   mm4, [ecx]         ;[eax] = COn|COm|COb|COa
-         add         edi, 4
-         add         ecx, 4
-        pmaddwd     mm4, [eax+ebx]      ;mm4 = Y1|Y0 (DWORDs)
-         add         eax, 8              ;cur_luma++
-         dec         loopc
-        paddd       mm1, mm2            ;accumulate
-         paddd       mm3, mm4            ;accumulate
-
-        jz         out_yv_aloopY
-//unroll3
-        movd        mm2, [esi]          ;mm2 =  0| 0|Yb|Ya
-         movd        mm4, [edx]
-        punpckldq   mm2, [edi]          ;mm2 = Yn|Ym|Yb|Ya
-         add         esi, 4
-         add         edx, 4
-        pmaddwd     mm2, [eax]          ;mm2 = Y1|Y0 (DWORDs)
-         punpckldq   mm4, [ecx]         ;[eax] = COn|COm|COb|COa
-         add         edi, 4
-         add         ecx, 4
-        pmaddwd     mm4, [eax+ebx]      ;mm4 = Y1|Y0 (DWORDs)
-         add         eax, 8              ;cur_luma++
-         dec         loopc
-        paddd       mm1, mm2            ;accumulate
-         paddd       mm3, mm4            ;accumulate
-
-        jz         out_yv_aloopY
-//unroll4
-        movd        mm2, [esi]          ;mm2 =  0| 0|Yb|Ya
-         movd        mm4, [edx]
-        punpckldq   mm2, [edi]          ;mm2 = Yn|Ym|Yb|Ya
-         add         esi, 4
-         add         edx, 4
-        pmaddwd     mm2, [eax]          ;mm2 = Y1|Y0 (DWORDs)
-         punpckldq   mm4, [ecx]         ;[eax] = COn|COm|COb|COa
-         add         edi, 4
-         add         ecx, 4
-        pmaddwd     mm4, [eax+ebx]      ;mm4 = Y1|Y0 (DWORDs)
-         add         eax, 8              ;cur_luma++
-         dec         loopc
-        paddd       mm1, mm2            ;accumulate
-         paddd       mm3, mm4            ;accumulate
-
-        jz         out_yv_aloopY
-//unroll5
-        movd        mm2, [esi]          ;mm2 =  0| 0|Yb|Ya
-         movd        mm4, [edx]
-        punpckldq   mm2, [edi]          ;mm2 = Yn|Ym|Yb|Ya
-         add         esi, 4
-         add         edx, 4
-        pmaddwd     mm2, [eax]          ;mm2 = Y1|Y0 (DWORDs)
-         punpckldq   mm4, [ecx]         ;[eax] = COn|COm|COb|COa
-         add         edi, 4
-         add         ecx, 4
-        pmaddwd     mm4, [eax+ebx]      ;mm4 = Y1|Y0 (DWORDs)
-         add         eax, 8              ;cur_luma++
-         dec         loopc
-        paddd       mm1, mm2            ;accumulate
-         paddd       mm3, mm4            ;accumulate
-
-        jz         out_yv_aloopY
-//unroll6
-        movd        mm2, [esi]          ;mm2 =  0| 0|Yb|Ya
-         movd        mm4, [edx]
-        punpckldq   mm2, [edi]          ;mm2 = Yn|Ym|Yb|Ya
-         add         esi, 4
-         add         edx, 4
-        pmaddwd     mm2, [eax]          ;mm2 = Y1|Y0 (DWORDs)
-         punpckldq   mm4, [ecx]         ;[eax] = COn|COm|COb|COa
-         add         edi, 4
-         add         ecx, 4
-        pmaddwd     mm4, [eax+ebx]      ;mm4 = Y1|Y0 (DWORDs)
-         add         eax, 8              ;cur_luma++
-         dec         loopc
-        paddd       mm1, mm2            ;accumulate
-         paddd       mm3, mm4            ;accumulate
-
-        jz         out_yv_aloopY
-//unroll7
-        movd        mm2, [esi]          ;mm2 =  0| 0|Yb|Ya
-         movd        mm4, [edx]
-        punpckldq   mm2, [edi]          ;mm2 = Yn|Ym|Yb|Ya
-         add         esi, 4
-         add         edx, 4
-        pmaddwd     mm2, [eax]          ;mm2 = Y1|Y0 (DWORDs)
-         punpckldq   mm4, [ecx]         ;[eax] = COn|COm|COb|COa
-         add         edi, 4
-         add         ecx, 4
-        pmaddwd     mm4, [eax+ebx]      ;mm4 = Y1|Y0 (DWORDs)
-         add         eax, 8              ;cur_luma++
-         dec         loopc
-        paddd       mm1, mm2            ;accumulate
-         paddd       mm3, mm4            ;accumulate
-
-        jnz         yv_aloopY
-        align 16
-out_yv_aloopY:
-
-        add eax,ebx;
-        mov         edx,temp_dst
-        paddd       mm1, mm6            ;Y1|Y1|Y0|Y0  (round)
-        paddd       mm3, mm6            ;Y1|Y1|Y0|Y0  (round)
-        psrad       mm1, 14             ;mm1 = --y1|--y0
-        psrad       mm3, 14             ;mm3 = --y3|--y2
-        packssdw    mm1, mm3            ;mm1 = -3|-2|-1|-0
-        packuswb    mm1, mm1            ;mm1 = 3|2|1|0 3|2|1|0
-        movd        [edx], mm1
-        add         temp_dst,4
-        dec         x
-        jnz         yv_xloopYUV
-		    pop ebx
-        }// end asm
-        srcp += src_pitch;
-        dstp += dst_pitch;
-      }// end for y
-    } else {  // end if isse, else do mmx
-      for (int y=0; y<dst_height; ++y) {
-        int* cur_luma = array+2;
-        int x = dst_width / 4;
-
-        __asm {  //
-		    push ebx    // stupid compiler forgets to save ebx!!
-        mov         edi, this
-        mov         ecx, org_width
-        mov         edx, [edi].tempY;
-        mov         esi, srcp
-        mov         eax, -1
-      // deinterleave current line to 00yy 00yy 00yy 00yy
-        align 16
-
-      yv_deintloop_mmx:
-        movd        mm1, [esi]          ;mm1 = 00 00 YY YY
-        inc         eax
-        punpcklbw   mm1, mm0            ;mm1 = 0Y 0Y 0Y 0Y
-        movq        [edx+eax*8], mm1
-        add         esi, 4
-        sub         ecx, 4
-
-        jnz         yv_deintloop_mmx
-      // use this as source from now on
-        mov         edx, dstp
-        mov         eax, cur_luma
-        mov         temp_dst,edx
-        align 16
-      yv_xloopYUV_mmx:
-        mov         ebx, [filter_offset]  ; Offset to next pixel pair
-        mov         ecx, fir_filter_size_luma
-        mov         esi, [eax]          ;esi=&tempY[ofs0]
-        movq        mm1, mm0            ;Clear mm0
-        movq        mm3, mm0            ;Clear mm3
-        mov         edi, [eax+4]        ;edi=&tempY[ofs1]
-        mov         loopc,ecx
-        mov         edx, [eax+ebx]      ;edx = next &tempY[ofs0]
-        mov         ecx, [eax+ebx+4]    ;ecx = next &tempY[ofs1]
-        add         eax, 8              ;cur_luma++
-        align 16
-      yv_aloopY_mmx:
-        // Identifiers:
-        // Ya, Yb: Y values in srcp[ofs0]
-        // Ym, Yn: Y values in srcp[ofs1]
-        // Equivalent pixels of next two pixels are in mm4
-        movd        mm2, [esi]          ;mm2 =  0| 0|Yb|Ya
-         movd        mm4, [edx]
-        punpckldq   mm2, [edi]          ;mm2 = Yn|Ym|Yb|Ya
-         add         esi, 4
-         add         edx, 4
-        pmaddwd     mm2, [eax]          ;mm2 = Y1|Y0 (DWORDs)
-         punpckldq   mm4, [ecx]         ;[eax] = COn|COm|COb|COa
-         add         edi, 4
-         add         ecx, 4
-        pmaddwd     mm4, [eax+ebx]      ;mm4 = Y1|Y0 (DWORDs)
-         add         eax, 8              ;cur_luma++
-         dec         loopc
-        paddd       mm1, mm2            ;accumulate
-         paddd       mm3, mm4            ;accumulate
-        jnz         yv_aloopY_mmx
-
-        // we don't bother unrolling, since non-isse machines have small branch-misprediction penalties.
-        add eax,ebx;
-        mov         edx,temp_dst
-        paddd       mm1, mm6            ;Y1|Y1|Y0|Y0  (round)
-        paddd       mm3, mm6            ;Y1|Y1|Y0|Y0  (round)
-        psrad       mm1, 14             ;mm1 = --y1|--y0
-        psrad       mm3, 14             ;mm3 = --y3|--y2
-        packssdw    mm1, mm3            ;mm1 = -3|-2|-1|-0
-        packuswb    mm1, mm1            ;mm1 = 3|2|1|0 3|2|1|0
-        movd        [edx], mm1
-        add         temp_dst,4
-        dec         x
-        jnz         yv_xloopYUV_mmx
-		    pop ebx
-        }// end asm
-        srcp += src_pitch;
-        dstp += dst_pitch;
-        } // end for y
-      } // end mmx
-    } // end while plane.
-    __asm { emms }
-  } else
-  if (vi.IsYUY2())
-  {
+    return dst;
+  } else if (vi.IsYUY2())   {
     int fir_filter_size_luma = pattern_luma[0];
     int fir_filter_size_chroma = pattern_chroma[0];
     static const __int64 x0000000000FF00FF = 0x0000000000FF00FF;
@@ -1483,7 +1155,9 @@ FilteredResizeV::~FilteredResizeV(void)
  * The inner loop filter is unrolled based on the
  *  exact filter size.
  * SSSE3 version is approximately twice as fast as MMX, 
- * PSNR is more than 67dB to MMX version.
+ * PSNR is more than 67dB to MMX version using 4 taps.
+ * align parameter indicates if source plane and pitch is 16 bit aligned for ssse3.
+ * dest should always be 16 bit aligned.
  **********************************/
 
 
@@ -1491,7 +1165,7 @@ FilteredResizeV::~FilteredResizeV(void)
 DynamicAssembledCode FilteredResizeV::GenerateResizer(int gen_plane, bool aligned, IScriptEnvironment* env) {
   __declspec(align(16)) static const __int64 FPround   =     0x0000200000002000; // 16384/2
   __declspec(align(16)) static const __int64 FProundSSSE3 =  0x0020002000200020; // 128/2
-  __declspec(align(16)) static const __int64 UnpackByteShuffle =  0x0100010001000100; // 128/2
+  __declspec(align(16)) static const __int64 UnpackByteShuffle =  0x0100010001000100; 
 
   Assembler x86;   // This is the class that assembles the code.
   bool ssse3 = !!(env->GetCPUFlags() & CPUF_SSSE3);  // We have one version for SSSE3 and one for plain MMX.
@@ -1514,6 +1188,9 @@ DynamicAssembledCode FilteredResizeV::GenerateResizer(int gen_plane, bool aligne
   int fir_filter_size = array[0];
   int* cur = &array[1];
 
+  if (fir_filter_size > 8)  // We will get too many rounding errors. Porbably only lanczos if taps parameter is modified.
+    ssse3 = false;
+
   // Store registers
   x86.push(eax);
   x86.push(ebx);
@@ -1529,20 +1206,20 @@ DynamicAssembledCode FilteredResizeV::GenerateResizer(int gen_plane, bool aligne
     x86.mov(ebx, dword_ptr[(int)&dst_pitch]);
     x86.mov(edi, y);
     x86.pxor(mm0, mm0); 
-    x86.movq(mm6, qword_ptr[(int)&FPround]);  // Rounder for final division. Not touched!
+    x86.movq(mm6, qword_ptr[(int)&FPround]);    // Rounder for final division. Not touched!
     x86.align(16);
 x86.label("yloop");
     x86.mov(esi,  dword_ptr[(int)&yOfs2]);
-    x86.mov(eax, dword_ptr[edx]);           //eax = *cur
+    x86.mov(eax, dword_ptr[edx]);               //eax = *cur
     x86.mov(esi, dword_ptr[esi+eax*4]);
-    x86.add(edx, 4);                        //cur++
-    x86.add(esi, dword_ptr[(int)&srcp]);          //esi = srcp + yOfs[*cur]
-    x86.xor(ecx, ecx);                //ecx = x = 0
+    x86.add(edx, 4);                            //cur++
+    x86.add(esi, dword_ptr[(int)&srcp]);        //esi = srcp + yOfs[*cur]
+    x86.xor(ecx, ecx);                          //ecx = x = 0
     x86.pxor(mm7, mm7);
-    x86.pxor(mm1, mm1);                //total = 0
+    x86.pxor(mm1, mm1);                         //total = 0
     x86.align(16);
 x86.label("xloop");
-    x86.lea(eax, dword_ptr[esi+ecx*4]);        //eax = srcp2 = srcp + x
+    x86.lea(eax, dword_ptr[esi+ecx*4]);         //eax = srcp2 = srcp + x
     for (int i = 0; i< fir_filter_size; i++) {
       x86.movd(       mm2, dword_ptr[eax]);     //mm2 = *srcp2 = 0|0|0|0|d|c|b|a
       x86.movd(       mm3, dword_ptr[edx+i*4]);          //mm3 = cur[b] = 0|co
@@ -1583,60 +1260,60 @@ x86.label("xloop");
     x86.mov(ebp, dword_ptr[(int)&src_pitch]);
     x86.mov(ebx, dword_ptr[(int)&dst_pitch]);
     x86.mov(edi, y);
-    x86.movq(xmm6, qword_ptr[(int)&FProundSSSE3]);  // Rounder for final division. Not touched!
-    x86.movq(xmm0, qword_ptr[(int)&UnpackByteShuffle]);  // Rounder for final division. Not touched!
-    x86.pxor(xmm5, xmm5);                // zeroes
+    x86.movq(xmm6, qword_ptr[(int)&FProundSSSE3]);        // Rounder for final division. Not touched!
+    x86.movq(xmm0, qword_ptr[(int)&UnpackByteShuffle]);   // Rounder for final division. Not touched!
+    x86.pxor(xmm5, xmm5);                                 // zeroes
     x86.punpcklqdq(xmm6,xmm6);
     x86.punpcklqdq(xmm0,xmm0);
     x86.align(16);
 
-    x86.label("yloop");
+x86.label("yloop");
     x86.mov(esi,  dword_ptr[(int)&yOfs2]);
-    x86.mov(eax, dword_ptr[edx]);           //eax = *cur
+    x86.mov(eax, dword_ptr[edx]);                         //eax = *cur
     x86.mov(esi, dword_ptr[esi+eax*4]);
-    x86.add(edx, 4);                        //cur++
-    x86.add(esi, dword_ptr[(int)&srcp]);    //esi = srcp + yOfs[*cur]
-    x86.xor(ecx, ecx);                //ecx = x = 0
-    x86.pxor(xmm7, xmm7);                // Accumulator 1
-    x86.pxor(xmm1, xmm1);                // Acc 2 = total = 0
+    x86.add(edx, 4);                                      //cur++
+    x86.add(esi, dword_ptr[(int)&srcp]);                  //esi = srcp + yOfs[*cur]
+    x86.xor(ecx, ecx);                                    //ecx = x = 0
+    x86.pxor(xmm7, xmm7);                                 // Accumulator 1
+    x86.pxor(xmm1, xmm1);                                 // Acc 2 = total = 0
     x86.align(16);
 
-    x86.label("xloop");
-    x86.lea(eax, dword_ptr[esi+ecx]);        //eax = srcp2 = srcp + x
+x86.label("xloop");
+    x86.lea(eax, dword_ptr[esi+ecx]);                     //eax = srcp2 = srcp + x
     if (aligned)
-      x86.movdqa(   xmm4, xmmword_ptr[eax]);            //xmm4 = p|o|n|m|l|k|j|i|h|g|f|e|d|c|b|a
+      x86.movdqa(   xmm4, xmmword_ptr[eax]);              //xmm4 = p|o|n|m|l|k|j|i|h|g|f|e|d|c|b|a
     else
       x86.movdqu(   xmm4, xmmword_ptr[eax]);
     for (int i = 0; i< fir_filter_size; i++) {
       x86.movd(       xmm3, dword_ptr[edx+i*4]);          //mm3 = cur[b] = 0|co
       x86.movdqa(     xmm2, xmm4);
-      x86.punpcklbw(  xmm2, xmm5);                        // mm2 = *srcp2 = 0h|0g|0f|0e|0d|0c|0b|0a
       x86.punpckhbw(  xmm4, xmm5);                        // mm4 = *srcp2 = 0p|0o|0n|0m|0l|0k|0j|0i
+      x86.punpcklbw(  xmm2, xmm5);                        // mm2 = *srcp2 = 0h|0g|0f|0e|0d|0c|0b|0a
       x86.pshufb(     xmm3, xmm0);                        // Unpack coefficient to all words
       x86.psllw(      xmm2, 7);                           // Extend to signed word
       x86.psllw(      xmm4, 7);                           // Extend to signed word
-      x86.add(        eax, ebp);                          //srcp2 += src_pitch
-      x86.pmulhrsw(   xmm2, xmm3);                        //Multiply
-      x86.pmulhrsw(   xmm3, xmm4);                        //Multiply
+      x86.add(        eax, ebp);                          // srcp2 += src_pitch
+      x86.pmulhrsw(   xmm2, xmm3);                        // Multiply 14bit(coeff) x 16bit (signed) -> 16bit signed and rounded result.  [h|g|f|e|d|c|b|a]
+      x86.pmulhrsw(   xmm3, xmm4);                        // Multiply [p|o|n|m|l|k|j|i]
       if (i<fir_filter_size-1) {                          // Load early for next loop
         if (aligned)
-          x86.movdqa(   xmm4, xmmword_ptr[eax]);            //xmm4 = p|o|n|m|l|k|j|i|h|g|f|e|d|c|b|a
+          x86.movdqa(   xmm4, xmmword_ptr[eax]);            // xmm4 = p|o|n|m|l|k|j|i|h|g|f|e|d|c|b|a
         else
           x86.movdqu(   xmm4, xmmword_ptr[eax]);
       }
-      x86.paddsw(     xmm1, xmm2);                        // Add
-      x86.paddsw(     xmm7, xmm3);
+      x86.paddsw(     xmm1, xmm2);                        // Accumulate: h|g|f|e|d|c|b|a (signed words)
+      x86.paddsw(     xmm7, xmm3);                        // Accumulate: p|o|n|m|l|k|j|i
     }
     x86.mov(        eax, dword_ptr[(int)&dstp]);
-    x86.paddsw(     xmm1, xmm6);                 // Add rounder
+    x86.paddsw(     xmm1, xmm6);                          // Add rounder
     x86.paddsw(     xmm7, xmm6);
-    x86.psraw(      xmm1, 6);                   // Compensate fraction
-    x86.psraw(      xmm7, 6);                   // Compensate fraction
-    x86.packuswb(   xmm1, xmm7);                // mm1 = p|o|n|m|l|k|j|i|h|g|f|e|d|c|b|a
-    x86.movdqa(     xmmword_ptr[eax+ecx], xmm1);
+    x86.psraw(      xmm1, 6);                             // Compensate fraction
+    x86.psraw(      xmm7, 6);                             // Compensate fraction
+    x86.packuswb(   xmm1, xmm7);                          // mm1 = p|o|n|m|l|k|j|i|h|g|f|e|d|c|b|a
     x86.pxor(       xmm7, xmm7);
+    x86.movdqa(     xmmword_ptr[eax+ecx], xmm1);          // Dest should always be aligned.
     x86.add(        ecx, 16);
-    x86.pxor(       xmm1, xmm1);                //total = 0
+    x86.pxor(       xmm1, xmm1);                          //total = 0
     x86.cmp(        ecx, xloops);
     x86.jnz(        "xloop");
     x86.add(        eax, ebx);

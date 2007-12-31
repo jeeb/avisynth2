@@ -67,6 +67,7 @@ private:
 
 public:
 static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
+static AVSValue __cdecl Create_Custom(AVSValue args, void*, IScriptEnvironment* env);
 
 
 AVSsupereq(PClip _child, const char* filename, IScriptEnvironment* env)
@@ -92,6 +93,34 @@ AVSsupereq(PClip _child, const char* filename, IScriptEnvironment* env)
   }
   
   UINT n;
+  for(n=0;n<last_nch;n++)
+    eqs.add_item(new supereq<float>);
+  double bands[N_BANDS];
+  //    my_eq = cfg_eq;
+  setup_bands(my_eq,bands);
+  for(n=0;n<last_nch;n++)
+    eqs[n]->equ_makeTable(bands,&paramroot,(double)last_srate);
+
+  dstbuffer = new SFLOAT[vi.audio_samples_per_second * vi.AudioChannels()];  // Our buffer can minimum contain one second.
+  passbuffer = new SFLOAT[vi.audio_samples_per_second * vi.AudioChannels()];  // Our buffer can minimum contain one second.
+  dstbuffer_size = vi.audio_samples_per_second;
+
+  next_sample = 0;  // Next output sample
+  inputReadOffset = 0;  // Next input sample
+  dst_samples_filled = 0;
+}
+
+AVSsupereq(PClip _child, float* values, IScriptEnvironment* env)
+: GenericVideoFilter(ConvertAudio::Create(_child, SAMPLE_FLOAT, SAMPLE_FLOAT))
+{
+  last_nch = vi.AudioChannels();
+  last_srate = vi.audio_samples_per_second;
+  
+  int n;
+  for(n=0;n<N_BANDS;n++) {
+      my_eq.bands[n] = (-values[n]+20);
+  }
+  
   for(n=0;n<last_nch;n++)
     eqs.add_item(new supereq<float>);
   double bands[N_BANDS];
@@ -195,9 +224,19 @@ AVSValue __cdecl AVSsupereq::Create(AVSValue args, void*, IScriptEnvironment* en
   return new AVSsupereq(args[0].AsClip(), args[1].AsString(), env);
 }
 
+AVSValue __cdecl AVSsupereq::Create_Custom(AVSValue args, void*, IScriptEnvironment* env) {
+  float eq[N_BANDS];
+  AVSValue args_c = args[1];
+  const int num_args = args_c.ArraySize();
+  for (int i = 0; i<N_BANDS; i++) {
+    eq[i] = i<num_args ? args_c[i].AsFloat() : 0.0f;
+  }
+  return new AVSsupereq(args[0].AsClip(), eq, env);
+}
 
 AVSFunction SuperEq_filters[] = {
   { "SuperEQ", "cs", AVSsupereq::Create },
+  { "SuperEQ", "cf+", AVSsupereq::Create_Custom },
   { 0 }
 };
 

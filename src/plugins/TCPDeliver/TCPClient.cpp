@@ -281,7 +281,7 @@ DWORD WINAPI StartClient(LPVOID p) {
 }
 
 
-TCPClientThread::TCPClientThread(const char* hostname, int port, const char* compression, IScriptEnvironment* env) {
+TCPClientThread::TCPClientThread(const char* hostname, int port, const char* compression, IScriptEnvironment* _env): env(_env) {
   disconnect = false;
   data_waiting = false;
   thread_running = false;
@@ -554,10 +554,81 @@ void TCPClientThread::RecievePacket() {
       recieved += bytesRecv;
     }
   }
-  reply->last_reply = new char[dataSize - 1];  // Freed in StartRequestLoop
   reply->last_reply_bytes = dataSize - 1;
   reply->last_reply_type = data[0];
-  memcpy(reply->last_reply, &data[1], reply->last_reply_bytes);
+  bool uncompressed = true;
+  if (reply->last_reply_type == SERVER_SENDING_FRAME) {  // We are inlining decompression so it is done in a separate thread from frame requests and avoid a bitblit.
+    ServerFrameInfo* fi = (ServerFrameInfo *)reply->last_reply;
+    if (fi->compression != fi->COMPRESSION_NONE) {
+      uncompressed = false;
+      reply->last_reply = new char[fi->data_size + sizeof(ServerFrameInfo)];  // Freed in StartRequestLoop
+      memcpy(reply->last_reply, fi, sizeof(ServerFrameInfo));
+
+      BYTE* dstp = (unsigned char*)reply->last_reply + sizeof(ServerFrameInfo);
+      BYTE* srcp = (unsigned char*)&data[1] + sizeof(ServerFrameInfo);
+      TCPCompression* t = 0;
+
+      switch (fi->compression) {
+        case ServerFrameInfo::COMPRESSION_DELTADOWN_LZO: {
+            t = (TCPCompression*)new PredictDownLZO();
+            break;
+          }
+        case ServerFrameInfo::COMPRESSION_DELTADOWN_HUFFMAN: {
+            t = (TCPCompression*)new PredictDownHuffman();
+            break;
+          }
+        case ServerFrameInfo::COMPRESSION_DELTADOWN_GZIP: {
+            t = (TCPCompression*)new PredictDownGZip();
+            break;
+          }
+        case ServerFrameInfo::COMPRESSION_DELTADOWN_RLE: {
+            t = (TCPCompression*)new PredictDownRLE();
+            break;
+          }
+        default:
+        _RPT0(0, "TCPClient: Could not not find appropriate decompressor!\n");
+        disconnect = true;
+        return ;
+      }
+      if (!fi->comp_U_bytes) { // If only one plane
+        t->DeCompressImage(srcp, fi->row_size, fi->height, fi->pitch, fi->compressed_bytes);
+        env->BitBlt(dstp, fi->pitch, t->dst, fi->pitch, fi->row_size, fi->height);
+        if (!t->inplace) {
+          _aligned_free(t->dst);
+        }
+      } else {
+        // Y
+        t->DeCompressImage(srcp, fi->row_size, fi->height, fi->pitch, fi->comp_Y_bytes);
+        env->BitBlt(dstp, fi->pitch, t->dst, fi->pitch, fi->row_size, fi->height);
+        if (!t->inplace) _aligned_free(t->dst);
+
+        int uv_pitch = fi->pitchUV;
+        int uv_rowsize  = fi->row_sizeUV;
+        int uv_height = fi->heightUV;
+
+        // U
+        srcp += fi->comp_Y_bytes;
+        dstp += fi->height * fi->pitch;
+        t->DeCompressImage(srcp, uv_rowsize, uv_height, uv_pitch, fi->comp_U_bytes);
+        env->BitBlt(dstp, uv_pitch, t->dst, uv_pitch, uv_rowsize, uv_height);
+        if (!t->inplace) _aligned_free(t->dst);
+
+        // V
+        srcp += fi->comp_U_bytes;
+        dstp += uv_height * uv_pitch;
+        t->DeCompressImage(srcp, uv_rowsize, uv_height, uv_pitch, fi->comp_V_bytes);
+        env->BitBlt(dstp, uv_pitch, t->dst, uv_pitch, uv_rowsize, uv_height);
+        if (!t->inplace) _aligned_free(t->dst);
+      }// End if planar
+      delete t;
+      fi->compression = fi->COMPRESSION_NONE;
+    } // End if uncompressed
+  } // End if not frame
+
+  if (uncompressed) {
+    reply->last_reply = new char[dataSize - 1];  // Freed in StartRequestLoop
+    memcpy(reply->last_reply, &data[1], reply->last_reply_bytes);
+  }
   delete[] data;
 }
 

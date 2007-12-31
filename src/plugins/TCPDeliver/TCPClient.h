@@ -67,7 +67,7 @@ public:
   void SendRequest(char requestId, void* data, unsigned int bytes);
   void GetReply();
   bool IsDataPending();
-
+  IScriptEnvironment* env;
 
   HANDLE evtClientReadyForRequest;   // Client is ready to recieve a new request.
   HANDLE evtClientReplyReady;        // Client has finished processing the last request.
