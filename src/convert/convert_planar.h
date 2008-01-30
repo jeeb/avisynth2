@@ -99,6 +99,8 @@ static ResamplingFunction* getResampler( const char* resampler, IScriptEnvironme
       return new Spline64Filter();
     else if (!lstrcmpi(resampler, "gauss"))
       return new GaussianFilter(30.0); // Parse out optional P= from string
+    else if (!lstrcmpi(resampler, "sinc"))
+      return new SincFilter(4); // Parse out optional Taps= from string
     else
       env->ThrowError("Convert: Unknown chroma resampler, '%s'", resampler);
   }

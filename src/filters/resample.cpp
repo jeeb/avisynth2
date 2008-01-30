@@ -54,6 +54,7 @@ AVSFunction Resample_filters[] = {
   { "Spline36Resize", "cii[src_left]f[src_top]f[src_width]f[src_height]f", FilteredResize::Create_Spline36Resize},
   { "Spline64Resize", "cii[src_left]f[src_top]f[src_width]f[src_height]f", FilteredResize::Create_Spline64Resize},
   { "GaussResize", "cii[src_left]f[src_top]f[src_width]f[src_height]f[p]f", FilteredResize::Create_GaussianResize},
+  { "SincResize", "cii[src_left]f[src_top]f[src_width]f[src_height]f[taps]i", FilteredResize::Create_SincResize},
   /**
     * Resize(PClip clip, dst_width, dst_height [src_left, src_top, src_width, int src_height,] )
     *
@@ -1188,7 +1189,7 @@ DynamicAssembledCode FilteredResizeV::GenerateResizer(int gen_plane, bool aligne
   int fir_filter_size = array[0];
   int* cur = &array[1];
 
-  if (fir_filter_size > 8)  // We will get too many rounding errors. Porbably only lanczos if taps parameter is modified.
+  if (fir_filter_size > 8)  // We will get too many rounding errors. Probably only lanczos if taps parameter is modified.
     ssse3 = false;
 
   // Store registers
@@ -1491,6 +1492,15 @@ AVSValue __cdecl FilteredResize::Create_GaussianResize(AVSValue args, void*, ISc
 	try {	// HIDE DAMN SEH COMPILER BUG!!!
   return CreateResize( args[0].AsClip(), args[1].AsInt(), args[2].AsInt(), &args[3],
                        &GaussianFilter(args[7].AsFloat(30.0f)), env );
+	}
+	catch (...) { throw; }
+}
+
+AVSValue __cdecl FilteredResize::Create_SincResize(AVSValue args, void*, IScriptEnvironment* env)
+{
+	try {	// HIDE DAMN SEH COMPILER BUG!!!
+  return CreateResize( args[0].AsClip(), args[1].AsInt(), args[2].AsInt(), &args[3],
+                       &SincFilter(args[7].AsInt(4)), env );
 	}
 	catch (...) { throw; }
 }

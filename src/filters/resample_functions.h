@@ -182,6 +182,20 @@ private:
  double param;
 };
 
+class SincFilter : public ResamplingFunction
+/**
+  * Sinc filter, used in SincResize
+ **/
+{
+public:
+  SincFilter(int taps);
+	double f(double x);
+	double support() { return taps; };
+
+private:
+  double taps;
+};
+
 int* GetResamplingPatternRGB(int original_width, double subrange_start, double subrange_width,
                                     int target_width, ResamplingFunction* func, IScriptEnvironment* env);
 
