@@ -51,7 +51,7 @@ class ServerToClientReply {
 public:
   ServerToClientReply(ServerToClientReply* push_me = 0) {
     pushed_reply = push_me;
-    last_reply = new char[1];
+    last_reply = 0;
   }
   ServerToClientReply* pushed_reply;
   char* last_reply;
@@ -108,6 +108,7 @@ private:
   VideoInfo vi;
   HANDLE ClientThread;
   bool frame_requested;
+  CRITICAL_SECTION requestCriticalSection;
 };
 
 

@@ -74,9 +74,9 @@ public:
   virtual ~TCPCompression(void) {};
 
   virtual int CompressImage(BYTE* image, int rowsize, int h, int pitch);  // returns new size
-  virtual int DeCompressImage(BYTE* image, int rowsize, int h, int pitch, int data_size); // returns new size
+  virtual int DeCompressImage(BYTE* image, int rowsize, int h, int pitch, int data_size, BYTE* _dst); // returns new size
   virtual char* GetName() {return "No Compression";}
-
+  
   BYTE* dst;      // Must always be deallocated using _aligned_free().
   int compression_type;
   bool inplace;   // Do NOT free dst, when true.
@@ -89,7 +89,7 @@ public:
   virtual ~PredictDownLZO(void);
 
   int CompressImage(BYTE* image, int rowsize, int h, int pitch);
-  int DeCompressImage(BYTE* image, int rowsize, int h, int pitch, int data_size);
+  int DeCompressImage(BYTE* image, int rowsize, int h, int pitch, int data_size, BYTE* _dst);
   virtual char* GetName() {return "Delta+LZO";}
 private:
   lzo_bytep wrkmem; 
@@ -102,7 +102,7 @@ public:
   virtual ~PredictDownHuffman(void);
 
   int CompressImage(BYTE* image, int rowsize, int h, int pitch);
-  int DeCompressImage(BYTE* image, int rowsize, int h, int pitch, int data_size);
+  int DeCompressImage(BYTE* image, int rowsize, int h, int pitch, int data_size, BYTE* _dst);
   virtual char* GetName() {return "Delta+Huffman";}
 };
 
@@ -112,7 +112,7 @@ public:
   virtual ~PredictDownGZip(void);
 
   int CompressImage(BYTE* image, int rowsize, int h, int pitch);
-  int DeCompressImage(BYTE* image, int rowsize, int h, int pitch, int data_size);
+  int DeCompressImage(BYTE* image, int rowsize, int h, int pitch, int data_size, BYTE* _dst);
   virtual char* GetName() {return "Delta+GZip";}
 private:
   z_stream_s *z;
@@ -124,7 +124,7 @@ public:
   virtual ~PredictDownRLE(void);
 
   int CompressImage(BYTE* image, int rowsize, int h, int pitch);
-  int DeCompressImage(BYTE* image, int rowsize, int h, int pitch, int data_size);
+  int DeCompressImage(BYTE* image, int rowsize, int h, int pitch, int data_size, BYTE* _dst);
   virtual char* GetName() {return "Delta+RLE";}
 };
 
