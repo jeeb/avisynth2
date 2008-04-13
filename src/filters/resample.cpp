@@ -121,9 +121,11 @@ FilteredResizeH::FilteredResizeH( PClip _child, double subrange_left, double sub
   vi.width = target_width;
 
   if (vi.IsPlanar()) {
-    assemblerY = GenerateResizer(PLANAR_Y, env);
+    assemblerY = GenerateResizer(PLANAR_Y, false, env);
+    assemblerY_aligned = GenerateResizer(PLANAR_Y, true, env);
     if (!vi.IsY8()) {
-      assemblerUV = GenerateResizer(PLANAR_U, env);
+      assemblerUV = GenerateResizer(PLANAR_U,false, env);
+      assemblerUV_aligned = GenerateResizer(PLANAR_U, true, env);
     }
   }
 	}	catch (...) { throw; }
@@ -147,7 +149,7 @@ FilteredResizeH::FilteredResizeH( PClip _child, double subrange_left, double sub
 
 
 
-DynamicAssembledCode FilteredResizeH::GenerateResizer(int gen_plane, IScriptEnvironment* env) {
+DynamicAssembledCode FilteredResizeH::GenerateResizer(int gen_plane, bool source_aligned, IScriptEnvironment* env) {
   __declspec(align(8)) static const __int64 FPround   =  0x0000200000002000; // 16384/2
   __declspec(align(8)) static const __int64 Mask2_pix =  0x000000000000ffff;
   __declspec(align(8)) static const __int64 Mask1_pix_inv =  0xffffffffffffff00;
@@ -166,8 +168,7 @@ DynamicAssembledCode FilteredResizeH::GenerateResizer(int gen_plane, IScriptEnvi
 
 
   bool isse = !!(env->GetCPUFlags() & CPUF_INTEGER_SSE);
-
-  //  isse=false;   // Manually disable ISSE
+  bool ssse3 = !!(env->GetCPUFlags() & CPUF_SSSE3);
 
   int prefetchevery = 2;
   if ((env->GetCPUFlags() & CPUF_3DNOW_EXT)||((env->GetCPUFlags() & CPUF_SSE2))) {
@@ -210,6 +211,9 @@ DynamicAssembledCode FilteredResizeH::GenerateResizer(int gen_plane, IScriptEnvi
     // Initialize registers.
     x86.mov(eax,(int)&FPround);
     x86.pxor(mm6,mm6);  // Cleared mmx register - Not touched!
+    if (ssse3)
+      x86.pxor(xmm6,xmm6);
+
     x86.movq(mm7, qword_ptr[eax]);  // Rounder for final division. Not touched!
 
     x86.mov(dword_ptr [&gen_h],vi_height);  // This is our y counter.
@@ -236,22 +240,39 @@ DynamicAssembledCode FilteredResizeH::GenerateResizer(int gen_plane, IScriptEnvi
         x86.align(16);
         x86.label("fetch_loopback");
       }
-      x86.movq(mm0, qword_ptr[esi]);        // Move pixels into mmx-registers
-       x86.movq(mm1, qword_ptr[esi+8]);
-      x86.movq(mm2,mm0);
-       x86.punpcklbw(mm0,mm6);     // Unpack bytes -> words
-      x86.movq(mm3,mm1);
-       x86.punpcklbw(mm1,mm6);
-      x86.add(esi,16);
-       x86.punpckhbw(mm2,mm6);
-      x86.add(edi,32);
-       x86.punpckhbw(mm3,mm6);
-      if (!unroll_fetch)   // Loop on if not unrolling
-        x86.dec(ebx);
+      if (ssse3) {
+        if (source_aligned)
+          x86.movdqa(xmm0, xmmword_ptr[esi]);   // Load source
+        else 
+          x86.movdqu(xmm0, xmmword_ptr[esi]);   // Load source
+        x86.add(esi,16);
+        x86.add(edi,32);
+        x86.punpckhbw(xmm1,xmm0);       // xmm1 may contain junk, as this is cleared below.
+        x86.punpcklbw(xmm0,xmm6);
+        x86.psrlw(xmm1,8);              // This will also clear out junk in xmm1 that was there before unpack
+        x86.movdqa(xmmword_ptr[edi-32],xmm0);
+        x86.movdqa(xmmword_ptr[edi-16],xmm1);
+        if (!unroll_fetch)   // Loop on if not unrolling
+          x86.dec(ebx);
+      } else {
+        x86.movq(mm0, qword_ptr[esi]);        // Move pixels into mmx-registers
+          x86.movq(mm1, qword_ptr[esi+8]);
+        x86.movq(mm2,mm0);
+         x86.punpcklbw(mm0,mm6);     // Unpack bytes -> words
+        x86.movq(mm3,mm1);
+         x86.punpcklbw(mm1,mm6);
+        x86.add(esi,16);
+         x86.punpckhbw(mm2,mm6);
+        x86.add(edi,32);
+         x86.punpckhbw(mm3,mm6);
+        if (!unroll_fetch)   // Loop on if not unrolling
+          x86.dec(ebx);
+
         x86.movq(qword_ptr[edi-32],mm0);        // Store unpacked pixels in temporary space.
         x86.movq(qword_ptr[edi+8-32],mm2);
         x86.movq(qword_ptr[edi+16-32],mm1);
         x86.movq(qword_ptr[edi+24-32],mm3);
+      }
       if (!unroll_fetch)   // Loop on if not unrolling
         x86.jnz("fetch_loopback");
     }
@@ -514,18 +535,28 @@ PVideoFrame __stdcall FilteredResizeH::GetFrame(int n, IScriptEnvironment* env)
     gen_dst_pitch = dst_pitch;
     gen_srcp = (BYTE*)srcp;
     gen_dstp = dstp;
-    assemblerY.Call();
+    if (((int)gen_srcp & 15) || (gen_src_pitch & 15))
+      assemblerY.Call();
+    else 
+      assemblerY_aligned.Call();
+
     if (src->GetRowSize(PLANAR_U)) {  // Y8 is finished here
       gen_src_pitch = src->GetPitch(PLANAR_U);
       gen_dst_pitch = dst->GetPitch(PLANAR_U);
 
       gen_srcp = (BYTE*)src->GetReadPtr(PLANAR_U);
       gen_dstp = dst->GetWritePtr(PLANAR_U);
-      assemblerUV.Call();
+      if (((int)gen_srcp & 15) || (gen_src_pitch & 15))
+        assemblerUV.Call();
+      else 
+        assemblerUV_aligned.Call();
 
       gen_srcp = (BYTE*)src->GetReadPtr(PLANAR_V);
       gen_dstp = dst->GetWritePtr(PLANAR_V);
-      assemblerUV.Call();
+      if (((int)gen_srcp & 15) || (gen_src_pitch & 15))
+        assemblerUV.Call();
+      else 
+        assemblerUV_aligned.Call();
     }
     return dst;
   } else if (vi.IsYUY2())   {
@@ -1050,7 +1081,7 @@ FilteredResizeV::FilteredResizeV( PClip _child, double subrange_top, double subr
   yOfsUV = 0;
 
   assemblerY = GenerateResizer(PLANAR_Y, false, env);
-  assemblerY_aligned = GenerateResizer(PLANAR_Y,true, env);
+  assemblerY_aligned = GenerateResizer(PLANAR_Y, true, env);
   if (vi.IsPlanar() && !vi.IsY8()) {
     assemblerUV = GenerateResizer(PLANAR_U, false, env);
     assemblerUV_aligned = GenerateResizer(PLANAR_U, true, env);
@@ -1285,6 +1316,7 @@ x86.label("xloop");
       x86.movdqa(   xmm4, xmmword_ptr[eax]);              //xmm4 = p|o|n|m|l|k|j|i|h|g|f|e|d|c|b|a
     else
       x86.movdqu(   xmm4, xmmword_ptr[eax]);
+
     for (int i = 0; i< fir_filter_size; i++) {
       x86.movd(       xmm3, dword_ptr[edx+i*4]);          //mm3 = cur[b] = 0|co
       x86.movdqa(     xmm2, xmm4);
