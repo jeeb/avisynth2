@@ -72,7 +72,7 @@ class Color : public GenericVideoFilter
 	double v_contrast, v_bright, v_gamma, v_gain;
 	int matrix, levels, opt;
 	int pitch, dpitch, w, h;
-  bool colorbars, analyze, autowhite, autogain;
+  bool colorbars, analyze, autowhite, autogain, conditional;
 	PVideoFrame src, dst;
 	unsigned long *srcp;
     unsigned long *dstp;
@@ -84,16 +84,16 @@ public:
 	Color::Color(PClip _child, double _gain_y, double _off_y, double _gamma_y, double _cont_y,
 							double _gain_u, double _off_u, double _gamma_u, double _cont_u,
 							double _gain_v, double _off_v, double _gamma_v, double _cont_v,
-							const char *_levels, const char *_opt, const char *_matrix, bool _colorbars, bool _analyze, bool _autowhite, bool _autogain,
+							const char *_levels, const char *_opt, const char *_matrix, 
+              bool _colorbars, bool _analyze, bool _autowhite, bool _autogain, bool _conditional,
 							IScriptEnvironment* env);
     PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
     static AVSValue __cdecl Create(AVSValue args, void* user_data, IScriptEnvironment* env);
 private:
+  void ReadConditionals(IScriptEnvironment* env);
 	bool CheckParms(const char *_levels, const char *_matrix, const char *_opt);
 	void MakeGammaLUT(void);
-	void YUV2RGB(int y, int u, int v, int *r, int *g, int *b, int matrix);
-	void CheckRGB(COUNT *r, COUNT *g, COUNT *b);
-	void CheckYUV(PIXELDATA *pixel0, PIXELDATA *pixel, COUNT *y, COUNT *u, COUNT *v, int terget);
+
 #ifdef _DEBUG
 	void DumpLUT(void);
 #endif
