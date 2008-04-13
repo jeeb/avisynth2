@@ -295,7 +295,7 @@ int* ResamplingFunction::GetResamplingPatternRGB( int original_width, double sub
     double total2 = 0.0;
 
     for (int k=0; k<fir_filter_size; ++k) {
-      double total3 = total2 + ((start_pos+k - ok_pos) * filter_step) / total;
+      double total3 = total2 + f((start_pos+k - ok_pos) * filter_step) / total;
       *cur++ = int(total3*FPScale+0.5) - int(total2*FPScale+0.5);
       total2 = total3;
     }
