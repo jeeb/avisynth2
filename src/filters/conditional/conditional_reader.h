@@ -39,6 +39,7 @@ private:
   float* floatVal;
   const char* variableName;
   int mode;
+  int offset;
 
   AVSValue ConvertType(const char* content, int line, IScriptEnvironment* env);
   void SetRange(int start_frame, int stop_frame, AVSValue v);

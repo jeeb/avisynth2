@@ -25,7 +25,7 @@
 
 
 ConditionalReader::ConditionalReader(PClip _child, const char* filename, const char* _varname, bool _show, IScriptEnvironment* env) :
-  GenericVideoFilter(_child), variableName(_varname), show(_show)
+  GenericVideoFilter(_child), variableName(_varname), show(_show), offset(0)
 {
   FILE * f;
   char *line;
@@ -86,6 +86,10 @@ ConditionalReader::ConditionalReader(PClip _child, const char* filename, const c
         free(line);
         continue;
       } // end if "default"
+
+      if (!lstrcmpi((const char*)keyword, "offset")) {
+          fields = sscanf(ptr, "%d", &offset);
+      }
 
       if (ptr[0] == 'R' || ptr[0] == 'r') {  // Range
         ptr++;
@@ -212,8 +216,8 @@ AVSValue ConditionalReader::ConvertType(const char* content, int line, IScriptEn
 
 void ConditionalReader::SetRange(int start_frame, int stop_frame, AVSValue v) {
   int i;
-  start_frame = max(min(start_frame, vi.num_frames-1), 0);
-  stop_frame = max(min(stop_frame, vi.num_frames-1), 0);
+  start_frame = max(min(start_frame+offset, vi.num_frames-1), 0);
+  stop_frame = max(min(stop_frame+offset, vi.num_frames-1), 0);
   int p;
   float q;
   bool r;
@@ -244,18 +248,18 @@ void ConditionalReader::SetRange(int start_frame, int stop_frame, AVSValue v) {
 
 void ConditionalReader::SetFrame(int framenumber, AVSValue v) {
 
-  if (framenumber < 0 || framenumber > vi.num_frames-1 )
+  if ((framenumber+offset) < 0 || (framenumber+offset) > vi.num_frames-1 )
     return;
 
   switch (mode) {
     case MODE_INT:
-      intVal[framenumber] = v.AsInt();
+      intVal[framenumber+offset] = v.AsInt();
       break;
     case MODE_FLOAT:
-      floatVal[framenumber] = (float)v.AsFloat();
+      floatVal[framenumber+offset] = (float)v.AsFloat();
       break;
     case MODE_BOOL:
-      boolVal[framenumber] = v.AsBool();
+      boolVal[framenumber+offset] = v.AsBool();
       break;
   }
 }
