@@ -1047,7 +1047,8 @@ FilteredResizeH::~FilteredResizeH(void)
   }
   assemblerY.Free();
   assemblerUV.Free();
-}
+  assemblerY_aligned.Free();
+  assemblerUV_aligned.Free();}
 
 
 
