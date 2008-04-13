@@ -34,10 +34,10 @@
 
 // TCPDeliver (c) 2004 by Klaus Post
 
+#define _WIN32_WINNT 0x0403
 
 #include "TCPServer.h"
 #include "ServerGUICode.h"
-
 HANDLE hThread;
 HWND hDlg;  // Windowhandle
 
@@ -57,7 +57,10 @@ TCPServer::TCPServer(PClip _child, int port, IScriptEnvironment* env) : GenericV
 
 
   _RPT0(0, "TCPServer: Opening instance\n");
+  if (!InitializeCriticalSectionAndSpinCount(&FramesCriticalSection, 0x80000010) ) 
+    env->ThrowError("TCPServer: Could not initialize critical section");
   s = new TCPServerListener(port, child, env);
+  s->FramesCriticalSection = this->FramesCriticalSection;
 }
 
 TCPServer::~TCPServer() {
@@ -69,8 +72,16 @@ TCPServer::~TCPServer() {
   }
   _RPT0(0, "TCPServer: Thread killed.\n");
   delete s;
+  DeleteCriticalSection(&FramesCriticalSection);
+
 }
 
+  PVideoFrame __stdcall TCPServer::GetFrame(int n, IScriptEnvironment* env) {   
+    EnterCriticalSection(&FramesCriticalSection);
+    PVideoFrame p = child->GetFrame(n, env);
+    LeaveCriticalSection(&FramesCriticalSection);
+    return p;
+}
 
 AVSValue __cdecl Create_TCPServer(AVSValue args, void* user_data, IScriptEnvironment* env) {
   return new TCPServer(args[0].AsClip(), args[1].AsInt(22050), env);
@@ -568,8 +579,9 @@ void TCPServerListener::SendParityInfo(ServerReply* s, const char* request) {
 void TCPServerListener::SendFrameInfo(ServerReply* s, const char* request) {
   _RPT0(0, "TCPServer: Sending Frame Info!\n");
   ClientRequestFrame* f = (ClientRequestFrame *) request;
-
+  EnterCriticalSection(&FramesCriticalSection);
   PVideoFrame src = child->GetFrame(f->n, env);
+  LeaveCriticalSection(&FramesCriticalSection);
   prefetch_frame = f->n + 1;
 
   env->MakeWritable(&src);

@@ -1,4 +1,6 @@
-// Avisynth v2.6.  Copyright 2002, 2005 Ben Rudiak-Gould et al.
+// Avisynth v2.5.  Copyright 2002, 2005 Ben Rudiak-Gould et al.
+// Avisynth v2.6.  Copyright 2006 Klaus Post.
+// Avisynth v2.6.  Copyright 2007 Ian Brabham.
 // http://www.avisynth.org
 
 // This program is free software; you can redistribute it and/or modify
@@ -19,19 +21,18 @@
 // Linking Avisynth statically or dynamically with other modules is making a
 // combined work based on Avisynth.  Thus, the terms and conditions of the GNU
 // General Public License cover the whole combination.
-//
-// As a special exception, the copyright holders of Avisynth give you
-// permission to link Avisynth with independent modules that communicate with
-// Avisynth solely through the interfaces defined in avisynth.h, regardless of
-// the license terms of these independent modules, and to copy and distribute
-// the resulting combined work under terms of your choice, provided that
-// every copy of the combined work is accompanied by a complete copy of
-// the source code of Avisynth (the version of Avisynth used to produce the
-// combined work), being distributed under the terms of the GNU General
-// Public License plus this exception.  An independent module is a module
-// which is not derived from or based on Avisynth, such as 3rd-party filters,
-// import and export plugins, or graphical user interfaces.
 
+
+/*
+Please NOTE! This version of avisynth.h DOES NOT have any special exemption!
+
+         While this version is under development you are fully
+       constrained by the terms of the GNU General Public License.
+
+ Any derivative software you may publish MUST include the full source code.
+
+    Normal licence conditions will be reapplied in a future version.
+*/
 
 
 
@@ -39,14 +40,14 @@
 #ifndef __AVISYNTH_H__
 #define __AVISYNTH_H__
 
-enum { AVISYNTH_INTERFACE_VERSION = 4 };
+enum { AVISYNTH_INTERFACE_VERSION = 5 };
 
 
 /* Define all types necessary for interfacing with avisynth.dll
    Moved from internal.h */
 
-// Win32 API macros, notably the types BYTE, DWORD, ULONG, etc. 
-#include <windef.h>  
+// Win32 API macros, notably the types BYTE, DWORD, ULONG, etc.
+#include <windef.h>
 
 // COM interface macros
 #include <objbase.h>
@@ -79,7 +80,7 @@ typedef long			PixOffset;
   #define _RPT2(a,b,c,d) ((void)0)
   #define _RPT3(a,b,c,d,e) ((void)0)
   #define _RPT4(a,b,c,d,e,f) ((void)0)
-  
+
   #define _ASSERTE(x) assert(x)
   #include <assert.h>
 #endif
@@ -101,7 +102,7 @@ typedef long			PixOffset;
 typedef float SFLOAT;
 
 enum {SAMPLE_INT8  = 1<<0,
-      SAMPLE_INT16 = 1<<1, 
+      SAMPLE_INT16 = 1<<1,
       SAMPLE_INT24 = 1<<2,    // Int24 is a very stupid thing to code, but it's supported by some hardware.
       SAMPLE_INT32 = 1<<3,
       SAMPLE_FLOAT = 1<<4};
@@ -114,6 +115,14 @@ enum {
    PLANAR_Y_ALIGNED=PLANAR_Y|PLANAR_ALIGNED,
    PLANAR_U_ALIGNED=PLANAR_U|PLANAR_ALIGNED,
    PLANAR_V_ALIGNED=PLANAR_V|PLANAR_ALIGNED,
+/*
+   PLANAR_R=1<<4,
+   PLANAR_G=1<<5,
+   PLANAR_B=1<<6,
+   PLANAR_R_ALIGNED=PLANAR_R|PLANAR_ALIGNED,
+   PLANAR_G_ALIGNED=PLANAR_G|PLANAR_ALIGNED,
+   PLANAR_B_ALIGNED=PLANAR_B|PLANAR_ALIGNED,
+*/
   };
 
 class AvisynthError /* exception */ {
@@ -129,11 +138,66 @@ struct VideoInfo {
   // This is more extensible than previous versions. More properties can be added seeminglesly.
 
   // Colorspace properties.
+/*
+7<<0  Planar Width Subsampling bits
+      Use (X+1) & 3 for GetPlaneWidthSubsampling
+        000 => 1        YV12, YV16
+        001 => 2        YV411, YUV9
+        010 => reserved
+        011 => 0        YV24
+        1xx => reserved
+
+1<<3  VPlaneFirst YV12, YV16, YV24, YV411, YUV9
+1<<4  UPlaneFirst I420
+
+7<<8  Planar Height Subsampling bits
+      Use ((X>>8)+1) & 3 for GetPlaneHeightSubsampling
+        000 => 1        YV12
+        001 => 2        YUV9
+        010 => reserved
+        011 => 0        YV16, YV24, YV411
+        1xx => reserved
+
+7<<16 Sample resolution bits
+        000 => 8
+        001 => 16
+        010 => 32
+        011 => reserved
+        1xx => reserved
+
+Planar match mask 1111.0000.0000.0111.0000.0111.0000.0111
+Planar signature  10xx.0000.0000.00xx.0000.00xx.00xx.00xx
+*/
   enum {
-    CS_BGR = 1<<28,  
+    CS_BGR = 1<<28,
     CS_YUV = 1<<29,
     CS_INTERLEAVED = 1<<30,
-    CS_PLANAR = 1<<31 // Probably should move and reserve this bit for 2.5 compatibility
+    CS_PLANAR = 1<<31
+/*
+    CS_Shift_Sub_Width   =  0,
+    CS_Shift_Sub_Height  =  8,
+    CS_Shift_Sample_Bits = 16,
+
+    CS_Sub_Width_Mask   = 7 << CS_Shift_Sub_Width,
+    CS_Sub_Width_1      = 3 << CS_Shift_Sub_Width, // YV24
+    CS_Sub_Width_2      = 0 << CS_Shift_Sub_Width, // YV12, I420, YV16
+    CS_Sub_Width_4      = 1 << CS_Shift_Sub_Width, // YUV9, YV411
+                               
+    CS_VPlaneFirst      = 1 << 3, // YV12, YV16, YV24, YV411, YUV9
+    CS_UPlaneFirst      = 1 << 4, // I420
+                               
+    CS_Sub_Height_Mask  = 7 << CS_Shift_Sub_Height,
+    CS_Sub_Height_1     = 3 << CS_Shift_Sub_Height, // YV16, YV24, YV411
+    CS_Sub_Height_2     = 0 << CS_Shift_Sub_Height, // YV12, I420
+    CS_Sub_Height_4     = 1 << CS_Shift_Sub_Height, // YUV9
+                               
+    CS_Sample_Bits_Mask = 7 << CS_Shift_Sample_Bits,
+    CS_Sample_Bits_8    = 0 << CS_Shift_Sample_Bits,
+    CS_Sample_Bits_16   = 1 << CS_Shift_Sample_Bits,
+    CS_Sample_Bits_32   = 2 << CS_Shift_Sample_Bits,
+
+    CS_PLANAR_MASK      = CS_PLANAR | CS_INTERLEAVED | CS_YUV | CS_BGR | CS_Sample_Bits_Mask | CS_Sub_Height_Mask | CS_Sub_Width_Mask,
+*/
   };
 
   // Specific colorformats
@@ -141,6 +205,29 @@ struct VideoInfo {
          CS_BGR24 = 1<<0 | CS_BGR | CS_INTERLEAVED,
          CS_BGR32 = 1<<1 | CS_BGR | CS_INTERLEAVED,
          CS_YUY2  = 1<<2 | CS_YUV | CS_INTERLEAVED,
+/*
+      // CS_YV12  = 1<<3  Reserved
+      // CS_I420  = 1<<4  Reserved
+
+YV12 must be 0xA000008 2.5 Baked API will see all new planar as YV12
+I420 must be 0xA000010
+
+         CS_YV24  = CS_PLANAR | CS_YUV | CS_Sample_Bits_8 | CS_VPlaneFirst | CS_Sub_Height_1 | CS_Sub_Width_1,  // YUV 4:4:4 planar
+         CS_YV16  = CS_PLANAR | CS_YUV | CS_Sample_Bits_8 | CS_VPlaneFirst | CS_Sub_Height_1 | CS_Sub_Width_2,  // YUV 4:2:2 planar
+         CS_YV12  = CS_PLANAR | CS_YUV | CS_Sample_Bits_8 | CS_VPlaneFirst | CS_Sub_Height_2 | CS_Sub_Width_2,  // y-v-u, 4:2:0 planar
+         CS_I420  = CS_PLANAR | CS_YUV | CS_Sample_Bits_8 | CS_UPlaneFirst | CS_Sub_Height_2 | CS_Sub_Width_2,  // y-u-v, 4:2:0 planar
+         CS_IYUV  = CS_I420
+         CS_YUV9  = CS_PLANAR | CS_YUV | CS_Sample_Bits_8 | CS_VPlaneFirst | CS_Sub_Height_4 | CS_Sub_Width_4,  // YUV 4:1:0 planar
+         CS_YV411 = CS_PLANAR | CS_YUV | CS_Sample_Bits_8 | CS_VPlaneFirst | CS_Sub_Height_1 | CS_Sub_Width_4,  // YUV 4:1:1 planar
+
+         CS_Y8    = CS_PLANAR | CS_INTERLEAVED | CS_YUV | CS_Sample_Bits_8,                                     // Y   4:0:0 planar
+
+         CS_YV48  = CS_PLANAR | CS_YUV | CS_Sample_Bits_16 | CS_VPlaneFirst | CS_Sub_Height_1 | CS_Sub_Width_1, // YUV 4:4:4 16bit samples
+         CS_Y16   = CS_PLANAR | CS_INTERLEAVED | CS_YUV | CS_Sample_Bits_16,                                    // Y   4:0:0 16bit samples
+
+         CS_PRGB  = CS_PLANAR | CS_RGB | CS_Sample_Bits_8,                                                      // Planar RGB
+         CS_RGB48 = CS_PLANAR | CS_RGB | CS_Sample_Bits_16,                                                     // Planar RGB 16bit samples
+*/
          CS_YV12  = 1<<3 | CS_YUV | CS_PLANAR,  // y-v-u, 4:2:0 planar
          CS_I420  = 1<<4 | CS_YUV | CS_PLANAR,  // y-u-v, 4:2:0 planar
          CS_IYUV  = 1<<4 | CS_YUV | CS_PLANAR,  // same as above
@@ -152,7 +239,7 @@ struct VideoInfo {
 //       CS_YUV9  = 1<<10| CS_YUV | CS_PLANAR,  // YUV 4:1:0 planar ::FIXME::
   };
   int pixel_type;                // changed to int as of 2.5
-  
+
 
   int audio_samples_per_second;   // 0 means no audio
   int sample_type;                // as of 2.5
@@ -185,27 +272,42 @@ struct VideoInfo {
   bool IsRGB24() const { return (pixel_type&CS_BGR24)==CS_BGR24; } // Clear out additional properties
   bool IsRGB32() const { return (pixel_type & CS_BGR32) == CS_BGR32 ; }
   bool IsYUV() const { return !!(pixel_type&CS_YUV ); }
-  bool IsYUY2() const { return (pixel_type & CS_YUY2) == CS_YUY2; }  
+  bool IsYUY2() const { return (pixel_type & CS_YUY2) == CS_YUY2; }
   bool IsYV12() const { return ((pixel_type & CS_YV12) == CS_YV12)||((pixel_type & CS_I420) == CS_I420); }
-  bool IsYV24() const { return (pixel_type & CS_YV24) == CS_YV24; }  
-  bool IsYV16() const { return (pixel_type & CS_YV16) == CS_YV16; }  
-  bool IsY8() const { return (pixel_type & CS_Y8) == CS_Y8; }  
-  bool IsYV411() const { return (pixel_type & CS_YV411) == CS_YV411; }  
+  bool IsYV24() const { return (pixel_type & CS_YV24) == CS_YV24; }
+  bool IsYV16() const { return (pixel_type & CS_YV16) == CS_YV16; }
+  bool IsY8() const { return (pixel_type & CS_Y8) == CS_Y8; }
+  bool IsYV411() const { return (pixel_type & CS_YV411) == CS_YV411; }
   bool IsColorSpace(int c_space) const { return ((pixel_type & c_space) == c_space); }
+/*
+  bool IsYV24()  const { return (pixel_type & CS_PLANAR_MASK) == CS_YV24;  }
+  bool IsYV16()  const { return (pixel_type & CS_PLANAR_MASK) == CS_YV16;  }
+  bool IsYV12()  const { return (pixel_type & CS_PLANAR_MASK) == CS_YV12;  }
+  bool IsYV411() const { return (pixel_type & CS_PLANAR_MASK) == CS_YV411; }
+  bool IsYUV9()  const { return (pixel_type & CS_PLANAR_MASK) == CS_YUV9;  }
+  bool IsY8()    const { return (pixel_type & CS_PLANAR_MASK) == CS_Y8;    }
+
+  bool IsColorSpace(int c_space) const { return IsPlanar() ? ((pixel_type & CS_PLANAR_MASK) == c_space)) : ((pixel_type & c_space) == c_space); }
+*/
+
   bool Is(int property) const { return ((pixel_type & property)==property ); }
   bool IsPlanar() const { return !!(pixel_type & CS_PLANAR); }
   bool IsFieldBased() const { return !!(image_type & IT_FIELDBASED); }
   bool IsParityKnown() const { return ((image_type & IT_FIELDBASED)&&(image_type & (IT_BFF|IT_TFF))); }
   bool IsBFF() const { return !!(image_type & IT_BFF); }
   bool IsTFF() const { return !!(image_type & IT_TFF); }
-  
-  bool IsVPlaneFirst() const {return IsYV16()|| IsYV24() || IsYV411() || ((pixel_type & CS_YV12) == CS_YV12); }  // Don't use this 
+
+  bool IsVPlaneFirst() const {return IsYV16()|| IsYV24() || IsYV411() || ((pixel_type & CS_YV12) == CS_YV12); }  // Don't use this
+//bool IsVPlaneFirst() const {return (pixel_type & (CS_VPlaneFirst | CS_UPlaneFirst)) == CS_VPlaneFirst; }
+
   int BytesFromPixels(int pixels) const { return IsPlanar() ? pixels : pixels * (BitsPerPixel()>>3); }   // Will not work on planar images, but will return only luma planes
+//int BytesFromPixels(int pixels) const { return IsPlanar() ? pixels << ((pixel_type>>CS_Shift_Sample_Bits) & 3) : pixels * (BitsPerPixel()>>3); }
+
   __int64 AudioSamplesFromFrames(__int64 frames) const { return (fps_numerator && HasVideo()) ? ((__int64)(frames) * audio_samples_per_second * fps_denominator / fps_numerator) : 0; }
   int FramesFromAudioSamples(__int64 samples) const { return (fps_denominator && HasAudio()) ? (int)((samples * (__int64)fps_numerator)/((__int64)fps_denominator * (__int64)audio_samples_per_second)) : 0; }
   __int64 AudioSamplesFromBytes(__int64 bytes) const { return HasAudio() ? bytes / BytesPerAudioSample() : 0; }
   __int64 BytesFromAudioSamples(__int64 samples) const { return samples * BytesPerAudioSample(); }
-  int AudioChannels() const { return nchannels; }
+  int AudioChannels() const { return HasAudio() ? nchannels : 0; }
   int SampleType() const{ return sample_type;}
   bool IsSampleType(int testtype) const{ return !!(sample_type&testtype);}
   int SamplesPerSecond() const { return audio_samples_per_second; }
@@ -215,6 +317,22 @@ struct VideoInfo {
   void Clear(int property)  { image_type&=~property; }
 
   int GetPlaneWidthSubsampling(int plane = 0) const {  // Subsampling in bitshifts!
+/*
+    if (!plane || plane == PLANAR_Y)  // No subsampling
+      return 0;
+    if (IsY8())
+      throw AvisynthError("Filter error: GetPlaneWidthSubsampling not available on Y8 pixel type.");
+    if (plane == PLANAR_U || plane == PLANAR_V)
+      if (IsYUY2())
+        return 1;
+      else if (IsPlanar())
+        return ((pixel_type>>CS_Shift_Sub_Width)+1) & 3;
+	  else
+        throw AvisynthError("Filter error: GetPlaneWidthSubsampling called with unsupported pixel type.");
+	}
+    throw AvisynthError("Filter error: GetPlaneWidthSubsampling called with unsupported plane.");
+    return 0;
+*/
     if (!plane || plane == PLANAR_Y)  // No subsampling
       return 0;
     if (IsYV24())
@@ -226,11 +344,28 @@ struct VideoInfo {
     if (IsY8())
       throw AvisynthError("Filter error: GetPlaneWidthSubsampling not available on Y8 pixel type.");
 
+
     throw AvisynthError("Filter error: GetPlaneWidthSubsampling called with unknown pixel type.");
     return 0;
   }
 
   int GetPlaneHeightSubsampling(int plane = 0) const {  // Subsampling in bitshifts!
+/*
+    if (!plane || plane == PLANAR_Y)  // No subsampling
+      return 0;
+    if (IsY8())
+      throw AvisynthError("Filter error: GetPlaneHeightSubsampling not available on Y8 pixel type.");
+    if (plane == PLANAR_U || plane == PLANAR_V) {
+      if (IsYUY2())
+        return 0;
+      else if (IsPlanar())
+        return ((pixel_type>>CS_Shift_Sub_Width)+1) & 3;
+	  else
+        throw AvisynthError("Filter error: GetPlaneHeightSubsampling called with unsupported pixel type.");
+	}
+    throw AvisynthError("Filter error: GetPlaneHeightSubsampling called with supported plane.");
+    return 0;
+*/
     if (!plane || plane == PLANAR_Y)  // No subsampling
       return 0;
     if (IsYV12())
@@ -244,38 +379,37 @@ struct VideoInfo {
     return 0;
   }
 
-  int RowSize(int plane = 0) const { 
+  int RowSize(int plane = 0) const {
     if (!plane ||  plane == PLANAR_Y) {
-      return BytesFromPixels(width); 
+      return BytesFromPixels(width);
     }
     if (IsY8()) {
       return 0;
     }
     if (IsPlanar()) {
-      return BytesFromPixels(width)>>GetPlaneWidthSubsampling(plane); 
+      return BytesFromPixels(width)>>GetPlaneWidthSubsampling(plane);
     }
-    return BytesFromPixels(width); 
+    return BytesFromPixels(width);
   }
 
-  int BMPSize() const { 
+  int BMPSize() const {
     if (IsY8())
-      return height * ((RowSize()+3) & ~3); 
+      return height * ((RowSize()+3) & ~3);
 
     if (IsPlanar()) {
       // Y plane
       int Ybytes = height * ((RowSize()+3) & ~3);
       if (IsYV12()) {
-        int UVbytes = Ybytes/2;  // Legacy alignment
-        return Ybytes+UVbytes;
+        return Ybytes + Ybytes/2;  // Legacy alignment
       }
-      int UVbytes = (((RowSize()>>GetPlaneWidthSubsampling(PLANAR_U))+3) & ~3);
-      UVbytes *= (height>>GetPlaneHeightSubsampling(PLANAR_V)) * 2;
-      return Ybytes+UVbytes;
-    } 
-    return height * ((RowSize()+3) & ~3); 
-  }  
+      int UVbytes = (RowSize(PLANAR_U)+3) & ~3;
+      UVbytes *= height>>GetPlaneHeightSubsampling(PLANAR_U);
+      return Ybytes + UVbytes*2;
+    }
+    return height * ((RowSize()+3) & ~3);
+  }
 
-  int BitsPerPixel() const { 
+  int BitsPerPixel() const {
     switch (pixel_type) {
       case CS_BGR24:
       case CS_YV24:
@@ -294,11 +428,32 @@ struct VideoInfo {
       case CS_Y8:
         return 8;
       default:
-        return 8;
+        return 0;
     }
+/*
+// Lookup Interleaved, calculate PLANAR's
+    switch (pixel_type) {
+      case CS_BGR24:
+        return 24;
+      case CS_BGR32:
+        return 32;
+      case CS_YUY2:
+        return 16;
+      case CS_Y8:
+        return 8;
+      case CS_Y16:
+        return 16;
+      default:
+        if (IsPlanar()) {
+          const int S = GetPlaneWidthSubsampling(PLANAR_U) + GetPlaneHeightSubsampling(PLANAR_U);
+          return ( ((1<<S)+2) * (8<<((pixel_type>>CS_Shift_Sample_Bits) & 3)) ) >> S;
+        }
+        return 0;
+    }
+*/
   }
 
-  int BytesPerChannelSample() const { 
+  int BytesPerChannelSample() const {
     switch (sample_type) {
     case SAMPLE_INT8:
       return sizeof(signed char);
@@ -368,7 +523,6 @@ struct VideoInfo {
     return FALSE;
   }
 
-
 };
 
 
@@ -420,7 +574,6 @@ class VideoFrame {
   int refcount;
   VideoFrameBuffer* const vfb;
   const int offset, pitch, row_size, height, offsetU, offsetV, pitchUV;  // U&V offsets are from top of picture.
-  int pixel_type;
   const int row_sizeUV, heightUV;
 
   friend class PVideoFrame;
@@ -429,10 +582,11 @@ class VideoFrame {
 
   friend class ScriptEnvironment;
   friend class Cache;
+
   friend class CacheMT;  // ::FIXME:: illegal class extension
 
-  VideoFrame(VideoFrameBuffer* _vfb, int _offset, int _pitch, int _row_size, int _height, int pixel_type);
-  VideoFrame(VideoFrameBuffer* _vfb, int _offset, int _pitch, int _row_size, int _height, int _offsetU, int _offsetV, int _pitchUV, int _row_sizeUV, int _heightUV, int pixel_type);
+  VideoFrame(VideoFrameBuffer* _vfb, int _offset, int _pitch, int _row_size, int _height);
+  VideoFrame(VideoFrameBuffer* _vfb, int _offset, int _pitch, int _row_size, int _height, int _offsetU, int _offsetV, int _pitchUV, int _row_sizeUV, int _heightUV);
 
   void* operator new(unsigned size);
 // TESTME: OFFSET U/V may be switched to what could be expected from AVI standard!
@@ -440,33 +594,32 @@ public:
   int GetPitch() const { return pitch; }
   int GetPitch(int plane) const { switch (plane) {case PLANAR_U: case PLANAR_V: return pitchUV;} return pitch; }
   int GetRowSize() const { return row_size; }
-  int GetRowSize(int plane) const { 
+  int GetRowSize(int plane) const {
     switch (plane) {
-    case PLANAR_U: case PLANAR_V: if (pitchUV) return row_sizeUV; else return 0;
-    case PLANAR_U_ALIGNED: 
-    case PLANAR_V_ALIGNED: {
-        int rUV = (row_sizeUV+FRAME_ALIGN-1)&(~(FRAME_ALIGN-1)); // Aligned rowsize
-        if (rUV<=pitchUV) 
-          return rUV; 
+    case PLANAR_U: case PLANAR_V: if (pitchUV) return row_sizeUV;  else return 0;
+    case PLANAR_U_ALIGNED: case PLANAR_V_ALIGNED:
+      if (pitchUV) {
+        int r = (row_sizeUV+FRAME_ALIGN-1)&(~(FRAME_ALIGN-1)); // Aligned rowsize
+        if (r<=pitchUV)
+          return r;
         return row_sizeUV;
-      }
+      } else return 0;
     case PLANAR_Y_ALIGNED:
       int r = (row_size+FRAME_ALIGN-1)&(~(FRAME_ALIGN-1)); // Aligned rowsize
-      if (r<=pitch) 
-        return r; 
+      if (r<=pitch)
+        return r;
       return row_size;
     }
     return row_size; }
   int GetHeight() const { return height; }
-  int GetHeight(int plane) const {  switch (plane) {case PLANAR_U: case PLANAR_V: if (pitchUV) return heightUV; return 0;} return height; }
+  int GetHeight(int plane) const {  switch (plane) {case PLANAR_U: case PLANAR_V: if (pitchUV) return heightUV;  return 0;} return height; }
 
   // generally you shouldn't use these three
   VideoFrameBuffer* GetFrameBuffer() const { return vfb; }
   int GetOffset() const { return offset; }
   int GetOffset(int plane) const { switch (plane) {case PLANAR_U: return offsetU;case PLANAR_V: return offsetV;default: return offset;}; }
 
-  // in plugins use env->SubFrame()
-  //If you really want to use these remember to increase vfb->refcount before calling and decrement it afterwards.
+  // in plugins use env->SubFrame() -- because implementation code is only available inside avisynth.dll. Doh!
   VideoFrame* Subframe(int rel_offset, int new_pitch, int new_row_size, int new_height) const;
   VideoFrame* Subframe(int rel_offset, int new_pitch, int new_row_size, int new_height, int rel_offsetU, int rel_offsetV, int pitchUV) const;
 
@@ -503,7 +656,8 @@ enum {
   CACHE_RANGE=1,
   CACHE_ALL=2,
   CACHE_AUDIO=3,
-  CACHE_AUDIO_NONE=4
+  CACHE_AUDIO_NONE=4,
+  CACHE_AUDIO_AUTO=5
  };
 
 // Base class for all filters.
@@ -517,7 +671,7 @@ public:
   IClip() : refcnt(0) {}
 
   virtual int __stdcall GetVersion() { return AVISYNTH_INTERFACE_VERSION; }
-  
+
   virtual PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env) = 0;
   virtual bool __stdcall GetParity(int n) = 0;  // return field parity if field_based, else parity of first field in frame
   virtual void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env) = 0;  // start and count are in samples
@@ -565,6 +719,7 @@ public:
 
 // smart pointer to VideoFrame
 class PVideoFrame {
+
   VideoFrame* p;
 
   void Init(VideoFrame* x) {
@@ -626,14 +781,14 @@ public:
 
   PClip AsClip() const { _ASSERTE(IsClip()); return IsClip()?clip:0; }
   bool AsBool() const { _ASSERTE(IsBool()); return boolean; }
-  int AsInt() const { _ASSERTE(IsInt()); return integer; }   
-//  int AsLong() const { _ASSERTE(IsLong()); return longlong; } 
+  int AsInt() const { _ASSERTE(IsInt()); return integer; }
+//  int AsLong() const { _ASSERTE(IsLong()); return longlong; }
   const char* AsString() const { _ASSERTE(IsString()); return IsString()?string:0; }
-  double AsFloat() const { _ASSERTE(IsFloat()); return IsInt()?integer:floating_pt; }
+  float AsFloat() const { _ASSERTE(IsFloat()); return IsInt()?integer:floating_pt; }
 
   bool AsBool(bool def) const { _ASSERTE(IsBool()||!Defined()); return IsBool() ? boolean : def; }
   int AsInt(int def) const { _ASSERTE(IsInt()||!Defined()); return IsInt() ? integer : def; }
-  double AsFloat(double def) const { _ASSERTE(IsFloat()||!Defined()); return IsInt() ? integer : type=='f' ? floating_pt : def; }
+  float AsFloat(double def) const { _ASSERTE(IsFloat()||!Defined()); return IsInt() ? integer : type=='f' ? floating_pt : (float)def; }
   const char* AsString(const char* def) const { _ASSERTE(IsString()||!Defined()); return IsString() ? string : def; }
 
   int ArraySize() const { _ASSERTE(IsArray()); return IsArray()?array_size:1; }
@@ -687,10 +842,9 @@ public:
 
 
 
+/* Helper classes useful to plugin authors */ // But we don't export the entry points, Doh!
 
-/* Helper classes useful to plugin authors */
-
-class AlignPlanar : public GenericVideoFilter 
+class AlignPlanar : public GenericVideoFilter
 {
 public:
   AlignPlanar(PClip _clip);
@@ -700,7 +854,7 @@ public:
 
 
 
-class FillBorder : public GenericVideoFilter 
+class FillBorder : public GenericVideoFilter
 {
 public:
   FillBorder(PClip _clip);
@@ -710,7 +864,7 @@ public:
 
 
 
-class ConvertAudio : public GenericVideoFilter 
+class ConvertAudio : public GenericVideoFilter
 /**
   * Helper class to convert audio to any format
  **/
@@ -725,7 +879,8 @@ public:
   static AVSValue __cdecl Create_32bit(AVSValue args, void*, IScriptEnvironment*);
   static AVSValue __cdecl Create_24bit(AVSValue args, void*, IScriptEnvironment*);
   static AVSValue __cdecl Create_16bit(AVSValue args, void*, IScriptEnvironment*);
-  static AVSValue __cdecl Create_8bit(AVSValue args, void*, IScriptEnvironment*);
+  static AVSValue __cdecl Create_8bit (AVSValue args, void*, IScriptEnvironment*);
+  static AVSValue __cdecl Create_Any  (AVSValue args, void*, IScriptEnvironment*);
   virtual ~ConvertAudio();
 
 private:
@@ -753,7 +908,7 @@ private:
 
 
 // For GetCPUFlags.  These are backwards-compatible with those in VirtualDub.
-enum {                    
+enum {
                     /* slowest CPU to support extension */
   CPUF_FORCE        =  0x01,   //  N/A
   CPUF_FPU          =  0x02,   //  386/486DX
@@ -766,9 +921,13 @@ enum {
   CPUF_X86_64       =  0xA0,   //  Hammer (note: equiv. to 3DNow + SSE2, which
                                //          only Hammer will have anyway)
   CPUF_SSE3         = 0x100,   //  PIV+, Hammer
+  CPUF_SSSE3        = 0x200,   //  Core 2
+  CPUF_SSE4			= 0x400,   //  Penryn Also called SSE4.1
+  CPUF_SSE4_2		= 0x800,   //  Penryn
 };
 #define MAX_INT 0x7fffffff
 #define MIN_INT -0x7fffffff  // ::FIXME:: research why this is not 0x80000000
+
 
 class IClipLocalStorage;
 
@@ -828,7 +987,6 @@ public:
   virtual bool __stdcall PlanarChromaAlignment(PlanarChromaAlignmentMode key) = 0;
 
   virtual PVideoFrame __stdcall SubframePlanar(PVideoFrame src, int rel_offset, int new_pitch, int new_row_size, int new_height, int rel_offsetU, int rel_offsetV, int new_pitchUV) = 0;
-
   virtual void __stdcall SetMTMode(int mode,int threads,bool temporary)=0;
   virtual int __stdcall  GetMTMode(bool return_nthreads)=0;
 

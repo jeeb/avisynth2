@@ -522,6 +522,7 @@ void TCPClientThread::RecievePacket() {
   }
   reply->last_reply_bytes = dataSize - 1;
   reply->last_reply_type = data[0];
+  reply->last_reply = &data[1];
   bool uncompressed = true;
   if (reply->last_reply_type == SERVER_SENDING_FRAME) {  // We are inlining decompression so it is done in a separate thread from frame requests and avoid a bitblit.
     ServerFrameInfo* fi = (ServerFrameInfo *)&data[1];
@@ -531,6 +532,7 @@ void TCPClientThread::RecievePacket() {
       memcpy(reply->last_reply, fi, sizeof(ServerFrameInfo));
       fi = (ServerFrameInfo *)reply->last_reply;
 
+      fi = (ServerFrameInfo *)reply->last_reply;
       BYTE* dstp = (unsigned char*)reply->last_reply + sizeof(ServerFrameInfo);
       BYTE* srcp = (unsigned char*)&data[1] + sizeof(ServerFrameInfo);
       TCPCompression* t = 0;
@@ -598,7 +600,6 @@ void TCPClientThread::RecievePacket() {
         fi->comp_V_bytes = uv_height * uv_pitch;
       }// End if planar
       delete t;
-      fi->compression = fi->COMPRESSION_NONE;
     } // End if uncompressed
   } // End if not frame
 

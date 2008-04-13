@@ -142,6 +142,7 @@ public:
   void Listen();
   void KillThread();
   bool thread_running;
+  CRITICAL_SECTION FramesCriticalSection; 
 
 private:
   void Receive(TCPRecievePacket* tr, ServerReply* s);
@@ -194,6 +195,9 @@ public:
 private:
   HANDLE ServerThread;
   TCPServerListener* s;
+  CRITICAL_SECTION FramesCriticalSection; 
+  PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
+
 };
 
 
