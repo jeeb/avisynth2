@@ -61,6 +61,12 @@ class ResamplingFunction
 public:
   virtual double f(double x) = 0;
   virtual double support() = 0;
+  virtual int* GetResamplingPatternRGB(int original_width, double subrange_start, double subrange_width,
+                                    int target_width, IScriptEnvironment* env);
+
+  virtual int* GetResamplingPatternYUV(int original_width, double subrange_start, double subrange_width,
+                                    int target_width, bool luma, BYTE *temp,
+                                    IScriptEnvironment* env);
 };
 
 class PointFilter : public ResamplingFunction 
@@ -195,13 +201,6 @@ public:
 private:
   double taps;
 };
-
-int* GetResamplingPatternRGB(int original_width, double subrange_start, double subrange_width,
-                                    int target_width, ResamplingFunction* func, IScriptEnvironment* env);
-
-int* GetResamplingPatternYUV(int original_width, double subrange_start, double subrange_width,
-                                    int target_width, ResamplingFunction* func, bool luma, BYTE *temp,
-                                    IScriptEnvironment* env);
 
 
 #endif  // __Reample_Functions_H__
