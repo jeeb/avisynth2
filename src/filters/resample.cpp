@@ -169,6 +169,7 @@ DynamicAssembledCode FilteredResizeH::GenerateResizer(int gen_plane, bool source
 
   bool isse = !!(env->GetCPUFlags() & CPUF_INTEGER_SSE);
   bool ssse3 = !!(env->GetCPUFlags() & CPUF_SSSE3);
+  bool sse3 = !!(env->GetCPUFlags() & CPUF_SSE3);
 
   int prefetchevery = 2;
   if ((env->GetCPUFlags() & CPUF_3DNOW_EXT)||((env->GetCPUFlags() & CPUF_SSE2))) {
@@ -241,10 +242,13 @@ DynamicAssembledCode FilteredResizeH::GenerateResizer(int gen_plane, bool source
         x86.label("fetch_loopback");
       }
       if (ssse3) {
-        if (source_aligned)
+        if (source_aligned) {
           x86.movdqa(xmm0, xmmword_ptr[esi]);   // Load source
-        else 
+        } else if (sse3) {
+          x86.lddqu(xmm0, xmmword_ptr[esi]);    // Load source
+        } else {
           x86.movdqu(xmm0, xmmword_ptr[esi]);   // Load source
+        }
         x86.add(esi,16);
         x86.add(edi,32);
         x86.punpckhbw(xmm1,xmm0);       // xmm1 may contain junk, as this is cleared below.
@@ -1202,6 +1206,7 @@ DynamicAssembledCode FilteredResizeV::GenerateResizer(int gen_plane, bool aligne
 
   Assembler x86;   // This is the class that assembles the code.
   bool ssse3 = !!(env->GetCPUFlags() & CPUF_SSSE3);  // We have one version for SSSE3 and one for plain MMX.
+  bool sse3 = !!(env->GetCPUFlags() & CPUF_SSE3);  // We have specialized load routine for SSE3.
   int xloops = 0;
   int y = vi.height;
   if (vi.IsPlanar()) {
@@ -1313,10 +1318,13 @@ x86.label("yloop");
 
 x86.label("xloop");
     x86.lea(eax, dword_ptr[esi+ecx]);                     //eax = srcp2 = srcp + x
-    if (aligned)
+    if (aligned) {
       x86.movdqa(   xmm4, xmmword_ptr[eax]);              //xmm4 = p|o|n|m|l|k|j|i|h|g|f|e|d|c|b|a
-    else
+    } else if (sse3) {
+      x86.lddqu(   xmm4, xmmword_ptr[eax]);
+    } else {
       x86.movdqu(   xmm4, xmmword_ptr[eax]);
+    }
 
     for (int i = 0; i< fir_filter_size; i++) {
       x86.movd(       xmm3, dword_ptr[edx+i*4]);          //mm3 = cur[b] = 0|co
