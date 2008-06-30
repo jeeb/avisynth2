@@ -223,7 +223,7 @@ AVSValue AssertEval(AVSValue args, void*, IScriptEnvironment* env)
 
 AVSValue Eval(AVSValue args, void*, IScriptEnvironment* env) 
 {
-  char *filename = args[1].AsString(0);
+  const char *filename = args[1].AsString(0);
   if (filename) filename = env->SaveString(filename);
   ScriptParser parser(env, args[0].AsString(), filename);
   PExpression exp = parser.Parse();
@@ -268,6 +268,19 @@ AVSValue Import(AVSValue args, void*, IScriptEnvironment* env)
     if (!ReadFile(h, buf, size, &size, NULL))
       env->ThrowError("Import: unable to read \"%s\"", script_name);
     CloseHandle(h);
+
+    // Give Unicode smartarses a hint they need to use ANSI encoding
+    if (size >= 2) {
+      unsigned char* q = (unsigned char*)((char*)buf);
+
+      if ((q[0]==0xFF && q[1]==0xFE) || (q[0]==0xFE && q[1]==0xFF))
+          env->ThrowError("Import: Unicode source files are not supported, "
+                          "re-save script with ANSI encoding! : \"%s\"", script_name);
+
+      if (q[0]==0xEF && q[1]==0xBB && q[2]==0xBF)
+          env->ThrowError("Import: UTF-8 source files are not supported, "
+                          "re-save script with ANSI encoding! : \"%s\"", script_name);
+    }
 
     ((char*)buf)[size] = 0;
     AVSValue eval_args[] = { (char*)buf, script_name };

@@ -101,5 +101,4 @@ private:
 };
 
 
-#endif
-
+#endif  // __Planeswap_H__

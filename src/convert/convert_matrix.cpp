@@ -281,7 +281,7 @@ void MatrixGenerator3x3::GenerateAssembly(int width, int frac_bits, bool rgb_out
 
   bool unroll = false;   // Unrolled code ~30% slower on Athlon XP.
   bool ssse3 = !!(env->GetCPUFlags() & CPUF_SSSE3);
-  int loops = width / 2;
+  int loops = (width+1) / 2;
 
   if (pre_add && post_add)
     env->ThrowError("Internal error - only pre_add OR post_add can be used.");

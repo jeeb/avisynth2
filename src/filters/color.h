@@ -38,6 +38,7 @@
 
 #include "../internal.h"
 
+#ifdef _DEBUG
 static int DebugMsg(LPSTR sz,...)
 {
     char buf[256];
@@ -54,6 +55,7 @@ typedef struct _COUNT {
 	int min;
 	int ave;
 } COUNT;
+#endif
 
 typedef union {
 	DWORD	data;
@@ -71,29 +73,24 @@ class Color : public GenericVideoFilter
 	double u_contrast, u_bright, u_gamma, u_gain;
 	double v_contrast, v_bright, v_gamma, v_gain;
 	int matrix, levels, opt;
-	int pitch, dpitch, w, h;
-  bool colorbars, analyze, autowhite, autogain, conditional;
-	PVideoFrame src, dst;
-	unsigned long *srcp;
-    unsigned long *dstp;
+	bool colorbars, analyze, autowhite, autogain;
+	bool conditional;
 	unsigned char LUT_Y[256],LUT_U[256],LUT_V[256];
-	unsigned int accum_Y[256],accum_U[256],accum_V[256];
 	int           y_thresh1, y_thresh2, u_thresh1, u_thresh2, v_thresh1, v_thresh2;
-  int last_y_offset;
 public:
 	Color::Color(PClip _child, double _gain_y, double _off_y, double _gamma_y, double _cont_y,
 							double _gain_u, double _off_u, double _gamma_u, double _cont_u,
 							double _gain_v, double _off_v, double _gamma_v, double _cont_v,
-							const char *_levels, const char *_opt, const char *_matrix, 
-              bool _colorbars, bool _analyze, bool _autowhite, bool _autogain, bool _conditional,
+							const char *_levels, const char *_opt, const char *_matrix, bool _colorbars,
+							bool _analyze, bool _autowhite, bool _autogain,
+							bool _conditional,
 							IScriptEnvironment* env);
     PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
     static AVSValue __cdecl Create(AVSValue args, void* user_data, IScriptEnvironment* env);
 private:
-  void ReadConditionals(IScriptEnvironment* env);
+	void ReadConditionals(IScriptEnvironment* env);
 	bool CheckParms(const char *_levels, const char *_matrix, const char *_opt);
 	void MakeGammaLUT(void);
-
 #ifdef _DEBUG
 	void DumpLUT(void);
 #endif

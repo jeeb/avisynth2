@@ -37,7 +37,7 @@
 
 #include "../internal.h"
 #include "convert_yv12.h"
-#include "convert_planar.h"
+#include "convert_planar.h" // 2.60
 #include "../core/softwire_helpers.h"
 
 

@@ -125,9 +125,15 @@ private:
     const VideoInfo* vi;
     const char* error_msg;
 
+    CRITICAL_SECTION cs_filter_graph;
+
     bool DelayInit();
+    bool DelayInit2();
 
     void MakeErrorStream(const char* msg);
+
+    void Lock();
+    void Unlock();
 
 public:
 
@@ -346,7 +352,8 @@ STDMETHODIMP CAVIFileSynth::SaveCompleted(LPCOLESTR lpszFileName) {
 
 STDMETHODIMP CAVIFileSynth::GetCurFile(LPOLESTR *lplpszFileName) {
 	_RPT1(0,"%p->CAVIFileSynth::GetCurFile()\n", this);
-	*lplpszFileName = NULL;
+
+	if (lplpszFileName) *lplpszFileName = NULL;
 
 	return E_FAIL;
 }
@@ -548,16 +555,22 @@ CAVIFileSynth::CAVIFileSynth(const CLSID& rclsid) {
     env = 0;
 
     error_msg = 0;
+
+    InitializeCriticalSection(&cs_filter_graph);
 }
 
 CAVIFileSynth::~CAVIFileSynth() {
 	_RPT2(0,"%p->CAVIFileSynth::~CAVIFileSynth(), gRefCnt = %d\n", this, gRefCnt);
+
+    Lock();
 
     delete[] szScriptName;
 
     filter_graph = 0;
     
 	delete env;
+
+    DeleteCriticalSection(&cs_filter_graph);
 }
 
 
@@ -582,6 +595,17 @@ STDMETHODIMP CAVIFileSynth::Open(LPCSTR szFile, UINT mode, LPCOLESTR lpszFileNam
 }
 
 bool CAVIFileSynth::DelayInit() {
+
+    Lock();
+
+    bool result = DelayInit2();
+
+    Unlock();
+
+    return result;
+}
+
+bool CAVIFileSynth::DelayInit2() {
 // _RPT1(0,"Original: 0x%.4x\n", _control87( 0, 0 ) );
  int fp_state = _control87( 0, 0 );
  _control87( FP_STATE, 0xffffffff );
@@ -694,6 +718,18 @@ bool CAVIFileSynth::DelayInit() {
 void CAVIFileSynth::MakeErrorStream(const char* msg) {
   error_msg = msg;
   filter_graph = Create_MessageClip(msg, vi->width, vi->height, vi->pixel_type, false, 0xFF3333, 0, 0, env);
+}
+
+void CAVIFileSynth::Lock() {
+  
+  EnterCriticalSection(&cs_filter_graph);
+
+}
+
+void CAVIFileSynth::Unlock() {
+  
+  LeaveCriticalSection(&cs_filter_graph);
+
 }
 
 ///////////////////////////////////////////////////
@@ -1157,7 +1193,14 @@ STDMETHODIMP CAVIStreamSynth::Read(LONG lStart, LONG lSamples, LPVOID lpBuffer, 
     mov esi,esi;
     mov edi,edi;
   }
-  return Read2(lStart, lSamples, lpBuffer, cbBuffer, plBytes, plSamples);
+
+  parent->Lock();
+
+  HRESULT result = Read2(lStart, lSamples, lpBuffer, cbBuffer, plBytes, plSamples);
+
+  parent->Unlock();
+
+  return result;
 }
 
 HRESULT CAVIStreamSynth::Read2(LONG lStart, LONG lSamples, LPVOID lpBuffer, LONG cbBuffer, LONG *plBytes, LONG *plSamples) {
@@ -1172,6 +1215,12 @@ HRESULT CAVIStreamSynth::Read2(LONG lStart, LONG lSamples, LPVOID lpBuffer, LONG
     // buffer overflow patch -- Avery Lee - Mar 2006
     if (lSamples == AVISTREAMREAD_CONVENIENT)
       lSamples = (long)parent->vi->AudioSamplesFromFrames(1);
+
+    if (__int64(lStart)+lSamples > parent->vi->num_audio_samples) {
+      lSamples = (long)(parent->vi->num_audio_samples - lStart);
+      if (lSamples < 0) lSamples = 0;
+    }
+
     long bytes = (long)parent->vi->BytesFromAudioSamples(lSamples);
     if (lpBuffer && bytes > cbBuffer) {
       lSamples = (long)parent->vi->AudioSamplesFromBytes(cbBuffer);
@@ -1179,10 +1228,16 @@ HRESULT CAVIStreamSynth::Read2(LONG lStart, LONG lSamples, LPVOID lpBuffer, LONG
     }
     if (plBytes) *plBytes = bytes;
     if (plSamples) *plSamples = lSamples;
-    if (!lpBuffer)
+    if (!lpBuffer || !lSamples)
       return S_OK;
 
   } else {
+    if (lStart >= parent->vi->num_frames) {
+      if (plSamples) *plSamples = 0;
+      if (plBytes) *plBytes = 0;
+      return S_OK;
+    }
+
     int image_size = parent->vi->BMPSize();
     if (plSamples) *plSamples = 1;
     if (plBytes) *plBytes = image_size;

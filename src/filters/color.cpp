@@ -59,13 +59,12 @@ Color::Color(PClip _child, double _gain_y, double _off_y, double _gamma_y, doubl
 						double _gain_u, double _off_u, double _gamma_u, double _cont_u,
 						double _gain_v, double _off_v, double _gamma_v, double _cont_v,
 						const char *_levels, const char *_opt, const char *_matrix, 
-            bool _colorbars, bool _analyze, bool _autowhite, bool _autogain, bool _conditional,
+						bool _colorbars, bool _analyze, bool _autowhite, bool _autogain, bool _conditional,
 						IScriptEnvironment* env) :
 				GenericVideoFilter(_child),
 				y_gain(_gain_y), y_bright(_off_y), y_gamma(_gamma_y),y_contrast(_cont_y),
 				u_gain(_gain_u), u_bright(_off_u), u_gamma(_gamma_u),u_contrast(_cont_u),
-				v_gain(_gain_v), v_bright(_off_v), v_gamma(_gamma_v),v_contrast(_cont_v),
-        conditional(_conditional)
+				v_gain(_gain_v), v_bright(_off_v), v_gamma(_gamma_v),v_contrast(_cont_v), conditional(_conditional)
 {
     try {	// HIDE DAMN SEH COMPILER BUG!!!
 		if (!vi.IsYUV())
@@ -93,15 +92,16 @@ Color::Color(PClip _child, double _gain_y, double _off_y, double _gamma_y, doubl
 
 PVideoFrame __stdcall Color::GetFrame(int frame, IScriptEnvironment* env)
 {
+	PVideoFrame src;
+	unsigned long *srcp;
+	int pitch, w, h;
 	int i,j,wby4;
 	int modulo;
 //	int dmodulo;
 	PIXELDATA	pixel;
 
-
   if (colorbars) {
     PVideoFrame dst= env->NewVideoFrame(vi);
-    env->MakeWritable(&dst);
     int* pdst=(int*)dst->GetWritePtr(PLANAR_Y);
     int Y=16+abs(219-((frame+219)%438));
     Y|=(Y<<8)|(Y<<16)|(Y<<24);
@@ -133,9 +133,9 @@ PVideoFrame __stdcall Color::GetFrame(int frame, IScriptEnvironment* env)
 	h = src->GetHeight();
 	wby4 = w / 4;
 	modulo = pitch - w;
-
   if (analyze||autowhite||autogain) {
-    for (i=0;i<256;i++) {
+    unsigned int accum_Y[256],accum_U[256],accum_V[256];
+    for (int i=0;i<256;i++) {
       accum_Y[i]=0;
       accum_U[i]=0;
       accum_V[i]=0;
@@ -257,7 +257,6 @@ PVideoFrame __stdcall Color::GetFrame(int frame, IScriptEnvironment* env)
     MakeGammaLUT();
   }
 
-
   if (vi.IsYUY2()) {
 	  for (j = 0; j < h; j++)
 	  {
@@ -265,14 +264,11 @@ PVideoFrame __stdcall Color::GetFrame(int frame, IScriptEnvironment* env)
 		  {
 			  pixel.data = *srcp;
 
-
-
 			  pixel.yuv.y0 = LUT_Y[pixel.yuv.y0];
 			  pixel.yuv.u  = LUT_U[pixel.yuv.u ];
 			  pixel.yuv.y1 = LUT_Y[pixel.yuv.y1];
 			  pixel.yuv.v  = LUT_V[pixel.yuv.v ];
 			  *srcp++ = pixel.data;
-
 		  }
 		  srcp = (unsigned long *)((unsigned char *)srcp + modulo) ;
 	  }

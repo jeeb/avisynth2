@@ -91,6 +91,12 @@ PVideoFrame FlipVertical::GetFrame(int n, IScriptEnvironment* env) {
   return dst;
 }
 
+/*
+bool FlipVertical::GetParity(int n) 
+{ 
+  return !child->GetParity(n);
+}
+*/
 
 AVSValue __cdecl FlipVertical::Create(AVSValue args, void*, IScriptEnvironment* env) 
 {

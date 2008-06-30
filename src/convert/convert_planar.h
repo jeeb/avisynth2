@@ -116,7 +116,7 @@ public:
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);  
   ~ConvertToY8();
 private:
-//  void convRGB32toY8 (const unsigned char *src, unsigned char *py, int pitch1, int pitch2y, int width, int height, int offset_y);
+  void convRGB32toY8 (const unsigned char *src, unsigned char *py, int pitch1, int pitch2y, int width, int height, int offset_y);
   void convYUV422toY8(const unsigned char *src, unsigned char *py, int pitch1, int pitch2y, int width, int height);
   bool blit_luma_only;
   bool yuy2_input;
@@ -135,7 +135,7 @@ public:
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
   ~ConvertRGBToYV24();
 private:
-//  void BuildMatrix(double Kr, double Kb, int Sy, int Suv, int Oy);
+  void BuildMatrix(double Kr, double Kb, int Sy, int Suv, int Oy, int shift);
   signed short* matrix;
   int offset_y;
   int mul_out;
@@ -163,7 +163,7 @@ public:
   static AVSValue __cdecl Create32(AVSValue args, void*, IScriptEnvironment* env);
   ~ConvertYV24ToRGB();
 private:
-//  void BuildMatrix(double Kr, double Kb, int Sy, int Suv, int Oy);
+  void BuildMatrix(double Kr, double Kb, int Sy, int Suv, int Oy, int shift);
   signed short* matrix;
   int offset_y;
   int pixel_step;

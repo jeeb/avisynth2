@@ -47,7 +47,7 @@ class Trim : public GenericVideoFilter
  **/
 {
 public:
-  Trim(int _firstframe, int _lastframe, PClip _child, IScriptEnvironment* env);
+  Trim(int _firstframe, int _lastframe, bool _padaudio, PClip _child, IScriptEnvironment* env);
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
   void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env);
   bool __stdcall GetParity(int n);
@@ -160,6 +160,7 @@ private:
   const int overlap;
   int video_fade_start, video_fade_end;
   __int64 audio_fade_start, audio_fade_end;
+  int audio_overlap;
   BYTE* audbuffer;
   int audbufsize;
   void EnsureBuffer(int minsize);
@@ -173,14 +174,14 @@ class AudioDub : public IClip {
   * Class to mux the audio track of one clip with the video of another
  **/
 public:
-  AudioDub(PClip child1, PClip child2, IScriptEnvironment* env);
+  AudioDub(PClip child1, PClip child2, int mode, IScriptEnvironment* env);
   const VideoInfo& __stdcall GetVideoInfo();
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
   void __stdcall GetAudio(void* buf, __int64 start, __int64 count, IScriptEnvironment* env);
   bool __stdcall GetParity(int n);
   void __stdcall SetCacheHints(int cachehints,int frame_range) { };
 
-  static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
+  static AVSValue __cdecl Create(AVSValue args, void* mode, IScriptEnvironment* env);
 
 private:
   /*const*/ PClip vchild, achild;
@@ -219,8 +220,8 @@ public:
 
 	static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
 private:
-	int frames, start, end, times;
-  __int64 start_samples, loop_ends_at_sample,loop_len_samples;
+	int   frames,    start,     end;
+  __int64 aud_count, aud_start, aud_end;
 	int convert(int n);
 };
 
