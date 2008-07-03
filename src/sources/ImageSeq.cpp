@@ -54,6 +54,8 @@ AVSFunction Image_filters[] = {
   { 0 }
 };
 
+CRITICAL_SECTION* FramesCriticalSection = 0; // Since devIL isn't threadsafe, we need to ensure that only one thread at the time requests frames
+                                             // Yes - this will leak, but only one instance as long as avisynth.dll is loaded.
 
 static char* GetWorkingDir(char* buf, size_t bufSize)
 {
@@ -87,8 +89,27 @@ static bool IsAbsolutePath(const char* path)
 
 ImageWriter::ImageWriter(PClip _child, const char * _base_name, const int _start, const int _end,
                          const char * _ext, bool _info, IScriptEnvironment* env)
- : GenericVideoFilter(_child), base_name(_base_name), ext(_ext), info(_info)
+ : GenericVideoFilter(_child), base_name(), ext(_ext), info(_info)
 {  
+  if (!FramesCriticalSection) {
+    FramesCriticalSection = (CRITICAL_SECTION*)malloc(sizeof(CRITICAL_SECTION));
+    if (!InitializeCriticalSectionAndSpinCount(FramesCriticalSection, 0x80000010) ) 
+      env->ThrowError("ImageWriter: Could not initialize critical section");
+  }
+
+  // Generate full name
+  if (IsAbsolutePath(_base_name))
+  {
+    base_name[0] = '\0';
+    strncat(base_name, _base_name, sizeof base_name);
+  }
+  else
+  {
+    char cwd[MAX_PATH + 1];
+    GetWorkingDir(cwd, sizeof cwd);
+    _snprintf(base_name, sizeof base_name, "%s%s", cwd, _base_name);
+  }
+
   if (!lstrcmpi(ext, "ebmp")) 
   {
     // construct file header  
@@ -215,7 +236,7 @@ PVideoFrame ImageWriter::GetFrame(int n, IScriptEnvironment* env)
     file.close();
   }
   else { /* Use DevIL library */
-
+    EnterCriticalSection(FramesCriticalSection);
     // Set up DevIL    
     ILuint myImage=0;
     ilGenImages(1, &myImage); // Initialize 1 image structure
@@ -254,8 +275,10 @@ PVideoFrame ImageWriter::GetFrame(int n, IScriptEnvironment* env)
       ss << "ImageWriter: error '" << getErrStr(err) << "' in DevIL library\n writing file " << filename;
       env->MakeWritable(&frame);
       ApplyMessage(&frame, vi, ss.str().c_str(), vi.width/4, TEXT_COLOR,0,0 , env);
+      LeaveCriticalSection(FramesCriticalSection);
       return frame;
     }
+    LeaveCriticalSection(FramesCriticalSection);
   }  
     
   if (info) {    
@@ -305,6 +328,11 @@ ImageReader::ImageReader(const char * _base_name, const int _start, const int _e
 						 IScriptEnvironment* env)
  : base_name(), start(_start), use_DevIL(_use_DevIL), info(_info), framecopies(0)
 {
+  if (!FramesCriticalSection) {
+    FramesCriticalSection = (CRITICAL_SECTION*)malloc(sizeof(CRITICAL_SECTION));
+    if (!InitializeCriticalSectionAndSpinCount(FramesCriticalSection, 0x80000010) ) 
+      env->ThrowError("ImageWriter: Could not initialize critical section");
+  }
   // Generate full name
   if (IsAbsolutePath(_base_name))
   {
@@ -487,6 +515,7 @@ PVideoFrame ImageReader::GetFrame(int n, IScriptEnvironment* env)
   
   if (use_DevIL)  /* read using DevIL */
   {    
+    EnterCriticalSection(FramesCriticalSection);
     // Setup
     ILuint myImage=0;
     ilGenImages(1, &myImage);
@@ -505,6 +534,7 @@ PVideoFrame ImageReader::GetFrame(int n, IScriptEnvironment* env)
 		ss << "ImageReader: error '" << getErrStr(err) << "' in DevIL library\n opening file \"" << filename << "\"";
 		ApplyMessage(&frame, vi, ss.str().c_str(), vi.width/4, TEXT_COLOR,0,0 , env);
 	  }
+    LeaveCriticalSection(FramesCriticalSection);
 	  return frame;
 	}
 
@@ -516,6 +546,7 @@ PVideoFrame ImageReader::GetFrame(int n, IScriptEnvironment* env)
 
       memset(WritePtr, 0, pitch * height);       
       ApplyMessage(&frame, vi, "ImageReader: images must have identical heights", vi.width/4, TEXT_COLOR,0,0 , env);
+      LeaveCriticalSection(FramesCriticalSection);
       return frame;
     }    
     if ( ilGetInteger(IL_IMAGE_WIDTH) != width)
@@ -525,6 +556,7 @@ PVideoFrame ImageReader::GetFrame(int n, IScriptEnvironment* env)
 
       memset(WritePtr, 0, pitch * height);       
       ApplyMessage(&frame, vi, "ImageReader: images must have identical widths", vi.width/4, TEXT_COLOR,0,0 , env);
+      LeaveCriticalSection(FramesCriticalSection);
       return frame;
     }
 
@@ -565,8 +597,10 @@ PVideoFrame ImageReader::GetFrame(int n, IScriptEnvironment* env)
       ostringstream ss;
       ss << "ImageReader: error '" << getErrStr(err) << "' in DevIL library\n reading file \"" << filename << "\"";
       ApplyMessage(&frame, vi, ss.str().c_str(), vi.width/4, TEXT_COLOR,0,0 , env);
+      LeaveCriticalSection(FramesCriticalSection);
       return frame;
     }
+    LeaveCriticalSection(FramesCriticalSection);
   }
   else {  /* treat as ebmp  */
     // Open file, ensure it has the expected properties
