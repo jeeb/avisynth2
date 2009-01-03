@@ -927,6 +927,7 @@ private:
   ClipLocalStorage start_node;
   ClipLocalStorage* CurrentCLS;
   ClipLocalStorage* RestoreCLS;
+  bool closing;                 // Used to avoid deadlock, if vartable is being accessed while shutting down (Popcontext)
 };
 
 long ScriptEnvironment::refcount=0;
@@ -944,6 +945,7 @@ ScriptEnvironment::ScriptEnvironment()
     CurrentCLS(&start_node),
     RestoreCLS(&start_node),
     start_node(0),
+    closing(false),
     PlanarChromaAlignmentState(true){ // Change to "true" for 2.5.7
 
   try {
@@ -1015,6 +1017,7 @@ ScriptEnvironment::ScriptEnvironment()
 }
 
 ScriptEnvironment::~ScriptEnvironment() {
+  closing = true;
   while (var_table)
     PopContext();
   while (global_var_table)
@@ -1083,6 +1086,7 @@ void ScriptEnvironment::AddFunction(const char* name, const char* params, ApplyF
 }
 
 AVSValue ScriptEnvironment::GetVar(const char* name) {
+  if (closing) return AVSValue(0);  // We easily risk  being inside the critical section below, while deleting variables.
   EnterCriticalSection(&cs_var_table);
   AVSValue retval;
   try  {
@@ -1105,6 +1109,7 @@ AVSValue ScriptEnvironment::GetVar(const char* name) {
 }
 
 bool ScriptEnvironment::SetVar(const char* name, const AVSValue& val) {
+  if (closing) return true;  // We easily risk  being inside the critical section below, while deleting variables.
   EnterCriticalSection(&cs_var_table);
   bool retval;
   if(mt_mode>0)  {
@@ -1123,6 +1128,7 @@ bool ScriptEnvironment::SetVar(const char* name, const AVSValue& val) {
 }
 
 bool ScriptEnvironment::SetGlobalVar(const char* name, const AVSValue& val) {
+  if (closing) return true;  // We easily risk  being inside the critical section below, while deleting variables.
   EnterCriticalSection(&cs_var_table);
   bool retval = global_var_table->Set(name, val);
   LeaveCriticalSection(&cs_var_table);
@@ -2105,11 +2111,15 @@ char* ScriptEnvironment::Sprintf(const char* fmt, ...) {
 
 
 void ScriptEnvironment::ThrowError(const char* fmt, ...) {
-  va_list val;
-  va_start(val, fmt);
   char buf[8192];
-  wvsprintf(buf, fmt, val);
-  va_end(val);
+  try {
+    va_list val;
+    va_start(val, fmt);
+    wvsprintf(buf, fmt, val);
+    va_end(val);
+  } catch (...) {
+    strcpy(buf,"Unknown exception");
+  } 
   throw AvisynthError(ScriptEnvironment::SaveString(buf));
 }
 
