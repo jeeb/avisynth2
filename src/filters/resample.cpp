@@ -1209,6 +1209,14 @@ DynamicAssembledCode FilteredResizeV::GenerateResizer(int gen_plane, bool aligne
   bool sse3 = !!(env->GetCPUFlags() & CPUF_SSE3);  // We have specialized load routine for SSE3.
   int xloops = 0;
   int y = vi.height;
+
+  int* array = (gen_plane == PLANAR_U || gen_plane == PLANAR_V) ? resampling_patternUV : resampling_pattern ;
+  int fir_filter_size = array[0];
+  int* cur = &array[1];
+
+  if (fir_filter_size > 8)  // We will get too many rounding errors. Probably only lanczos if taps parameter is modified.
+    ssse3 = false;
+
   if (vi.IsPlanar()) {
     xloops = vi.width >> vi.GetPlaneWidthSubsampling(gen_plane);
     y = y >> (vi.GetPlaneHeightSubsampling(gen_plane));
@@ -1221,13 +1229,6 @@ DynamicAssembledCode FilteredResizeV::GenerateResizer(int gen_plane, bool aligne
   else
     xloops = (xloops+3) / 4;
 
-
-  int* array = (gen_plane == PLANAR_U || gen_plane == PLANAR_V) ? resampling_patternUV : resampling_pattern ;
-  int fir_filter_size = array[0];
-  int* cur = &array[1];
-
-  if (fir_filter_size > 8)  // We will get too many rounding errors. Probably only lanczos if taps parameter is modified.
-    ssse3 = false;
 
   // Store registers
   x86.push(eax);
@@ -1357,7 +1358,7 @@ x86.label("xloop");
     x86.add(        ecx, 16);
     x86.pxor(       xmm1, xmm1);                          //total = 0
     x86.cmp(        ecx, xloops);
-    x86.jnz(        "xloop");
+    x86.jl(         "xloop");
     x86.add(        eax, ebx);
     x86.lea(        edx, dword_ptr[edx+(fir_filter_size*4)]);        //cur += fir_filter_size
     x86.mov(        dword_ptr[(int)&dstp], eax);
