@@ -229,6 +229,14 @@ PVideoFrame Convert444ToY8::ConvertImage(Image444* src, PVideoFrame dst, IScript
 // src_rowsize must be mod 16 (dst_rowsize mod 8)
 // Operates on 16x2 input pixels per loop for best possible pairability.
 
+// Note! (((a+b+1) >> 1) + ((c+d+1) >> 1) + 1) >> 1 = (a+b+c+d+3) >> 2
+
+/*
+      should be (a+b+c+d+2) >> 2
+      average_round_down(average_round_up(a, b), average_round_up(c, d))
+    = average_round_down(pavgb(a, b), pavgb(c, d))
+    = ~pavgb(~pavgb(a, b), ~pavgb(c, d))
+*/
 
 void ISSE_Convert444ChromaToYV12(unsigned char *dstp, const unsigned char *srcp,
         const int dst_pitch, const int src_pitch,
@@ -245,32 +253,34 @@ void ISSE_Convert444ChromaToYV12(unsigned char *dstp, const unsigned char *srcp,
     mov      edx,[src_rowsize]
     xor      edi,edi
     mov      esi,[src_height]
+    pcmpeqb  mm6,mm6         // ffff ffff ffff ffff
     pcmpeqb  mm7,mm7
     psrlw    mm7, 8          // 00ff 00ff 00ff 00ff
     align    16
 loopx:
-    movq     mm0, [ebx+edi*2]  // u4U4 u3U3 u2U2 u1U1
-    movq     mm1, [ecx+edi*2]  // u4U4 u3U3 u2U2 u1U1  (Next line)
-
+    movq     mm0, [ebx+edi*2]    // u4U4 u3U3 u2U2 u1U1
     movq     mm2, [ebx+edi*2+8]  // u8U8 u7U7 U6U6 u5U5
-    movq     mm3, [ecx+edi*2+8]  // u8U8 u7U7 u6U6 u5U5  (Next line)
 
-    pavgb    mm0,mm1         // Average with next line
-    pavgb    mm2,mm3         // Average with next line
+    pavgb    mm0, [ecx+edi*2]    // u4U4 u3U3 u2U2 u1U1  (Next line)
+    pavgb    mm2, [ecx+edi*2+8]  // u8U8 u7U7 u6U6 u5U5  (Next line)
+
+    pxor     mm0,mm6         // ~u4~U4 ~u3~U3 ~u2~U2 ~u1~U1
+    pxor     mm2,mm6         // ~u8~U8 ~u7~U7 ~u6~U6 ~u5~U5
 
     movq     mm1,mm0
-    psrlw    mm0, 8          // 00u4 00u3 00u2 00u1
+    psrlw    mm0, 8          // ~(00u4 00u3 00u2 00u1)
     movq     mm3,mm2
-    psrlw    mm2, 8          // 00u8 00u7 00u6 00u5
-    pavgb    mm0,mm1         // xxU4 xxU3 xxU2 xxU1
-    pavgb    mm2,mm3         // xxU8 xxU7 xxU6 xxU5
-    pand     mm0,mm7         // 00U4 00U3 00U2 00U1
-    pand     mm2,mm7         // 00U8 00U7 00U6 00U5
+    psrlw    mm2, 8          // ~(00u8 00u7 00u6 00u5)
+    pavgb    mm0,mm1         // ~(xxU4 xxU3 xxU2 xxU1)
+    pavgb    mm2,mm3         // ~(xxU8 xxU7 xxU6 xxU5)
+    pand     mm0,mm7         // ~(00U4 00U3 00U2 00U1)
+    pand     mm2,mm7         // ~(00U8 00U7 00U6 00U5)
 
     add      edi,8
-    packuswb mm0,mm2         // U8U7 U6U5 U4U3 U2U1
+    packuswb mm0,mm2         // ~U8~U7~U6~U5~U4~U3~U2~U1
 
     cmp      edi,edx
+    pxor     mm0,mm6         // U8U7U6U5U4U3U2U1
     movq     [eax+edi-8],mm0
 
     jl       loopx
@@ -299,6 +309,75 @@ void MMX_Convert444ChromaToYV12(unsigned char *dstp, const unsigned char *srcp,
         const int dst_pitch, const int src_pitch,
         const int src_rowsize, const int src_height)
 {
+#if 1
+  static const __int64 sevenfB = 0x7f7f7f7f7f7f7f7f;
+  int src_pitch2 = src_pitch * 2;
+  __asm {
+	push     ebx
+    mov      eax, [dstp]
+    mov      ebx, [srcp]
+    mov      ecx, ebx
+    add      ecx, [src_pitch]  // ecx  = 1 line src offset
+
+    mov      edx, [src_rowsize]
+    xor      edi, edi
+    mov      esi, [src_height]
+    pcmpeqb  mm7, mm7
+    psrlw    mm7, 8          // 00ff 00ff 00ff 00ff
+    movq     mm6, [sevenfB]
+    align    16
+
+// (a + b + 1) >> 1 = (a | b) - ((a ^ b) >> 1)
+
+loopx:
+    movq     mm4, [ebx+edi*2]    // u4U4 u3U3 u2U2 u1U1
+    movq     mm5, [ebx+edi*2+8]  // u8U8 u7U7 U6U6 u5U5
+    movq     mm1, [ecx+edi*2]    // u4U4 u3U3 u2U2 u1U1  (Next line)
+    movq     mm3, [ecx+edi*2+8]  // u8U8 u7U7 u6U6 u5U5  (Next line)
+    movq     mm0, mm4
+    movq     mm2, mm5
+    pxor     mm4, mm1            // Average with next line
+    pxor     mm5, mm3            // Average with next line
+    psrlq    mm4, 1              // Fuck Intel! Where is psrlb
+    por      mm0, mm1
+    psrlq    mm5, 1              // Fuck Intel! Where is psrlb
+    por      mm2, mm3
+    pand     mm4, mm6
+    pand     mm5, mm6
+    psubb    mm0, mm4
+    psubb    mm2, mm5
+    movq     mm1, mm0
+    psrlw    mm0, 8              // 00u4 00u3 00u2 00u1
+    movq     mm3, mm2
+    psrlw    mm2, 8              // 00u8 00u7 00u6 00u5
+    pand     mm1, mm7            // 00U4 00U3 00U2 00U1
+    pand     mm3, mm7            // 00U8 00U7 00U6 00U5
+    paddw    mm0, mm1            // xU4. xU3. xU2. xU1.
+    paddw    mm2, mm3            // xU8. xU7. xU6. xU5.
+    psrlw    mm0, 1              // 00U4 00U3 00U2 00U1
+    psrlw    mm2, 1              // 00U8 00U7 00U6 00U5
+
+    add      edi,8
+    packuswb mm0,mm2             // U8U7 U6U5 U4U3 U2U1
+
+    cmp      edi,edx
+    movq     [eax+edi-8],mm0
+
+    jl       loopx
+
+    mov      edi,0
+    add      eax,[dst_pitch]
+    add      ecx,[src_pitch2]
+    add      ebx,[src_pitch2]
+    dec      esi
+
+    jnz      loopx
+
+    emms
+	pop       ebx
+  }
+}
+#else
   static const __int64 onesW = 0x0001000100010001;
   static const __int64 twosW = 0x0002000200020002;
   int src_pitch2 = src_pitch * 2;
@@ -367,6 +446,7 @@ loopx:
 	pop       ebx
   }
 }
+#endif
 
 PVideoFrame Convert444ToYV12::ConvertImage(Image444* src, PVideoFrame dst, IScriptEnvironment* env) {
   env->MakeWritable(&dst);
