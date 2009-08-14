@@ -144,8 +144,16 @@ void* VideoFrame::operator new(unsigned) {
       return &i->vf;
   LinkedVideoFrame* result = (LinkedVideoFrame*)::operator new(sizeof(LinkedVideoFrame));
   result->vf.refcount=1;
+#if 0 // SEt 13 Aug 2009
+  // g_VideoFrame_recycle_bin is assigned twice to result->next just in
+  // case another thread reads result->next before the last assignment
   result->next = g_Bin->g_VideoFrame_recycle_bin;
-  result->next = (LinkedVideoFrame*)InterlockedExchangePointer((long*)&g_Bin->g_VideoFrame_recycle_bin,result);//g_VideoFrame_recycle_bin is assigned twice to result->next just in case another thread reads result->next before the last assignment 
+  result->next = (LinkedVideoFrame*)InterlockedExchangePointer((long*)&g_Bin->g_VideoFrame_recycle_bin,result);
+#else
+  do
+    result->next = g_Bin->g_VideoFrame_recycle_bin;
+  while (InterlockedCompareExchangePointer((volatile PVOID*)&g_Bin->g_VideoFrame_recycle_bin, result, result->next) != result->next);
+#endif
   return &result->vf;
 }
 
@@ -187,11 +195,11 @@ VideoFrame* VideoFrame::Subframe(int rel_offset, int new_pitch, int new_row_size
 VideoFrameBuffer::VideoFrameBuffer() : refcount(1), data(0), data_size(0), sequence_number(0) {}
 
 
-#ifdef _DEBUG  // Add 64 guard bytes front and back -- cache can check them after every GetFrame() call
+#ifdef _DEBUG  // Add 16 guard bytes front and back -- cache can check them after every GetFrame() call
 VideoFrameBuffer::VideoFrameBuffer(int size) : 
   refcount(1), 
   data((new BYTE[size+32])+16), 
-  data_size(size), 
+  data_size(data ? size : 0), 
   sequence_number(0) {
   InterlockedIncrement(&sequence_number); 
   int *p=(int *)data;
@@ -217,7 +225,7 @@ VideoFrameBuffer::~VideoFrameBuffer() {
 #else
 
 VideoFrameBuffer::VideoFrameBuffer(int size)
- : refcount(1), data(new BYTE[size]), data_size(size), sequence_number(0) { InterlockedIncrement(&sequence_number); }
+ : refcount(1), data(new BYTE[size]), data_size(data ? size : 0), sequence_number(0) { InterlockedIncrement(&sequence_number); }
 
 VideoFrameBuffer::~VideoFrameBuffer() {
 //  _ASSERTE(refcount == 0);
@@ -235,9 +243,9 @@ public:
   LinkedVideoFrameBuffer *prev, *next;
   bool returned;
   const int signature; // Used by ManageCache to ensure that the VideoFrameBuffer 
-                         // it casts is really a LinkedVideoFrameBuffer
-  LinkedVideoFrameBuffer(int size) : VideoFrameBuffer(size), signature(ident) { next=prev=this; }
-  LinkedVideoFrameBuffer() : signature(ident) { next=prev=this; }
+                       // it casts is really a LinkedVideoFrameBuffer
+  LinkedVideoFrameBuffer(int size) : VideoFrameBuffer(size), returned(true), signature(ident) { next=prev=this; }
+  LinkedVideoFrameBuffer() : returned(true), signature(ident) { next=prev=this; }
 };
 
 
@@ -966,26 +974,26 @@ ScriptEnvironment::ScriptEnvironment()
     if(InterlockedCompareExchange(&refcount, 1, 0) == 0)//tsp June 2005 Initialize Recycle bin
     {
       g_Bin=new RecycleBin();
+
       InitializeCriticalSectionAndSpinCount(&cs_relink_video_frame_buffer,4000);//tsp June 2005 might have to change the spincount or use InitializeCriticalSection if it should run on WinNT 4 without SP3 or better
     }
     else
       InterlockedIncrement(&refcount);
 
     InitializeCriticalSectionAndSpinCount(&cs_var_table,4000);
+
     MEMORYSTATUS memstatus;
     GlobalMemoryStatus(&memstatus);
     // Minimum 16MB
     // else physical memory/4
-    // plus 0.5 physical memory in excess of 256MB
-    if      (memstatus.dwAvailPhys    > 256*1024*1024)
-      memory_max = ((__int64)memstatus.dwAvailPhys >> 1) - 64*1024*1024;
-    else if (memstatus.dwAvailPhys    > 64*1024*1024)
+    // Maximum 0.5GB
+    if (memstatus.dwAvailPhys    > 64*1024*1024)
       memory_max = (__int64)memstatus.dwAvailPhys >> 2;
     else
       memory_max = 16*1024*1024;
 
-    if (memory_max <= 0) // More than 2GB
-      memory_max = 1024*1024*1024;
+    if (memory_max <= 0 || memory_max > 512*1024*1024) // More than 0.5GB
+      memory_max = 512*1024*1024;
 
     memory_used = 0i64;
     DWORD systemaffinitymask=0;
@@ -1054,10 +1062,17 @@ int ScriptEnvironment::SetMemoryMax(int mem) {
     MEMORYSTATUS memstatus;
     __int64 mem_limit;
 
-    GlobalMemoryStatus(&memstatus);
+    GlobalMemoryStatus(&memstatus); // Correct call for a 32Bit process. -Ex gives numbers we cannot use!
+
     memory_max = mem * 1048576i64;                          // mem as megabytes
     if (memory_max < memory_used) memory_max = memory_used; // can't be less than we already have
-    mem_limit = memory_used + (__int64)memstatus.dwAvailPhys - 5242880i64;
+
+	if (memstatus.dwAvailVirtual < memstatus.dwAvailPhys) // Check for big memory in Vista64
+	  mem_limit = (__int64)memstatus.dwAvailVirtual;
+	else
+      mem_limit = (__int64)memstatus.dwAvailPhys;
+
+    mem_limit += memory_used - 5242880i64;
     if (memory_max > mem_limit) memory_max = mem_limit;     // can't be more than 5Mb less than total
     if (memory_max < 4194304i64) memory_max = 4194304i64;	  // can't be less than 4Mb -- Tritical Jan 2006
   }
@@ -1473,11 +1488,27 @@ void* ScriptEnvironment::ManageCache(int key, void* data){
 
 	// Move unloved VideoFrameBuffer's to the end of the video_frame_buffers LRU list.
 	EnterCriticalSection(&cs_relink_video_frame_buffer);//Don't want to mess up with GetFrameBuffer(2)
+
 	Relink(video_frame_buffers.prev, lvfb, &video_frame_buffers);
-	LeaveCriticalSection(&cs_relink_video_frame_buffer);
 
 	// Flag it as returned, i.e. for immediate reuse.
 	lvfb->returned = true;
+
+	LeaveCriticalSection(&cs_relink_video_frame_buffer);
+
+	return (void*)1;
+  }
+  // Allow the cache to designate a VideoFrameBuffer as being managed thus
+  // preventing it being reused as soon as it becomes free.
+  case MC_ManageVideoFrameBuffer:
+  {
+	LinkedVideoFrameBuffer *lvfb = (LinkedVideoFrameBuffer*)data;
+
+	// Check to make sure the vfb wasn't discarded and is really a LinkedVideoFrameBuffer.
+	if ((lvfb->data == 0) || (lvfb->signature != LinkedVideoFrameBuffer::ident)) break;
+
+	// Flag it as not returned, i.e. currently managed
+	lvfb->returned = false;
 
 	return (void*)1;
   }
@@ -1499,7 +1530,12 @@ void* ScriptEnvironment::ManageCache(int key, void* data){
 
 	// Move loved VideoFrameBuffer's to the head of the video_frame_buffers LRU list.
     EnterCriticalSection(&cs_relink_video_frame_buffer);//Don't want to mess up with GetFrameBuffer(2)
+
     Relink(&video_frame_buffers, lvfb, video_frame_buffers.next);
+
+	// Flag it as not returned, i.e. currently managed
+	lvfb->returned = false;
+
     LeaveCriticalSection(&cs_relink_video_frame_buffer);
 
 	return (void*)1;
@@ -1518,6 +1554,17 @@ void* ScriptEnvironment::ManageCache(int key, void* data){
 
 	return (void*)1;
   }
+
+// :FIXME:
+
+// These are never see the light of day!
+
+// Where ever these are used we need to bring
+// the required function back into here. It is
+// hard enough managing resource interlocks
+// without letting random stray code have
+// unfettered access to the raw lock mechanisms.
+
   case MC_LockVFBList:
   {
     EnterCriticalSection(&cs_relink_video_frame_buffer);
@@ -1570,8 +1617,8 @@ LinkedVideoFrameBuffer* ScriptEnvironment::GetFrameBuffer2(int size) {
   LinkedVideoFrameBuffer *i, *j;
 
   // Before we allocate a new framebuffer, check our memory usage, and if we
-  // are more than 12.5% above allowed usage discard some unreferenced frames.
-  if (memory_used >  memory_max + max(size, (memory_max >> 3)) ) {
+  // are 12.5% or more above allowed usage discard some unreferenced frames.
+  if (memory_used >=  memory_max + max(size, (memory_max >> 3)) ) {
     ++g_Mem_stats.CleanUps;
     int freed = 0;
     int freed_count = 0;
@@ -1624,43 +1671,41 @@ LinkedVideoFrameBuffer* ScriptEnvironment::GetFrameBuffer2(int size) {
   // locked VFB's. Next we start on the CACHE_RANGE protected
   // VFB's, as an offset we promote these.
   // Plan C is not invoked until the Cache's have been poked once.
+  j = 0;
   for (int c=Cache::PC_Nil; c <= Cache::PC_UnProtectAll; c++) {
-    CacheHead->PokeCache(c, size, this);
+    if (CacheHead) CacheHead->PokeCache(c, size, this);
 
     // Plan B: Steal the oldest existing free buffer of the same size
-    j = 0;
     for (i = video_frame_buffers.prev; i != &video_frame_buffers; i = i->prev) {
-      if (InterlockedCompareExchange((long*)&i->refcount,1,0)==0) 
-      {
+      if (InterlockedCompareExchange((long*)&i->refcount,1,0)==0) {
         if (i->GetDataSize() == size) {
           ++g_Mem_stats.PlanB;
           if (j) InterlockedDecrement((long*)&j->refcount);
           InterlockedIncrement((long*)&i->sequence_number);  // Signal to the cache that the vfb has been stolen
           return i;
         }
-        if (i->GetDataSize() > size) {
-          // Remember the smallest VFB that is bigger than our size
-          if ((j == 0) || (i->GetDataSize() < j->GetDataSize()))
-          {
-            if(j)
-              InterlockedDecrement((long*)&j->refcount);
-            j = i;
-          }
-          else // not usefull so free again
-            InterlockedDecrement((long*)&i->refcount);
+        if ( // Remember the smallest VFB that is bigger than our size
+             (c > Cache::PC_Nil || !CacheHead) &&              // Pass 2 OR no PokeCache
+             i->GetDataSize() > size           &&              // Bigger
+             (j == 0 || i->GetDataSize() < j->GetDataSize())   // Not got one OR better candidate
+        ) {
+          if (j) InterlockedDecrement((long*)&j->refcount);
+          j = i;
         }
-        else // not usefull so free again
+        else { // not usefull so free again
           InterlockedDecrement((long*)&i->refcount);
-
+        }
       }
     }
 
     // Plan C: Steal the oldest, smallest free buffer that is greater in size
-    if (j && c > Cache::PC_Nil) {
+    if (j) {
       ++g_Mem_stats.PlanC;
       InterlockedIncrement((long*)&j->sequence_number);  // Signal to the cache that the vfb has been stolen
       return j;
     }
+
+ 	if (!CacheHead) break; // cache state will not change in next loop iterations
   }
 
   // Plan D: Allocate a new buffer, regardless of current memory usage
@@ -1670,7 +1715,37 @@ LinkedVideoFrameBuffer* ScriptEnvironment::GetFrameBuffer2(int size) {
 
 VideoFrameBuffer* ScriptEnvironment::GetFrameBuffer(int size) {
   EnterCriticalSection(&cs_relink_video_frame_buffer);
+
   LinkedVideoFrameBuffer* result = GetFrameBuffer2(size);
+  if (!result || !result->data) {
+    // Damn! we got a NULL from malloc
+    _RPT3(0, "GetFrameBuffer failure, size=%d, memory_max=%I64d, memory_used=%I64d", size, memory_max, memory_used);
+
+    // Put that VFB on the lost souls chain
+    if (result) Relink(lost_video_frame_buffers.prev, result, &lost_video_frame_buffers);
+
+	const __int64 save_max = memory_max;
+
+    // Set memory_max to 12.5% below memory_used 
+    memory_max = max(4*1024*1024, memory_used - max(size, (memory_used/9)));
+
+    // Retry the request
+    result = GetFrameBuffer2(size);
+
+	memory_max = save_max;
+
+    if (!result || !result->data) {
+      // Damn!! Damn!! we are really screwed, winge!
+      if (result) Relink(lost_video_frame_buffers.prev, result, &lost_video_frame_buffers);
+
+      LeaveCriticalSection(&cs_relink_video_frame_buffer);
+
+      ThrowError("GetFrameBuffer: Returned a VFB with a 0 data pointer!\n"
+                 "size=%d, max=%I64d, used=%I64d\n"
+                 "I think we have run out of memory folks!", size, memory_max, memory_used);
+    }
+  }
+
 #if 0
 # if 0
   // Link onto head of video_frame_buffers chain.
@@ -1685,8 +1760,10 @@ VideoFrameBuffer* ScriptEnvironment::GetFrameBuffer(int size) {
   // Adjust unpromoted sublist
   unpromotedvfbs = result;
 #endif
+  // Flag it as returned, i.e. currently not managed
+  result->returned = true;
+
   LeaveCriticalSection(&cs_relink_video_frame_buffer);
-  result->returned = false;
   return result;
 }
 
@@ -2115,11 +2192,12 @@ void ScriptEnvironment::ThrowError(const char* fmt, ...) {
   try {
     va_list val;
     va_start(val, fmt);
-    wvsprintf(buf, fmt, val);
+    _vsnprintf(buf,sizeof(buf)-1, fmt, val);
     va_end(val);
   } catch (...) {
-    strcpy(buf,"Unknown exception");
-  } 
+    strcpy(buf,"Exception while processing ScriptEnvironment::ThrowError().");
+  }
+  buf[sizeof(buf)-1] = '\0';
   throw AvisynthError(ScriptEnvironment::SaveString(buf));
 }
 
