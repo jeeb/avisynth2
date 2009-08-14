@@ -49,7 +49,7 @@
 AVSFunction Levels_filters[] = {
   { "Levels", "cifiii[coring]b", Levels::Create },        // src_low, gamma, src_high, dst_low, dst_high 
   { "RGBAdjust", "c[r]f[g]f[b]f[a]f[rb]f[gb]f[bb]f[ab]f[rg]f[gg]f[bg]f[ag]f[analyze]b", RGBAdjust::Create },
-  { "Tweak", "c[hue]f[sat]f[bright]f[cont]f[coring]b[sse]b[startHue]f[endHue]f[maxSat]f[minSat]f[interp]f", Tweak::Create },  // hue, sat, bright, contrast  ** sse is not used! **
+  { "Tweak", "c[hue]f[sat]f[bright]f[cont]f[coring]b[sse]b[startHue]f[endHue]f[maxSat]f[minSat]f[interp]f", Tweak::Create },
   { "MaskHS", "c[startHue]f[endHue]f[maxSat]f[minSat]f[coring]b", MaskHS::Create },
   { "Limiter", "c[min_luma]i[max_luma]i[min_chroma]i[max_chroma]i[show]s", Limiter::Create },
   { 0 }
@@ -393,10 +393,10 @@ bool ProcessPixel(int X, int Y, double startHue, double endHue,
 ******   Tweak    *****
 **********************/
 
-Tweak::Tweak( PClip _child, double _hue, double _sat, double _bright, double _cont, bool coring,
+Tweak::Tweak( PClip _child, double _hue, double _sat, double _bright, double _cont, bool _coring, bool _sse,
                             double startHue, double endHue, double _maxSat, double _minSat, double p, 
                             IScriptEnvironment* env ) 
-  : GenericVideoFilter(_child)
+  : GenericVideoFilter(_child), coring(_coring), sse(_sse)
 {
   try {  // HIDE DAMN SEH COMPILER BUG!!!
     if (vi.IsRGB())
@@ -405,6 +405,12 @@ Tweak::Tweak( PClip _child, double _hue, double _sat, double _bright, double _co
     // Flag to skip special processing if doing all pixels
     // If defaults, don't check for ranges, just do all
     const bool allPixels = (startHue == 0.0 && endHue == 360.0 && _maxSat == 150.0 && _minSat == 0.0);
+
+// The new "mapping" C code is faster than the iSSE code on my 3GHz P4HT - Make it optional
+    if (sse && (!allPixels || coring || !vi.IsYUY2()))
+        env->ThrowError("Tweak: SSE option only available for YUY2 with coring=false and no options.");
+    if (sse && !(env->GetCPUFlags() & CPUF_INTEGER_SSE))
+        env->ThrowError("Tweak: SSE option needs an iSSE capable processor");
 
     if (vi.IsY8()) {
         if (!(_hue == 0.0 && _sat == 1.0 && allPixels))
@@ -491,8 +497,17 @@ PVideoFrame __stdcall Tweak::GetFrame(int n, IScriptEnvironment* env)
 	int src_pitch = src->GetPitch();
 	int height = src->GetHeight();
 	int row_size = src->GetRowSize();
-	
+
 	if (vi.IsYUY2()) {
+		if (sse && !coring && (env->GetCPUFlags() & CPUF_INTEGER_SSE)) {
+			const __int64 hue64 = (in64 Cos<<48) + (in64 (-Sin)<<32) + (in64 Sin<<16) + in64 Cos;
+			const __int64 satcont64 = (in64 Sat<<48) + (in64 Cont<<32) + (in64 Sat<<16) + in64 Cont;
+			const __int64 bright64 = (in64 Bright<<32) + in64 Bright;
+
+			asm_tweak_ISSE_YUY2(srcp, row_size>>2, height, src_pitch-row_size, hue64, satcont64, bright64);   
+			return src;
+		}
+
 		for (int y = 0; y < height; y++)
 		{
 			for (int x = 0; x < row_size; x+=4)
@@ -551,6 +566,7 @@ AVSValue __cdecl Tweak::Create(AVSValue args, void* user_data, IScriptEnvironmen
 					 args[3].AsFloat(0.0),		// bright
 					 args[4].AsFloat(1.0),		// cont
 					 args[5].AsBool(true),      // coring
+					 args[6].AsBool(false),     // sse
 					 args[7].AsFloat(0.0),      // startHue
 					 args[8].AsFloat(360.0),    // endHue
 					 args[9].AsFloat(150.0),    // maxSat
@@ -561,6 +577,64 @@ AVSValue __cdecl Tweak::Create(AVSValue args, void* user_data, IScriptEnvironmen
 	catch (...) { throw; }
 }
 
+
+
+// Integer SSE optimization by "Dividee".
+void __declspec(naked) asm_tweak_ISSE_YUY2( BYTE *srcp, int w, int h, int modulo, __int64 hue, 
+                                       __int64 satcont, __int64 bright ) 
+{
+	static const __int64 norm = 0x0080001000800010i64;
+
+	__asm {
+		push		ebp
+		push		edi
+		push		esi
+		push		ebx
+
+		pxor		mm0, mm0
+		movq		mm1, norm				// 128 16 128 16
+		movq		mm2, [esp+16+20]		// Cos -Sin Sin Cos (fix12)
+		movq		mm3, [esp+16+28]		// Sat Cont Sat Cont (fix9)
+		movq		mm4, mm1
+		paddw		mm4, [esp+16+36]		// 128 16+Bright 128 16+Bright
+
+		mov			esi, [esp+16+4]			// srcp
+		mov			edx, [esp+16+12]		// height
+y_loop:
+		mov			ecx, [esp+16+8]			// width
+x_loop:
+		movd		mm7, [esi]   			// 0000VYUY
+		punpcklbw	mm7, mm0
+		psubw		mm7, mm1				//  V Y U Y
+		pshufw		mm6, mm7, 0xDD			//  V U V U
+		pmaddwd		mm6, mm2				// V*Cos-U*Sin V*Sin+U*Cos (fix12)
+		psrad		mm6, 12					// ? V' ? U'
+		movq		mm5, mm7
+		punpcklwd	mm7, mm6				// ? ? U' Y
+		punpckhwd	mm5, mm6				// ? ? V' Y
+		punpckldq	mm7, mm5				// V' Y U' Y
+		psllw		mm7, 7					// (fix7)
+		pmulhw		mm7, mm3	            // V'*Sat Y*Cont U'*Sat Y*Cont
+		paddw		mm7, mm4				// V" Y" U" Y"
+		packuswb	mm7, mm0				// 0000V"Y"U"Y"
+		movd		[esi], mm7
+
+		add			esi, 4
+		dec			ecx
+		jnz			x_loop
+
+		add			esi, [esp+16+16]		// skip to next scanline
+		dec			edx
+		jnz			y_loop
+
+		pop			ebx
+		pop			esi
+		pop			edi
+		pop			ebp
+		emms
+		ret
+	};
+}
 
 
 /**********************
@@ -616,7 +690,11 @@ MaskHS::MaskHS( PClip _child, double startHue, double endHue, double _maxSat, do
         }
       }
     }
-
+// #define MaskPointResizing
+#ifndef MaskPointResizing
+    vi.width  >>= vi.GetPlaneWidthSubsampling(PLANAR_U);
+    vi.height >>= vi.GetPlaneHeightSubsampling(PLANAR_U);
+#endif
     vi.pixel_type = VideoInfo::CS_Y8;
   }
   catch (...) { throw; }
@@ -637,6 +715,18 @@ PVideoFrame __stdcall MaskHS::GetFrame(int n, IScriptEnvironment* env)
 		const unsigned char* srcp = src->GetReadPtr();
 		const int src_pitch = src->GetPitch();
 		const int height = src->GetHeight();
+
+#ifndef MaskPointResizing
+		const int row_size = src->GetRowSize() >> 2;
+
+		for (int y = 0; y < height; y++) {
+			for (int x=0; x < row_size; x++) {
+				dstp[x] = mapY[( (srcp[x*4+1])<<8 ) | srcp[x*4+3]];
+			}
+			srcp += src_pitch;
+			dstp += dst_pitch;
+		}
+#else
 		const int row_size = src->GetRowSize();
 
 		for (int y = 0; y < height; y++) {
@@ -648,12 +738,24 @@ PVideoFrame __stdcall MaskHS::GetFrame(int n, IScriptEnvironment* env)
 			srcp += src_pitch;
 			dstp += dst_pitch;
 		}
+#endif
 	} else if (child->GetVideoInfo().IsPlanar()) {
 		const int srcu_pitch = src->GetPitch(PLANAR_U);
 		const unsigned char* srcpu = src->GetReadPtr(PLANAR_U);
 		const unsigned char* srcpv = src->GetReadPtr(PLANAR_V);
 		const int row_sizeu = src->GetRowSize(PLANAR_U);
 		const int heightu = src->GetHeight(PLANAR_U);
+
+#ifndef MaskPointResizing
+		for (int y=0; y<heightu; ++y) {
+			for (int x=0; x<row_sizeu; ++x) {
+				dstp[x] = mapY[( (srcpu[x])<<8 ) | srcpv[x]];
+			}
+			dstp  += dst_pitch;
+			srcpu += srcu_pitch;
+			srcpv += srcu_pitch;
+		}
+#else
 		const int swidth = child->GetVideoInfo().GetPlaneWidthSubsampling(PLANAR_U);
 		const int sheight = child->GetVideoInfo().GetPlaneHeightSubsampling(PLANAR_U);
 		const int sw = 1<<swidth;
@@ -665,7 +767,6 @@ PVideoFrame __stdcall MaskHS::GetFrame(int n, IScriptEnvironment* env)
 				const BYTE mapped = mapY[( (srcpu[x])<<8 ) | srcpv[x]];
 				const int sx = x<<swidth;
 
-				// ::FIXME:: Should we really be PointResizing the mask here?
 				for (int lumv=0; lumv<sh; ++lumv) {
 					const int sy = lumv*dst_pitch+sx;
 
@@ -678,6 +779,7 @@ PVideoFrame __stdcall MaskHS::GetFrame(int n, IScriptEnvironment* env)
 			srcpu += srcu_pitch;
 			srcpv += srcu_pitch;
 		}
+#endif
 	}
 	return dst;
 }

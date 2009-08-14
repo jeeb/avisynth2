@@ -85,7 +85,7 @@ private:
 class Tweak : public GenericVideoFilter
 {
 public:
-  Tweak( PClip _child, double _hue, double _sat, double _bright, double _cont, bool _coring,
+  Tweak( PClip _child, double _hue, double _sat, double _bright, double _cont, bool _coring, bool _sse,
                        double _startHue, double _endHue, double _maxSat, double _minSat, double _interp,
 					   IScriptEnvironment* env );
 
@@ -96,10 +96,16 @@ public:
 private:
 	int Sin, Cos;
 	int Sat, Bright, Cont;
+	bool coring, sse;
 
 	BYTE map[256];
 	unsigned short mapUV[256*256];
 };
+
+/**** ASM Routines ****/
+
+void asm_tweak_ISSE_YUY2( BYTE *srcp, int w, int h, int modulo, __int64 hue, __int64 satcont, 
+                     __int64 bright );
 
 
 
