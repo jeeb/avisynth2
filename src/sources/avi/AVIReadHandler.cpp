@@ -1908,6 +1908,7 @@ bool AVIReadHandler::_parseStreamHeader(List2<AVIStreamNode>& streamlist, DWORD 
 						case '42VY':
 						case 'B14Y':
 						case '008Y':
+						case '  8Y':
 						case '024I':
 						case 'P14Y':
 						case 'vuyc':

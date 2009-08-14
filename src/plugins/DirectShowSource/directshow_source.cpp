@@ -462,6 +462,12 @@ GetSample::GetSample(bool _load_audio, bool _load_video, unsigned _media, LOG* _
 
     dssRPT1(dssPROC, "SeekTo() seeking to new position %I64d\n", pos);
 
+	// If trying to seek past the known end of stream just exit.
+	if (end_of_stream && pos >= GetSampleStartTime()) {
+      dssRPT1(dssPROC, "SeekTo() End_of_stream last samples position %I64d\n", GetSampleStartTime());
+	  return S_OK;
+	}
+
 	seeking = true;
 
     IMediaControl* mc = NULL;
@@ -697,8 +703,29 @@ SeekExit:
   }
 
   HRESULT __stdcall GetSample::FindPin(LPCWSTR Id, IPin** ppPin) { // See QueryID
-    dssRPT1(dssCMD, "GetSample::FindPin(%ls, ppPin) E_NOTIMPL\n", Id);
-    return E_NOTIMPL;
+    if (!Id) {
+      dssRPT0(dssERROR, "GetSample::FindPin(Id, ppPin) ** E_POINTER **\n");
+      return E_POINTER;
+    }
+
+    if (!ppPin) {
+      dssRPT1(dssERROR, "GetSample::FindPin(%ls, ppPin) ** E_POINTER **\n", Id);
+      return E_POINTER;
+    }
+
+    if (lstrcmpW(L"GetSample01", Id)) {
+      dssRPT1(dssERROR, "GetSample::FindPin(%ls, ppPin) ** VFW_E_NOT_FOUND **\n", Id);
+      *ppPin = NULL;
+      return VFW_E_NOT_FOUND;
+    }
+
+    dssRPT1(dssCMD, "GetSample::FindPin(%ls, ppPin)\n", Id);
+
+    *ppPin = static_cast<IPin*>(this);
+
+    AddRef();
+
+    return S_OK;
   }
 
   HRESULT __stdcall GetSample::QueryFilterInfo(FILTER_INFO* pInfo) {
@@ -2068,7 +2095,7 @@ DirectShowSource::DirectShowSource(const char* filename, int _avg_time_per_frame
       env->ThrowError("DirectShowSource : The video Graph failed to restart after seeking. Status = 0x%x", hr);
 
     if (convert_fps) {
-      while (get_sample.GetSampleStartTime() <= sample_time || !currentFrame) {
+      while (get_sample.GetSampleStartTime() <= (sample_time+5000) || !currentFrame) { // Allow 0.5 millisecond roundup
         sampleStartTime = get_sample.GetSampleStartTime();
         cur_frame = int(sampleStartTime / get_sample.avg_time_per_frame); // Floor()
         currentFrame = get_sample.GetCurrentFrame(env, n, TrapTimeouts, timeout);

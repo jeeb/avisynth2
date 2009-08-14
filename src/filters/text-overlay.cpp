@@ -380,7 +380,7 @@ void Antialiaser::GetAlphaRect() {
     fInited = true;
     int i;
 
-    const double scale = 516*64/sqrt((double)128);
+    const double scale = 516*64/sqrt(128.0);
     for(i=0; i<=128; i++)
       gamma[i]=unsigned short(sqrt((double)i) * scale + 0.5); // Gamma = 2.0
 
@@ -1667,11 +1667,11 @@ PVideoFrame __stdcall Compare::GetFrame(int n, IScriptEnvironment* env)
             for (int x = max(0, vi.width - n - 1); x < vi.width; x++) {
               if (y <= psnrs[n - vi.width + 1 + x]) {
                 if (y <= psnrs[n - vi.width + 1 + x] - 2) {
-                  dstp[x << 1] = 0x00;              // Y
+                  dstp[x << 1] = 16;                // Y
                   dstp[((x & -1) << 1) + 1] = 0x80; // U
                   dstp[((x & -1) << 1) + 3] = 0x80; // V
                 } else {
-                  dstp[x << 1] = 0xFF;              // Y
+                  dstp[x << 1] = 235;               // Y
                   dstp[((x & -1) << 1) + 1] = 0x80; // U
                   dstp[((x & -1) << 1) + 3] = 0x80; // V
                 }
@@ -1686,9 +1686,9 @@ PVideoFrame __stdcall Compare::GetFrame(int n, IScriptEnvironment* env)
             for (int x = max(0, vi.width - n - 1); x < vi.width; x++) {
               if (y <= psnrs[n - vi.width + 1 + x]) {
                 if (y <= psnrs[n - vi.width + 1 + x] - 2) {
-                  dstp[x] = 0x00;              // Y
+                  dstp[x] = 16;                // Y
                 } else {
-                  dstp[x] = 0xFF;              // Y
+                  dstp[x] = 235;               // Y
                 }
               }
             } // for x

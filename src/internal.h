@@ -46,8 +46,20 @@ extern const char _AVS_VERSTR[], _AVS_COPYRIGHT[];
 // Define user accessible keys in avisynth.h
 //
 enum {MC_ReturnVideoFrameBuffer =0xFFFF0001};
-enum {MC_PromoteVideoFrameBuffer=0xFFFF0002};
-enum {MC_RegisterCache          =0xFFFF0003};
+enum {MC_ManageVideoFrameBuffer =0xFFFF0002};
+enum {MC_PromoteVideoFrameBuffer=0xFFFF0003};
+enum {MC_RegisterCache          =0xFFFF0004};
+
+
+// :FIXME:
+
+// These are never to see the light of day!
+
+// Where ever these are used we need to bring
+// the required functionality back into here. It
+// is hard enough managing resource interlocks
+// without letting random stray code have
+// unfettered access to the raw lock mechanisms.
 
 enum {MC_LockVFBList            =0xFFFF0010};
 enum {MC_UnlockVFBList          =0xFFFF0011};

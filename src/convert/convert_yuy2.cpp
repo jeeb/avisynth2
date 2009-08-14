@@ -414,7 +414,7 @@ PVideoFrame __stdcall ConvertBackToYUY2::GetFrame(int n, IScriptEnvironment* env
   PVideoFrame src = child->GetFrame(n, env);
 
   if ((src_cs&VideoInfo::CS_YV24)==VideoInfo::CS_YV24) {
-    PVideoFrame dst = env->NewVideoFrame(vi, 16);
+    PVideoFrame dst = env->NewVideoFrame(vi, 16); // YUY2 8 pixel aligned
     BYTE* dstp = dst->GetWritePtr();
 
     const BYTE* srcY = src->GetReadPtr(PLANAR_Y);
@@ -427,6 +427,7 @@ PVideoFrame __stdcall ConvertBackToYUY2::GetFrame(int n, IScriptEnvironment* env
       mmxYV24toYUY2(srcY, srcU, srcV, dstp,
                     src->GetPitch(PLANAR_Y), src->GetPitch(PLANAR_U), dst->GetPitch(),
                     awidth, vi.height);
+      return dst;
     }
 
     for (int y=0; y<vi.height; y++) {
