@@ -15,6 +15,7 @@ Main changes
 ------------
 
 * src/core/main.cpp
+
     Around line 1405 there is a definition of GUIDs
     GUID KSDATAFORMAT_SUBTYPE_PCM and GUID KSDATAFORMAT_SUBTYPE_IEEE_FLOAT
     which both are in at least Win7 SDK.
@@ -27,6 +28,7 @@ Main changes
 * distrib/include/SoundTouch/SoundTouch.dsp
 * distrib/include/pfc/pfc.dsp
 * src/avisynth.dsp
+
     These files had their EOLs changed to Dos\Windows compatible ones.
     This fixes project conversion with certain Visual Studio versions.
     (Visual Studio should be fine with opening them, but the converting
@@ -51,7 +53,8 @@ you can follow these steps to get it to build:
       file with a text editor, such as Notepad++. replace all occurences of
       $(InputName) with %(Filename) .
     * Try re-building. If you have your Windows SDK properly set, it should now
-      build.
+      build and link avisynth.dll, even though the copy to System32 will
+      fail for obvious reasons.
     * Try building the DirectShowSource, and add needed library and include
       paths from your Windows SDK's folders as well as the DirectX SDK's
       folders. This should bring you working copies of Avisynth and DSS.
