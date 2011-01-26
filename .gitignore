@@ -10,6 +10,7 @@
 *.opensdf
 *.pdb
 *.idb
+*.ipch
 *.lastbuildstate
 *.pch
 *.user
