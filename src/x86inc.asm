@@ -33,7 +33,7 @@
 ; as this feature might be useful for others as well.  Send patches or ideas
 ; to x264-devel@videolan.org .
 
-%define program_name x264
+%define program_name Avisynth
 
 %ifdef ARCH_X86_64
     %ifidn __OUTPUT_FORMAT__,win32
