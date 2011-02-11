@@ -72,13 +72,15 @@ public:
   RGBAdjust(PClip _child, double r,  double g,  double b,  double a,
                           double rb, double gb, double bb, double ab,
                           double rg, double gg, double bg, double ag,
-                          bool _analyze, IScriptEnvironment* env);
+                          bool _analyze, bool _dither, IScriptEnvironment* env);
+  ~RGBAdjust();
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
   static AVSValue __cdecl Create(AVSValue args, void*, IScriptEnvironment* env);
 
 private:
-  BYTE mapR[256], mapG[256], mapB[256], mapA[256];
   bool analyze;
+  bool dither;
+  BYTE *mapR, *mapG, *mapB, *mapA;
 };
 
 
@@ -89,19 +91,21 @@ class Tweak : public GenericVideoFilter
 public:
   Tweak( PClip _child, double _hue, double _sat, double _bright, double _cont, bool _coring, bool _sse,
                        double _startHue, double _endHue, double _maxSat, double _minSat, double _interp,
-					   IScriptEnvironment* env );
+                       bool _dither, IScriptEnvironment* env );
+
+  ~Tweak();
 
   PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
 
   static AVSValue __cdecl Create(AVSValue args, void* user_data, IScriptEnvironment* env);
 
 private:
-	int Sin, Cos;
-	int Sat, Bright, Cont;
-	bool coring, sse;
+    int Sin, Cos;
+    int Sat, Bright, Cont;
+    bool coring, sse, dither;
 
-	BYTE map[256];
-	unsigned short mapUV[256*256];
+    BYTE *map;
+    unsigned short *mapUV;
 };
 
 /**** ASM Routines ****/
@@ -121,7 +125,7 @@ public:
   static AVSValue __cdecl Create(AVSValue args, void* user_data, IScriptEnvironment* env);
 
 private:
-	BYTE mapY[256*256];
+    BYTE mapY[256*256];
 };
 
 
@@ -135,8 +139,8 @@ using namespace SoftWire;
 class Limiter : public GenericVideoFilter, public  CodeGenerator
 {
 public:
-	Limiter(PClip _child, int _min_luma, int _max_luma, int _min_chroma, int _max_chroma, int _show, IScriptEnvironment* env);
-	PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
+    Limiter(PClip _child, int _min_luma, int _max_luma, int _min_chroma, int _max_chroma, int _show, IScriptEnvironment* env);
+    PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
   static AVSValue __cdecl Create(AVSValue args, void* user_data, IScriptEnvironment* env);
   DynamicAssembledCode create_emulator(int row_size, int height, IScriptEnvironment* env);
   ~Limiter();
