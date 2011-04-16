@@ -497,4 +497,7 @@
     </CustomBuild>
     <CustomBuild Include="..\distrib\AviSynth.ico" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="x86inc.asm" />
+  </ItemGroup>
 </Project>

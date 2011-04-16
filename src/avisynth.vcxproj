@@ -674,6 +674,9 @@ copy ..\distrib\bin\debug\devil-d.dll $(SystemRoot)\system32</Command>
       <AdditionalIncludeDirectories Condition="'$(Configuration)|$(Platform)'=='RelSym|Win32'">core;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
   </ItemGroup>
+  <ItemGroup>
+    <None Include="x86inc.asm" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
