@@ -43,6 +43,7 @@
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
+    <Import Project="$(VCTargetsPath)\BuildCustomizations\vsyasm.props" />
   </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Template|Win32'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
@@ -162,6 +163,11 @@
       <OutputFile>.\..\..\..\src\Release\pfc.lib</OutputFile>
     </Lib>
   </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Template|Win32'">
+    <Link>
+      <ModuleDefinitionFile>pfc.asm</ModuleDefinitionFile>
+    </Link>
+  </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="byte_order_helper.cpp" />
     <ClCompile Include="cfg_var.cpp" />
@@ -195,7 +201,20 @@
     <ClInclude Include="ptr_list.h" />
     <ClInclude Include="string.h" />
   </ItemGroup>
+  <ItemGroup>
+    <YASM Include="pfc.asm">
+      <FileType>Document</FileType>
+      <Debug Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</Debug>
+      <IncludePaths Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">..\..\..\src;%(IncludePaths)</IncludePaths>
+      <Debug Condition="'$(Configuration)|$(Platform)'=='Relsym|Win32'">true</Debug>
+      <IncludePaths Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">..\..\..\src;%(IncludePaths)</IncludePaths>
+      <IncludePaths Condition="'$(Configuration)|$(Platform)'=='Relsym|Win32'">..\..\..\src;%(IncludePaths)</IncludePaths>
+      <Debug Condition="'$(Configuration)|$(Platform)'=='Template|Win32'">true</Debug>
+      <IncludePaths Condition="'$(Configuration)|$(Platform)'=='Template|Win32'">..\..\..\src;%(IncludePaths)</IncludePaths>
+    </YASM>
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
+    <Import Project="$(VCTargetsPath)\BuildCustomizations\vsyasm.targets" />
   </ImportGroup>
 </Project>

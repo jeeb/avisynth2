@@ -1,11 +1,8 @@
 #include "pfc.h"
 
+extern __int64 profiler_local_get_timestamp();
 
-__declspec(naked) __int64 profiler_local::get_timestamp()
+__int64 profiler_local::get_timestamp()
 {
-	__asm
-	{
-		rdtsc
-		ret
-	}
+    return profiler_local_get_timestamp();
 }
